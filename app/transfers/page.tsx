@@ -48,12 +48,9 @@ export default function TransfersPage() {
   const [currentGWTeam, setCurrentGWTeam] = useState<GWTeam | null>(null);
   const [nextGWTeam, setNextGWTeam] = useState<GWTeam | null>(null);
 
-  const [squad, setSquad] = useState<string[]>([]); // exactly 4
+  const [squad, setSquad] = useState<string[]>([]);
   const [captain, setCaptain] = useState<string>("");
-  const [sub, setSub] = useState<string>("");        // 5th player
-
-  // which slot is being picked: "squad" | "sub" | null
-  const [picking, setPicking] = useState<"squad" | "sub" | null>(null);
+  const [sub, setSub] = useState<string>("");
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -90,7 +87,8 @@ export default function TransfersPage() {
 
       const base = next ?? current;
       if (base) {
-        setSquad([base.player1, base.player2, base.player3, base.player4].filter(Boolean));
+        const s = [base.player1, base.player2, base.player3, base.player4].filter(Boolean);
+        setSquad(s);
         setCaptain(base.captain ?? "");
         setSub(base.sub ?? "");
       }
@@ -102,10 +100,14 @@ export default function TransfersPage() {
 
   const getPlayer = (id: string) => allPlayers.find((p) => p.id === id);
 
-  // total cost = 4 squad + sub
-  const allSelected = sub ? [...squad, sub] : squad;
-  const totalCost = allSelected.reduce((sum, id) => sum + (getPlayer(id)?.price ?? 0), 0);
   const budget = userTeam?.Bank ?? 0;
+
+  const calcCost = (squadIds: string[], subId: string) => {
+    const all = subId ? [...squadIds, subId] : squadIds;
+    return all.reduce((sum, id) => sum + (getPlayer(id)?.price ?? 0), 0);
+  };
+
+  const totalCost = calcCost(squad, sub);
   const remaining = budget - totalCost;
 
   const transfersMade = (() => {
@@ -113,82 +115,46 @@ export default function TransfersPage() {
     const prev = [
       currentGWTeam.player1, currentGWTeam.player2,
       currentGWTeam.player3, currentGWTeam.player4,
-      currentGWTeam.sub
-    ];
-    return allSelected.filter((id) => !prev.includes(id)).length;
+      currentGWTeam.sub,
+    ].filter(Boolean);
+    const allNew = sub ? [...squad, sub] : squad;
+    return allNew.filter((id) => !prev.includes(id)).length;
   })();
 
   const freeTransfers = userTeam?.freeTransfers ?? 1;
-  const extraTransfers = Math.max(0, transfersMade - freeTransfers);
-  const penalty = extraTransfers * 4;
+  const penalty = Math.max(0, transfersMade - freeTransfers) * 4;
 
+  // clicking a player on the right side
   const handlePlayerClick = (p: Player) => {
     setError("");
-    const alreadyInSquad = squad.includes(p.id);
-    const alreadyAsSub = sub === p.id;
 
-    if (picking === "sub") {
-      if (squad.includes(p.id)) {
-        setError("This player is already in your squad.");
-        return;
-      }
-      if (alreadyAsSub) {
-        setSub("");
-        setPicking(null);
-        return;
-      }
-      // check budget: remove old sub cost, add new sub cost
-      const oldSubCost = sub ? (getPlayer(sub)?.price ?? 0) : 0;
-      const newTotal = totalCost - oldSubCost + p.price;
-      if (newTotal > budget) {
-        setError("Not enough budget for this player.");
-        return;
-      }
-      setSub(p.id);
-      setPicking(null);
-      return;
-    }
-
-    if (picking === "squad") {
-      if (p.id === sub) {
-        setError("This player is already your substitute.");
-        return;
-      }
-      if (alreadyInSquad) {
-        setError("This player is already in your squad.");
-        return;
-      }
-      // check budget
-      const newTotal = totalCost + p.price;
-      if (newTotal > budget) {
-        setError("Not enough budget for this player.");
-        return;
-      }
-      setSquad([...squad, p.id]);
-      if (squad.length + 1 === 4) setPicking(null);
-      return;
-    }
-
-    // no slot picking — toggle
-    if (alreadyInSquad) {
+    // already in squad → remove
+    if (squad.includes(p.id)) {
       setSquad(squad.filter((id) => id !== p.id));
       if (captain === p.id) setCaptain("");
       return;
     }
-    if (alreadyAsSub) {
+
+    // already sub → remove
+    if (sub === p.id) {
       setSub("");
       return;
     }
+
+    // check budget
+    const newCost = totalCost + p.price;
+    if (newCost > budget) {
+      setError(`Not enough budget for ${p.name}.`);
+      return;
+    }
+
+    // fill squad first (up to 4), then sub
     if (squad.length < 4) {
-      const newTotal = totalCost + p.price;
-      if (newTotal > budget) { setError("Not enough budget."); return; }
       setSquad([...squad, p.id]);
     } else if (!sub) {
-      const newTotal = totalCost + p.price;
-      if (newTotal > budget) { setError("Not enough budget."); return; }
       setSub(p.id);
     } else {
-      setError("Squad is full. Remove a player first.");
+      setError("Squad is full (4 players + 1 sub). Remove a player first.");
     }
   };
 
@@ -232,19 +198,6 @@ export default function TransfersPage() {
     setSaving(false);
   };
 
-  const slotStyle = (active: boolean, filled: boolean) => ({
-    background: "var(--surface)",
-    border: `1px solid ${active ? "var(--accent)" : filled ? "var(--border)" : "var(--border)"}`,
-    borderRadius: "8px",
-    padding: "0.75rem 1rem",
-    cursor: "pointer",
-    opacity: 1,
-    display: "flex",
-    justifyContent: "space-between" as const,
-    alignItems: "center" as const,
-    minHeight: "60px",
-  });
-
   if (loading) return (
     <div style={{ maxWidth: "900px", margin: "0 auto" }}>
       <h1 style={{ fontSize: "2rem", fontWeight: 700, marginBottom: "2rem" }}>Transfers</h1>
@@ -261,9 +214,8 @@ export default function TransfersPage() {
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "2rem" }}>
 
-        {/* LEFT — squad builder */}
+        {/* LEFT — squad */}
         <div>
-          {/* Budget bar */}
           <div style={{
             background: "var(--surface)", border: "1px solid var(--border)",
             borderRadius: "10px", padding: "1rem", marginBottom: "1.5rem",
@@ -291,59 +243,77 @@ export default function TransfersPage() {
             </div>
           </div>
 
-          {/* 4 squad slots */}
-          <div style={{ marginBottom: "0.5rem", color: "var(--text-muted)", fontSize: "0.8rem", fontWeight: 600 }}>
+          {/* Squad slots */}
+          <div style={{ color: "var(--text-muted)", fontSize: "0.75rem", fontWeight: 600, marginBottom: "0.5rem" }}>
             SQUAD ({squad.length}/4)
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginBottom: "1rem" }}>
-            {[0, 1, 2, 3].map((i) => {
-              const pid = squad[i];
-              const p = pid ? getPlayer(pid) : null;
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginBottom: "1.5rem" }}>
+            {squad.length === 0 && (
+              <div style={{
+                background: "var(--surface)", border: "1px dashed var(--border)",
+                borderRadius: "8px", padding: "1rem",
+                color: "var(--text-muted)", fontSize: "0.9rem", textAlign: "center",
+              }}>
+                Click players on the right to add them
+              </div>
+            )}
+            {squad.map((pid) => {
+              const p = getPlayer(pid);
               return (
-                <div key={i} style={slotStyle(picking === "squad", !!pid)}>
-                  {p ? (
-                    <>
-                      <div>
-                        <div style={{ fontWeight: 600 }}>{p.name}</div>
-                        <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
-                          {p.game} · <span style={{ color: "var(--accent)" }}>{p.price}</span>
-                        </div>
-                      </div>
-                      <div style={{ display: "flex", gap: "0.4rem", alignItems: "center" }}>
-                        <button
-                          onClick={() => setCaptain(pid)}
-                          style={{
-                            background: captain === pid ? "var(--accent)" : "var(--surface)",
-                            color: captain === pid ? "#000" : "var(--text-muted)",
-                            border: "1px solid var(--border)", borderRadius: "4px",
-                            padding: "0.2rem 0.5rem", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer",
-                          }}
-                        >C</button>
-                        <button
-                          onClick={() => removeFromSquad(pid)}
-                          style={{
-                            background: "transparent", color: "var(--red)",
-                            border: "1px solid var(--border)", borderRadius: "4px",
-                            padding: "0.2rem 0.5rem", fontSize: "0.8rem", cursor: "pointer",
-                          }}
-                        >✕</button>
-                      </div>
-                    </>
-                  ) : (
-                    <span style={{ color: "var(--text-muted)", fontSize: "0.9rem" }}>
-                      Click a player to add →
-                    </span>
-                  )}
+                <div key={pid} style={{
+                  background: "var(--surface)",
+                  border: `1px solid ${captain === pid ? "var(--accent)" : "var(--border)"}`,
+                  borderRadius: "8px", padding: "0.75rem 1rem",
+                  display: "flex", justifyContent: "space-between", alignItems: "center",
+                }}>
+                  <div>
+                    <div style={{ fontWeight: 600 }}>
+                      {p?.name ?? pid}
+                      {captain === pid && (
+                        <span style={{
+                          marginLeft: "0.5rem", background: "var(--accent)", color: "#000",
+                          fontSize: "0.65rem", fontWeight: 700, padding: "0.15rem 0.4rem", borderRadius: "3px",
+                        }}>C</span>
+                      )}
+                    </div>
+                    <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+                      {p?.game} · <span style={{ color: "var(--accent)" }}>{p?.price}</span>
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: "0.4rem" }}>
+                    <button
+                      onClick={() => setCaptain(pid)}
+                      style={{
+                        background: captain === pid ? "var(--accent)" : "var(--surface)",
+                        color: captain === pid ? "#000" : "var(--text-muted)",
+                        border: "1px solid var(--border)", borderRadius: "4px",
+                        padding: "0.2rem 0.5rem", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer",
+                      }}
+                    >C</button>
+                    <button
+                      onClick={() => removeFromSquad(pid)}
+                      style={{
+                        background: "transparent", color: "var(--red)",
+                        border: "1px solid var(--border)", borderRadius: "4px",
+                        padding: "0.2rem 0.5rem", fontSize: "0.8rem", cursor: "pointer",
+                      }}
+                    >✕</button>
+                  </div>
                 </div>
               );
             })}
           </div>
 
           {/* Sub slot */}
-          <div style={{ marginBottom: "0.5rem", color: "var(--text-muted)", fontSize: "0.8rem", fontWeight: 600 }}>
+          <div style={{ color: "var(--text-muted)", fontSize: "0.75rem", fontWeight: 600, marginBottom: "0.5rem" }}>
             SUBSTITUTE
           </div>
-          <div style={{ ...slotStyle(picking === "sub", !!sub), marginBottom: "1.5rem" }}>
+          <div style={{
+            background: "var(--surface)", border: "1px solid var(--border)",
+            borderRadius: "8px", padding: "0.75rem 1rem", marginBottom: "1.5rem",
+            display: "flex", justifyContent: "space-between", alignItems: "center",
+            minHeight: "60px",
+          }}>
             {sub && getPlayer(sub) ? (
               <>
                 <div>
@@ -362,8 +332,8 @@ export default function TransfersPage() {
                 >✕</button>
               </>
             ) : (
-              <span style={{ color: "var(--text-muted)", fontSize: "0.9rem" }}>
-                Click a player to add as sub →
+              <span style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>
+                {squad.length === 4 ? "Click a player to add as sub →" : "Fill your squad of 4 first"}
               </span>
             )}
           </div>
@@ -376,7 +346,8 @@ export default function TransfersPage() {
             onClick={handleSave}
             disabled={saving}
             style={{
-              width: "100%", background: saved ? "var(--green)" : "var(--accent)",
+              width: "100%",
+              background: saved ? "var(--green)" : "var(--accent)",
               color: "#000", fontWeight: 700, padding: "0.75rem",
               borderRadius: "8px", border: "none", fontSize: "1rem", cursor: "pointer",
             }}
@@ -385,25 +356,27 @@ export default function TransfersPage() {
           </button>
         </div>
 
-        {/* RIGHT — players list */}
+        {/* RIGHT — all players */}
         <div>
           <h2 style={{ fontSize: "1.1rem", fontWeight: 700, marginBottom: "1rem" }}>All Players</h2>
           <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", maxHeight: "72vh", overflowY: "auto" }}>
             {allPlayers.map((p) => {
               const inSquad = squad.includes(p.id);
               const isSub = sub === p.id;
-              const canAfford = remaining + (inSquad || isSub ? p.price : 0) >= p.price;
+              const selected = inSquad || isSub;
+              const canAfford = selected || (remaining >= p.price);
               return (
                 <div
                   key={p.id}
                   onClick={() => canAfford && handlePlayerClick(p)}
                   style={{
-                    background: inSquad || isSub ? "rgba(232,255,0,0.08)" : "var(--surface)",
-                    border: `1px solid ${inSquad ? "var(--accent)" : isSub ? "#888" : "var(--border)"}`,
+                    background: selected ? "rgba(232,255,0,0.08)" : "var(--surface)",
+                    border: `1px solid ${inSquad ? "var(--accent)" : isSub ? "#666" : "var(--border)"}`,
                     borderRadius: "8px", padding: "0.75rem 1rem",
                     display: "flex", justifyContent: "space-between", alignItems: "center",
                     cursor: canAfford ? "pointer" : "not-allowed",
                     opacity: canAfford ? 1 : 0.4,
+                    transition: "background 0.15s",
                   }}
                 >
                   <div>
