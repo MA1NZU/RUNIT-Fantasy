@@ -72,6 +72,7 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
         <a href="/leaderboard" style={{ color: "var(--text-muted)" }}>Leaderboard</a>
         <a href="/team" style={{ color: "var(--text-muted)" }}>My Team</a>
         <a href="/transfers" style={{ color: "var(--text-muted)" }}>Transfers</a>
+        <a href="/admin" style={{ color: "var(--text-muted)" }}>Admin</a>
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "1rem" }}>
           <span style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>{user?.email}</span>
           <button
