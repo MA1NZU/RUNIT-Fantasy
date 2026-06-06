@@ -5,29 +5,53 @@ import { AuthProvider, useAuth } from "@/lib/AuthContext";
 import { logout } from "@/lib/auth";
 import "./globals.css";
 
-function AppShell({ children }: { children: React.ReactNode }) {
+function AuthGuard({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
 
   useEffect(() => {
     if (!loading && !user && pathname !== "/login") {
-      router.push("/login");
+      router.replace("/login");
     }
   }, [user, loading, pathname, router]);
 
+  // still checking auth
   if (loading) {
     return (
-      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div style={{
+        minHeight: "100vh",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        background: "var(--bg)",
+      }}>
         <p style={{ color: "var(--text-muted)" }}>Loading...</p>
       </div>
     );
   }
 
-  if (!user && pathname !== "/login") return null;
+  // not logged in — render nothing while redirect happens
+  if (!user && pathname !== "/login") {
+    return (
+      <div style={{
+        minHeight: "100vh",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        background: "var(--bg)",
+      }}>
+        <p style={{ color: "var(--text-muted)" }}>Redirecting...</p>
+      </div>
+    );
+  }
 
-  if (pathname === "/login") return <>{children}</>;
+  // on login page — just show it with no navbar
+  if (pathname === "/login") {
+    return <>{children}</>;
+  }
 
+  // logged in — show full app
   return (
     <>
       <nav style={{
@@ -51,7 +75,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "1rem" }}>
           <span style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>{user?.email}</span>
           <button
-            onClick={() => logout().then(() => router.push("/login"))}
+            onClick={() => logout().then(() => router.replace("/login"))}
             style={{
               background: "transparent",
               border: "1px solid var(--border)",
@@ -76,7 +100,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en">
       <body>
         <AuthProvider>
-          <AppShell>{children}</AppShell>
+          <AuthGuard>{children}</AuthGuard>
         </AuthProvider>
       </body>
     </html>
