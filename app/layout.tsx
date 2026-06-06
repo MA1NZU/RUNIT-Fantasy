@@ -1,41 +1,83 @@
-import type { Metadata } from "next";
+"use client";
+import { useEffect } from "react";
+import { useRouter, usePathname } from "next/navigation";
+import { AuthProvider, useAuth } from "@/lib/AuthContext";
+import { logout } from "@/lib/auth";
 import "./globals.css";
 
-export const metadata: Metadata = {
-  title: "RUNIT Fantasy",
-  description: "Valorant & Marvel Rivals Fantasy Game",
-};
+function AppShell({ children }: { children: React.ReactNode }) {
+  const { user, loading } = useAuth();
+  const router = useRouter();
+  const pathname = usePathname();
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+  useEffect(() => {
+    if (!loading && !user && pathname !== "/login") {
+      router.push("/login");
+    }
+  }, [user, loading, pathname, router]);
+
+  if (loading) {
+    return (
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <p style={{ color: "var(--text-muted)" }}>Loading...</p>
+      </div>
+    );
+  }
+
+  if (!user && pathname !== "/login") return null;
+
+  if (pathname === "/login") return <>{children}</>;
+
+  return (
+    <>
+      <nav style={{
+        background: "var(--surface)",
+        borderBottom: "1px solid var(--border)",
+        padding: "1rem 2rem",
+        display: "flex",
+        gap: "2rem",
+        alignItems: "center",
+        position: "sticky",
+        top: 0,
+        zIndex: 100,
+      }}>
+        <span style={{ color: "var(--accent)", fontWeight: 700, fontSize: "1.2rem" }}>
+          RUNIT Fantasy
+        </span>
+        <a href="/" style={{ color: "var(--text-muted)" }}>Home</a>
+        <a href="/leaderboard" style={{ color: "var(--text-muted)" }}>Leaderboard</a>
+        <a href="/team" style={{ color: "var(--text-muted)" }}>My Team</a>
+        <a href="/transfers" style={{ color: "var(--text-muted)" }}>Transfers</a>
+        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "1rem" }}>
+          <span style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>{user?.email}</span>
+          <button
+            onClick={() => logout().then(() => router.push("/login"))}
+            style={{
+              background: "transparent",
+              border: "1px solid var(--border)",
+              color: "var(--text-muted)",
+              padding: "0.4rem 0.9rem",
+              borderRadius: "6px",
+              cursor: "pointer",
+              fontSize: "0.85rem",
+            }}
+          >
+            Logout
+          </button>
+        </div>
+      </nav>
+      <main style={{ padding: "2rem" }}>{children}</main>
+    </>
+  );
+}
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
       <body>
-        <nav style={{
-          background: "var(--surface)",
-          borderBottom: "1px solid var(--border)",
-          padding: "1rem 2rem",
-          display: "flex",
-          gap: "2rem",
-          alignItems: "center",
-          position: "sticky",
-          top: 0,
-          zIndex: 100,
-        }}>
-          <span style={{ color: "var(--accent)", fontWeight: 700, fontSize: "1.2rem" }}>
-            RUNIT Fantasy
-          </span>
-          <a href="/" style={{ color: "var(--text-muted)" }}>Home</a>
-          <a href="/leaderboard" style={{ color: "var(--text-muted)" }}>Leaderboard</a>
-          <a href="/team" style={{ color: "var(--text-muted)" }}>My Team</a>
-          <a href="/transfers" style={{ color: "var(--text-muted)" }}>Transfers</a>
-        </nav>
-        <main style={{ padding: "2rem" }}>
-          {children}
-        </main>
+        <AuthProvider>
+          <AppShell>{children}</AppShell>
+        </AuthProvider>
       </body>
     </html>
   );
