@@ -150,7 +150,7 @@ export default function TransfersPage() {
 
     // fill squad first (up to 4), then sub
     if (squad.length < 4) {
-      setSquad([...squad, p.id]);
+      setSquad((prev) => [...prev, p.id]);
     } else if (!sub) {
       setSub(p.id);
     } else {
