@@ -1,172 +1,141 @@
 "use client";
 import { useEffect, useState } from "react";
 import { db } from "@/lib/firebase";
-import { collection, getDocs, doc, getDoc } from "firebase/firestore";
+import { collection, getDocs, query, where, orderBy } from "firebase/firestore";
 
-type Manager = {
+type Player = { id: string; Title: string; game: string; };
+type GWTeam = {
   id: string;
-  namez: string;
-  Totalpoints: number;
-  totalGameweekPoints: number;
-  freeTransfers: number;
-  coins: number;
-  Bank: number;
-  captain: string;
+  gameweek: number;
+  player1: string; player2: string; player3: string; player4: string;
+  captain: string; sub: string;
+  gwPoints: number; transfersMade: number; transferPenalty: number;
+  ownerEmail: string;
 };
 
-type GameweekTeam = {
-  player: string;
-  playerName?: string;
-};
+const MANAGERS = [
+  { name: "MainZ",      email: "yahyaayman2006@gmail.com" },
+  { name: "Nono",       email: "noursherif764@gmail.com" },
+  { name: "Basel",      email: "baselkamel23@gmail.com" },
+  { name: "Fizz",       email: "anasvolt10@gmail.com" },
+  { name: "Eltabae",    email: "omartoty2018@gmail.com" },
+  { name: "A Sabry",    email: "abdalrahmansabry07@gmail.com" },
+  { name: "FireyWater", email: "aromatic3211@gmail.com" },
+  { name: "Utopia",     email: "omaraafat2003@gmail.com" },
+  { name: "Ronin",      email: "mohammedehab3000@gmail.com" },
+  { name: "Rio",        email: "the7man121@gmail.com" },
+  { name: "Panda",      email: "loujyamr84@gmail.com" },
+  { name: "Yousef",     email: "yousefnano2005@gmail.com" },
+  { name: "Maro",       email: "marwansalah792006@gmail.com" },
+];
 
 export default function TeamPage() {
-  const [managers, setManagers] = useState<Manager[]>([]);
-  const [selected, setSelected] = useState<Manager | null>(null);
-  const [squad, setSquad] = useState<GameweekTeam[]>([]);
-  const [loadingManagers, setLoadingManagers] = useState(true);
-  const [loadingSquad, setLoadingSquad] = useState(false);
+  const [players, setPlayers] = useState<Record<string, Player>>({});
+  const [selectedManager, setSelectedManager] = useState("");
+  const [gwTeams, setGwTeams] = useState<GWTeam[]>([]);
+  const [selectedGW, setSelectedGW] = useState<number | null>(null);
+  const [loading, setLoading] = useState(false);
 
+  // load all players once for name lookup
   useEffect(() => {
-    const fetch = async () => {
-      const snap = await getDocs(collection(db, "userTeams"));
-      const data = snap.docs.map(d => ({ id: d.id, ...d.data() } as Manager));
-      setManagers(data.sort((a, b) => (b.Totalpoints ?? 0) - (a.Totalpoints ?? 0)));
-      setLoadingManagers(false);
-    };
-    fetch();
+    getDocs(collection(db, "players")).then(snap => {
+      const map: Record<string, Player> = {};
+      snap.docs.forEach(d => { map[d.id] = { id: d.id, ...d.data() } as Player; });
+      setPlayers(map);
+    });
   }, []);
 
-  const selectManager = async (manager: Manager) => {
-    setSelected(manager);
-    setLoadingSquad(true);
-    setSquad([]);
+  // load gameweek teams when manager is selected
+  useEffect(() => {
+    if (!selectedManager) return;
+    setLoading(true);
+    setGwTeams([]);
+    setSelectedGW(null);
 
-    // fetch latest gameweek team for this manager
-    try {
-      const snap = await getDocs(collection(db, "gameweekTeams"));
-      const managerTeams = snap.docs
-        .filter(d => d.data().owner === manager.id || d.data().managerId === manager.id)
-        .sort((a, b) => (b.data().gameweek ?? 0) - (a.data().gameweek ?? 0));
+    getDocs(query(
+      collection(db, "gameweekTeams"),
+      where("ownerEmail", "==", selectedManager),
+      orderBy("gameweek", "desc")
+    )).then(snap => {
+      const teams = snap.docs.map(d => ({ id: d.id, ...d.data() } as GWTeam));
+      setGwTeams(teams);
+      if (teams.length > 0) setSelectedGW(teams[0].gameweek);
+      setLoading(false);
+    });
+  }, [selectedManager]);
 
-      if (managerTeams.length > 0) {
-        const latest = managerTeams[0].data();
-        const players = latest.players ?? latest.team ?? [];
-        setSquad(players.map((p: string | GameweekTeam) =>
-          typeof p === "string" ? { player: p } : p
-        ));
-      }
-    } catch (e) {
-      console.error(e);
-    }
-    setLoadingSquad(false);
-  };
+  const currentTeam = gwTeams.find(t => t.gameweek === selectedGW);
+  const playerIds = currentTeam
+    ? [currentTeam.player1, currentTeam.player2, currentTeam.player3, currentTeam.player4]
+    : [];
+
+  const getPlayerName = (id: string) => players[id]?.Title ?? id;
+  const isCaptain = (id: string) => currentTeam?.captain === id;
+  const isSub = (id: string) => currentTeam?.sub === id;
 
   return (
-    <div style={{ maxWidth: "900px", margin: "0 auto" }}>
+    <div style={{ maxWidth: "700px", margin: "0 auto" }}>
       <h1 style={{ fontSize: "2rem", fontWeight: 700, marginBottom: "2rem" }}>My Team</h1>
 
-      {!selected ? (
-        <>
-          <p style={{ color: "var(--text-muted)", marginBottom: "1.5rem" }}>Select a manager to view their squad:</p>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: "1rem" }}>
-            {loadingManagers ? (
-              <p style={{ color: "var(--text-muted)" }}>Loading...</p>
-            ) : managers.map(m => (
-              <div key={m.id} onClick={() => selectManager(m)} style={{
-                background: "var(--surface)",
-                border: "1px solid var(--border)",
-                borderRadius: "10px",
-                padding: "1.25rem",
-                cursor: "pointer",
-                transition: "border-color 0.2s",
-              }}
-                onMouseEnter={e => (e.currentTarget.style.borderColor = "var(--accent)")}
-                onMouseLeave={e => (e.currentTarget.style.borderColor = "var(--border)")}
-              >
-                <div style={{ fontWeight: 700, fontSize: "1.1rem", marginBottom: "0.5rem" }}>{m.namez}</div>
-                <div style={{ color: "var(--accent)", fontWeight: 700 }}>{m.Totalpoints ?? 0} pts</div>
-                <div style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginTop: "0.25rem" }}>
-                  GW: {m.totalGameweekPoints ?? 0} pts
-                </div>
-                <div style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>
-                  Coins: {m.coins ?? 0}
-                </div>
-              </div>
+      {/* Manager selector */}
+      <div style={{ marginBottom: "1.5rem" }}>
+        <label style={{ color: "var(--text-muted)", fontSize: "0.85rem", display: "block", marginBottom: "0.5rem" }}>
+          Select Manager
+        </label>
+        <select
+          value={selectedManager}
+          onChange={e => setSelectedManager(e.target.value)}
+          style={{
+            background: "var(--surface)", border: "1px solid var(--border)",
+            color: "var(--text)", padding: "0.6rem 1rem", borderRadius: "8px",
+            fontSize: "1rem", cursor: "pointer", width: "100%",
+          }}
+        >
+          <option value="">— Select a manager —</option>
+          {MANAGERS.map(m => (
+            <option key={m.email} value={m.email}>{m.name}</option>
+          ))}
+        </select>
+      </div>
+
+      {/* Gameweek selector */}
+      {gwTeams.length > 0 && (
+        <div style={{ marginBottom: "1.5rem" }}>
+          <label style={{ color: "var(--text-muted)", fontSize: "0.85rem", display: "block", marginBottom: "0.5rem" }}>
+            Gameweek
+          </label>
+          <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+            {gwTeams.map(t => (
+              <button key={t.id} onClick={() => setSelectedGW(t.gameweek)} style={{
+                padding: "0.4rem 0.9rem", borderRadius: "6px", cursor: "pointer",
+                border: "1px solid var(--border)", fontWeight: 600,
+                background: selectedGW === t.gameweek ? "var(--accent)" : "var(--surface)",
+                color: selectedGW === t.gameweek ? "#000" : "var(--text)",
+              }}>
+                GW{t.gameweek}
+              </button>
             ))}
           </div>
-        </>
-      ) : (
-        <>
-          <button onClick={() => { setSelected(null); setSquad([]); }} style={{
-            background: "var(--surface)",
-            border: "1px solid var(--border)",
-            color: "var(--text)",
-            padding: "0.5rem 1rem",
-            borderRadius: "6px",
-            cursor: "pointer",
-            marginBottom: "1.5rem",
-          }}>
-            ← Back
-          </button>
+        </div>
+      )}
 
+      {loading && <p style={{ color: "var(--text-muted)" }}>Loading...</p>}
+
+      {/* Team display */}
+      {currentTeam && (
+        <>
+          {/* Stats bar */}
           <div style={{
-            background: "var(--surface)",
-            border: "1px solid var(--border)",
-            borderRadius: "10px",
-            padding: "1.5rem",
-            marginBottom: "1.5rem",
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))",
-            gap: "1rem",
+            background: "var(--surface)", border: "1px solid var(--border)",
+            borderRadius: "10px", padding: "1rem 1.5rem", marginBottom: "1.5rem",
+            display: "flex", gap: "2rem", flexWrap: "wrap",
           }}>
-            <div>
-              <div style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>Manager</div>
-              <div style={{ fontWeight: 700, fontSize: "1.2rem" }}>{selected.namez}</div>
-            </div>
-            <div>
-              <div style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>Total Points</div>
-              <div style={{ fontWeight: 700, color: "var(--accent)", fontSize: "1.2rem" }}>{selected.Totalpoints ?? 0}</div>
-            </div>
             <div>
               <div style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>GW Points</div>
-              <div style={{ fontWeight: 700 }}>{selected.totalGameweekPoints ?? 0}</div>
+              <div style={{ fontWeight: 700, fontSize: "1.3rem", color: "var(--accent)" }}>
+                {currentTeam.gwPoints ?? 0}
+              </div>
             </div>
             <div>
-              <div style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>Free Transfers</div>
-              <div style={{ fontWeight: 700 }}>{selected.freeTransfers ?? 0}</div>
-            </div>
-            <div>
-              <div style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>Coins</div>
-              <div style={{ fontWeight: 700 }}>{selected.coins ?? 0}</div>
-            </div>
-            <div>
-              <div style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>Bank</div>
-              <div style={{ fontWeight: 700 }}>{selected.Bank ?? 0}</div>
-            </div>
-          </div>
-
-          <h2 style={{ fontSize: "1.2rem", fontWeight: 700, marginBottom: "1rem" }}>Current Squad</h2>
-          {loadingSquad ? (
-            <p style={{ color: "var(--text-muted)" }}>Loading squad...</p>
-          ) : squad.length === 0 ? (
-            <p style={{ color: "var(--text-muted)" }}>No squad data found.</p>
-          ) : (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: "0.75rem" }}>
-              {squad.map((p, i) => (
-                <div key={i} style={{
-                  background: "var(--surface)",
-                  border: "1px solid var(--border)",
-                  borderRadius: "8px",
-                  padding: "1rem",
-                  textAlign: "center",
-                }}>
-                  <div style={{ fontWeight: 600 }}>{p.playerName ?? p.player}</div>
-                </div>
-              ))}
-            </div>
-          )}
-        </>
-      )}
-    </div>
-  );
-}
+              <div style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>Transfers Made</div>
+              <div style={{ fontWeight: 700, fontSize: "1.3rem" }}>{currentTeam.transfersMade ?? 0}</div>
