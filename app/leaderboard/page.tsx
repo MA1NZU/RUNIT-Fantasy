@@ -5,8 +5,8 @@ import { collection, getDocs, orderBy, query } from "firebase/firestore";
 
 type Team = {
   id: string;
-  teamName: string;
-  managerName: string;
+  manager: string;
+  gameweekPoints: number;
   totalPoints: number;
 };
 
@@ -25,7 +25,7 @@ export default function Leaderboard() {
   }, []);
 
   return (
-    <div style={{ maxWidth: "800px", margin: "0 auto" }}>
+    <div style={{ maxWidth: "700px", margin: "0 auto" }}>
       <h1 style={{ fontSize: "2rem", fontWeight: 700, marginBottom: "2rem" }}>
         Leaderboard
       </h1>
@@ -35,11 +35,11 @@ export default function Leaderboard() {
       ) : (
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
-            <tr style={{ borderBottom: "1px solid var(--border)", color: "var(--text-muted)" }}>
+            <tr style={{ borderBottom: "1px solid var(--border)", color: "var(--text-muted)", fontSize: "0.85rem" }}>
               <th style={{ padding: "0.75rem", textAlign: "left" }}>#</th>
               <th style={{ padding: "0.75rem", textAlign: "left" }}>Manager</th>
-              <th style={{ padding: "0.75rem", textAlign: "left" }}>Team</th>
-              <th style={{ padding: "0.75rem", textAlign: "right" }}>Points</th>
+              <th style={{ padding: "0.75rem", textAlign: "right" }}>GW Points</th>
+              <th style={{ padding: "0.75rem", textAlign: "right" }}>Total Points</th>
             </tr>
           </thead>
           <tbody>
@@ -48,11 +48,15 @@ export default function Leaderboard() {
                 borderBottom: "1px solid var(--border)",
                 background: i === 0 ? "rgba(232,255,0,0.05)" : "transparent"
               }}>
-                <td style={{ padding: "1rem 0.75rem", color: i === 0 ? "var(--accent)" : "var(--text-muted)", fontWeight: 700 }}>
+                <td style={{ padding: "1rem 0.75rem", fontWeight: 700, color: i === 0 ? "var(--accent)" : "var(--text-muted)" }}>
                   {i + 1}
                 </td>
-                <td style={{ padding: "1rem 0.75rem" }}>{team.managerName}</td>
-                <td style={{ padding: "1rem 0.75rem", color: "var(--text-muted)" }}>{team.teamName}</td>
+                <td style={{ padding: "1rem 0.75rem", fontWeight: 600 }}>
+                  {team.manager ?? "—"}
+                </td>
+                <td style={{ padding: "1rem 0.75rem", textAlign: "right", color: "var(--text-muted)" }}>
+                  {team.gameweekPoints ?? 0}
+                </td>
                 <td style={{ padding: "1rem 0.75rem", textAlign: "right", fontWeight: 700, color: "var(--accent)" }}>
                   {team.totalPoints ?? 0}
                 </td>
