@@ -57,34 +57,36 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
       <nav style={{
         background: "var(--surface)",
         borderBottom: "1px solid var(--border)",
-        padding: "1rem 2rem",
+        padding: "0.875rem 2rem",
         display: "flex",
-        gap: "2rem",
+        gap: "1.5rem",
         alignItems: "center",
         position: "sticky",
         top: 0,
         zIndex: 100,
       }}>
-        <span style={{ color: "var(--accent)", fontWeight: 700, fontSize: "1.2rem" }}>
+        <span style={{ color: "var(--accent)", fontWeight: 700, fontSize: "1rem", letterSpacing: "0.5px" }}>
           RUNIT Fantasy
         </span>
-        <a href="/" style={{ color: "var(--text-muted)" }}>Home</a>
-        <a href="/leaderboard" style={{ color: "var(--text-muted)" }}>Leaderboard</a>
-        <a href="/team" style={{ color: "var(--text-muted)" }}>My Team</a>
-        <a href="/transfers" style={{ color: "var(--text-muted)" }}>Transfers</a>
-        <a href="/admin" style={{ color: "var(--text-muted)" }}>Admin</a>
+        <a href="/" style={{ color: "var(--text-muted)", fontSize: "0.875rem" }}>Home</a>
+        <a href="/leaderboard" style={{ color: "var(--text-muted)", fontSize: "0.875rem" }}>Leaderboard</a>
+        <a href="/team" style={{ color: "var(--text-muted)", fontSize: "0.875rem" }}>My Team</a>
+        <a href="/transfers" style={{ color: "var(--text-muted)", fontSize: "0.875rem" }}>Transfers</a>
+        {user?.email === "yahyaayman2006@gmail.com" && (
+          <a href="/admin" style={{ color: "var(--text-muted)", fontSize: "0.875rem" }}>Admin</a>
+        )}
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "1rem" }}>
-          <span style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>{user?.email}</span>
+          <span style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>{user?.email}</span>
           <button
             onClick={() => logout().then(() => router.replace("/login"))}
             style={{
               background: "transparent",
               border: "1px solid var(--border)",
               color: "var(--text-muted)",
-              padding: "0.4rem 0.9rem",
+              padding: "0.35rem 0.85rem",
               borderRadius: "6px",
               cursor: "pointer",
-              fontSize: "0.85rem",
+              fontSize: "0.8rem",
             }}
           >
             Logout
