@@ -217,7 +217,7 @@ export default function ProfilePage() {
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.5rem" }}>
           <Link href="/team" style={{ background: "var(--surface)", border: "1px solid var(--border)", padding: "2rem", borderRadius: "24px", textDecoration: "none", color: "inherit", transition: "transform 0.2s" }}><div style={{ fontSize: "2rem", marginBottom: "1rem" }}>🛡️</div><div style={{ fontWeight: 900, fontSize: "1.25rem" }}>My Squad</div><div style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>Manage players and track points.</div></Link>
-          <Link href="/shop" style={{ background: "var(--surface)", border: "1px solid var(--border)", padding: "2rem", borderRadius: "24px", textDecoration: "none", color: "inherit", transition: "transform 0.2s" }}><div style={{ fontSize: "2rem", marginBottom: "1rem" }}>🏪</div><div style={{ fontWeight: 900, fontSize: "1.25rem" }}>Marketplace</div><div style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>Unlock premium profile cosmetics.</div></Link>
+          <Link href="/shop" style={{ background: "var(--surface)", border: "1px solid var(--border)", padding: "2rem", borderRadius: "24px", textDecoration: "none", color: "inherit", transition: "transform 0.2s" }}><div style={{ fontSize: "2rem", marginBottom: "1rem" }}>🛒</div><div style={{ fontWeight: 900, fontSize: "1.25rem" }}>Marketplace</div><div style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>Unlock premium profile cosmetics.</div></Link>
         </div>
       </div>
       <style jsx>{`
