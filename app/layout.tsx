@@ -73,7 +73,6 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
           {navLinks.map(({ href, label }) => {
             const isActive = pathname === href;
             return (
-              
                 key={href}
                 href={href}
                 style={{
