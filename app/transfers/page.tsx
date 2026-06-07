@@ -10,8 +10,6 @@ type Player = { id: string; name: string; game: string; price: number; points: n
 type GWTeam = { id: string; gameweek: number; player1: string; player2: string; player3: string; player4: string; captain: string; sub: string; gwPoints: number; transfersMade: number; transferPenalty: number; ownerEmail: string; };
 type UserTeam = { id: string; Bank: number; freeTransfers: number; namez: string; ownerEmail: string; };
 
-const NEXT_GW = 8;
-
 function PlayerCard({ 
   player, 
   isCaptain, 
@@ -100,10 +98,19 @@ export default function TransfersPage() {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [nextGW, setNextGW] = useState<number>(8);
 
   useEffect(() => {
     if (!user?.email) return;
     const load = async () => {
+      // 0. Fetch Settings for Next Gameweek
+      const settingsSnap = await getDocs(collection(db, "settings"));
+      let activeNextGW = 8;
+      if (!settingsSnap.empty) {
+        activeNextGW = (settingsSnap.docs[0].data().currentGameweek || 7) + 1;
+        setNextGW(activeNextGW);
+      }
+
       const playersSnap = await getDocs(collection(db, "players"));
       const map: Record<string, Player> = {};
       const list: Player[] = [];
@@ -124,8 +131,8 @@ export default function TransfersPage() {
 
       const gwSnap = await getDocs(query(collection(db, "gameweekTeams"), where("ownerEmail", "==", user.email), orderBy("gameweek", "desc")));
       const gwTeams = gwSnap.docs.map(d => ({ id: d.id, ...d.data() } as GWTeam));
-      const current = gwTeams.find(t => t.gameweek === NEXT_GW - 1);
-      const next = gwTeams.find(t => t.gameweek === NEXT_GW);
+      const current = gwTeams.find(t => t.gameweek === activeNextGW - 1);
+      const next = gwTeams.find(t => t.gameweek === activeNextGW);
 
       setCurrentGWTeam(current ?? null);
       setNextGWTeam(next ?? null);
@@ -186,7 +193,7 @@ export default function TransfersPage() {
   const handleSave = async () => {
     if (squad.length !== 4 || !sub || !captain) { setError("Complete your squad first."); return; }
     setSaving(true);
-    const data = { player1: squad[0], player2: squad[1], player3: squad[2], player4: squad[3], captain, sub, gameweek: NEXT_GW, ownerEmail: user!.email, gwPoints: 0, transfersMade, transferPenalty: penalty };
+    const data = { player1: squad[0], player2: squad[1], player3: squad[2], player4: squad[3], captain, sub, gameweek: nextGW, ownerEmail: user!.email, gwPoints: 0, transfersMade, transferPenalty: penalty };
     try {
       if (nextGWTeam) await updateDoc(doc(db, "gameweekTeams", nextGWTeam.id), data);
       else {
@@ -207,7 +214,7 @@ export default function TransfersPage() {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: "2rem" }}>
           <div>
             <h1 style={{ fontSize: "2rem", fontWeight: 700 }}>Transfers</h1>
-            <p style={{ color: "var(--text-muted)" }}>Gameweek {NEXT_GW}</p>
+            <p style={{ color: "var(--text-muted)" }}>Gameweek {nextGW}</p>
           </div>
           <div style={{ display: "flex", gap: "1.5rem", background: "var(--surface)", padding: "0.75rem 1.5rem", borderRadius: "12px", border: "1px solid var(--border)" }}>
             <div style={{ textAlign: "center" }}><div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>BANK</div><div style={{ fontWeight: 700 }}>{remaining.toFixed(1)}m</div></div>
@@ -243,7 +250,7 @@ export default function TransfersPage() {
 
         {error && <p style={{ color: "var(--red)", textAlign: "center", marginBottom: "1rem" }}>{error}</p>}
         <button onClick={handleSave} disabled={saving} style={{ width: "100%", background: saved ? "var(--green)" : "var(--blue)", color: "#fff", fontWeight: 700, padding: "1rem", borderRadius: "12px", border: "none", fontSize: "1rem", cursor: "pointer" }}>
-          {saving ? "Saving..." : saved ? "✓ Saved!" : `Save GW${NEXT_GW} Squad`}
+          {saving ? "Saving..." : saved ? "✓ Saved!" : `Save GW${nextGW} Squad`}
         </button>
 
         {isModalOpen && (
