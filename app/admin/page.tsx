@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { db } from "@/lib/firebase";
-import { collection, getDocs, doc, updateDoc, query, orderBy, setDoc, addDoc, deleteDoc } from "firebase/firestore";
+import { collection, getDocs, doc, updateDoc, query, orderBy, setDoc, deleteDoc } from "firebase/firestore";
 import { useAuth } from "@/lib/AuthContext";
 import { useRouter } from "next/navigation";
 import Shell from "@/app/shell";
@@ -228,6 +228,60 @@ export default function AdminPage() {
           ))}
         </div>
 
+        {tab === "locks" && settings && (
+          <div style={{ maxWidth: "500px" }}>
+            <h2 style={{ fontSize: "1.2rem", fontWeight: 700, marginBottom: "1.5rem" }}>Page Access Locks</h2>
+            <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "12px", padding: "1.5rem", display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div>
+                  <div style={{ fontWeight: 600 }}>My Team & Leaderboard</div>
+                  <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Restrict access to these pages</div>
+                </div>
+                <input type="checkbox" checked={settings.lockTeamLeaderboard || false} onChange={(e) => setSettings({...settings, lockTeamLeaderboard: e.target.checked})} style={{ width: "24px", height: "24px", cursor: "pointer" }} />
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div>
+                  <div style={{ fontWeight: 600 }}>Transfers Page</div>
+                  <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Lock squad building and transfers</div>
+                </div>
+                <input type="checkbox" checked={settings.lockTransfers || false} onChange={(e) => setSettings({...settings, lockTransfers: e.target.checked})} style={{ width: "24px", height: "24px", cursor: "pointer" }} />
+              </div>
+              <button onClick={handleSaveSettings} disabled={saving === "settings"} style={{ background: saved === "settings" ? "var(--green)" : "var(--blue)", color: "#fff", border: "none", padding: "0.8rem", borderRadius: "8px", fontWeight: 700, cursor: "pointer", marginTop: "1rem" }}>
+                {saving === "settings" ? "Saving..." : saved === "settings" ? "✓ Status Saved" : "Save Lock Settings"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {tab === "settings" && settings && (
+          <div style={{ maxWidth: "600px" }}>
+            <h2 style={{ fontSize: "1.2rem", fontWeight: 700, marginBottom: "1.5rem" }}>Gameweek Settings</h2>
+            <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "12px", padding: "1.5rem", display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+              <div>
+                <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "0.5rem" }}>Current Gameweek</div>
+                <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+                  <button onClick={() => setSettings({...settings, currentGameweek: settings.currentGameweek - 1})} style={{ background: "var(--bg)", border: "1px solid var(--border)", color: "#fff", width: "40px", height: "40px", borderRadius: "8px", cursor: "pointer", fontSize: "1.2rem" }}>-</button>
+                  <div style={{ fontSize: "1.5rem", fontWeight: 700, width: "60px", textAlign: "center" }}>{settings.currentGameweek}</div>
+                  <button onClick={() => setSettings({...settings, currentGameweek: settings.currentGameweek + 1})} style={{ background: "var(--bg)", border: "1px solid var(--border)", color: "#fff", width: "40px", height: "40px", borderRadius: "8px", cursor: "pointer", fontSize: "1.2rem" }}>+</button>
+                </div>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
+                <div>
+                  <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "0.4rem" }}>Transfer Deadline</div>
+                  <input type="datetime-local" value={settings.deadline} onChange={(e) => setSettings({...settings, deadline: e.target.value})} style={{ width: "100%", background: "var(--bg)", border: "1px solid var(--border)", color: "#fff", padding: "0.6rem", borderRadius: "8px" }} />
+                </div>
+                <div>
+                  <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "0.4rem" }}>Shop Deadline</div>
+                  <input type="datetime-local" value={settings.shopDeadline} onChange={(e) => setSettings({...settings, shopDeadline: e.target.value})} style={{ width: "100%", background: "var(--bg)", border: "1px solid var(--border)", color: "#fff", padding: "0.6rem", borderRadius: "8px" }} />
+                </div>
+              </div>
+              <button onClick={handleSaveSettings} disabled={saving === "settings"} style={{ background: saved === "settings" ? "var(--green)" : "var(--blue)", color: "#fff", border: "none", padding: "0.8rem", borderRadius: "8px", fontWeight: 700, cursor: "pointer", marginTop: "1rem" }}>
+                {saving === "settings" ? "Saving..." : saved === "settings" ? "✓ Settings Saved" : "Save Settings"}
+              </button>
+            </div>
+          </div>
+        )}
+
         {tab === "shop" && (
           <div>
             <h2 style={{ fontSize: "1.2rem", fontWeight: 700, marginBottom: "1rem" }}>Shop Manager</h2>
@@ -239,7 +293,7 @@ export default function AdminPage() {
                 <div><div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>Price</div><input type="number" value={newItem.price || 0} onChange={e => setNewItem({...newItem, price: Number(e.target.value)})} style={{ width: "100%", background: "var(--bg)", border: "1px solid var(--border)", color: "#fff", padding: "0.5rem", borderRadius: "6px" }} /></div>
                 <div><div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>Image URL</div><input value={newItem.previewImage || ""} onChange={e => setNewItem({...newItem, previewImage: e.target.value})} style={{ width: "100%", background: "var(--bg)", border: "1px solid var(--border)", color: "#fff", padding: "0.5rem", borderRadius: "6px" }} /></div>
                 <div><div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>Rarity</div><input value={newItem.rarity || ""} onChange={e => setNewItem({...newItem, rarity: e.target.value})} style={{ width: "100%", background: "var(--bg)", border: "1px solid var(--border)", color: "#fff", padding: "0.5rem", borderRadius: "6px" }} /></div>
-                <button onClick={handleAddShopItem} style={{ background: "var(--blue)", color: "#fff", border: "none", padding: "0.6rem 1.5rem", borderRadius: "8px", fontWeight: 700, cursor: "pointer" }}>{saving === "newShopItem" ? "..." : "Add"}</button>
+                <button onClick={handleAddShopItem} style={{ background: "var(--blue)", color: "#fff", border: "none", padding: "0.6rem 1.5rem", borderRadius: "8px", fontWeight: 700, cursor: "pointer" }}>Add</button>
               </div>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
@@ -250,15 +304,83 @@ export default function AdminPage() {
                   <input type="number" value={item.price} onChange={e => updateShopItemField(item.id, "price", e.target.value)} style={{ width: "100%", background: "var(--bg)", border: "1px solid var(--border)", color: "#fff", padding: "0.4rem", borderRadius: "4px" }} />
                   <input value={item.previewImage} onChange={e => updateShopItemField(item.id, "previewImage", e.target.value)} style={{ width: "100%", background: "var(--bg)", border: "1px solid var(--border)", color: "#fff", padding: "0.4rem", borderRadius: "4px" }} />
                   <input value={item.rarity} onChange={e => updateShopItemField(item.id, "rarity", e.target.value)} style={{ width: "100%", background: "var(--bg)", border: "1px solid var(--border)", color: "#fff", padding: "0.4rem", borderRadius: "4px" }} />
-                  <button onClick={() => handleUpdateShopItem(item)} style={{ background: saved === item.id ? "var(--green)" : "var(--accent)", color: "#000", border: "none", borderRadius: "4px", padding: "0.4rem 0.8rem", fontWeight: 700 }}>Save</button>
-                  <button onClick={() => handleDeleteShopItem(item.id)} style={{ background: "transparent", border: "1px solid var(--border)", color: "var(--red)", padding: "0.4rem" }}>✕</button>
+                  <button onClick={() => handleUpdateShopItem(item)} style={{ background: saved === item.id ? "var(--green)" : "var(--accent)", color: "#000", border: "none", borderRadius: "4px", padding: "0.4rem 0.8rem", fontWeight: 700, cursor: "pointer" }}>Save</button>
+                  <button onClick={() => handleDeleteShopItem(item.id)} style={{ background: "transparent", border: "1px solid var(--border)", color: "var(--red)", borderRadius: "4px", padding: "0.4rem", cursor: "pointer" }}>✕</button>
                 </div>
               ))}
             </div>
           </div>
         )}
 
-        {/* Other tabs follow the same logic as previous turnover */}
+        {tab === "stats" && (
+          <div style={{ display: "grid", gridTemplateColumns: "300px 1fr", gap: "2rem" }}>
+            <div style={{ background: "var(--surface)", borderRadius: "12px", border: "1px solid var(--border)", overflow: "hidden" }}>
+              <div style={{ padding: "1rem", borderBottom: "1px solid var(--border)", fontWeight: 700 }}>Select Player</div>
+              <div style={{ maxHeight: "600px", overflowY: "auto" }}>
+                {players.map(p => (
+                  <div key={p.id} onClick={() => setSelectedPlayerId(p.id)} style={{ padding: "0.75rem 1rem", cursor: "pointer", borderBottom: "1px solid var(--border)", background: selectedPlayerId === p.id ? "rgba(3,71,244,0.15)" : "transparent" }}>
+                    <div style={{ fontWeight: 600, fontSize: "0.9rem" }}>{p.name}</div>
+                    <div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>{p.game}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div style={{ background: "var(--surface)", borderRadius: "12px", border: "1px solid var(--border)", padding: "1.5rem" }}>
+              {activePlayer ? (
+                <div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.5rem" }}>
+                    <div><h2 style={{ fontSize: "1.25rem", fontWeight: 700 }}>{activePlayer.name}</h2><p style={{ color: "var(--accent)", fontSize: "0.8rem" }}>GW{settings?.currentGameweek} Rules</p></div>
+                    <div style={{ textAlign: "right" }}><div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>CALCULATED GW POINTS</div><div style={{ fontSize: "2rem", fontWeight: 800, color: "var(--accent)" }}>{calculatePoints(activePlayer)}</div></div>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "1rem" }}>
+                    {["matchWin", "matchLose", "mvp", "svp", "bonus"].map(f => <StatInput key={f} label={f.replace(/([A-Z])/g, ' $1').trim()} id={f} val={calcStats} set={setCalcStats} />)}
+                    <div style={{ gridColumn: "1/-1", borderTop: "1px solid var(--border)", margin: "0.5rem 0" }}></div>
+                    {activePlayer.game === "Valorant" ? 
+                      ["kills", "assists", "deaths", "firstBlood", "firstDeath", "tripleKill", "quadraKill", "ace", "clutch"].map(f => <StatInput key={f} label={f.replace(/([A-Z])/g, ' $1').trim()} id={f} val={calcStats} set={setCalcStats} />) :
+                      ["kills", "assists", "deaths", "lastKills", "headKill", "healing", "damage", "blocked", "soloKills"].map(f => <StatInput key={f} label={f.replace(/([A-Z])/g, ' $1').trim()} id={f} val={calcStats} set={setCalcStats} />)
+                    }
+                  </div>
+                  <button onClick={handleSaveStats} disabled={saving === "matchstats"} style={{ width: "100%", marginTop: "2rem", background: saved === "matchstats" ? "var(--green)" : "var(--blue)", color: "#fff", border: "none", padding: "1rem", borderRadius: "8px", fontWeight: 700, cursor: "pointer" }}>
+                    {saving === "matchstats" ? "Saving..." : saved === "matchstats" ? "✓ Saved Success!" : "Save Match Stats"}
+                  </button>
+                </div>
+              ) : <div style={{ height: "400px", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)" }}>Select a player to start.</div>}
+            </div>
+          </div>
+        )}
+
+        {tab === "managers" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+            {managers.map(m => (
+              <div key={m.id} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "10px", padding: "1rem" }}>
+                <div style={{ fontWeight: 700, marginBottom: "1rem", fontSize: "1.1rem" }}>{m.manager || "Unknown Manager"}</div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr) 100px", gap: "0.75rem", alignItems: "end" }}>
+                   <div><div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>Total Points</div><input type="number" value={m.totalPoints ?? 0} onChange={(e) => updateManagerField(m.id, "totalPoints", Number(e.target.value))} style={{ background: "var(--bg)", border: "1px solid var(--border)", color: "#fff", padding: "0.5rem", borderRadius: "6px", width: "100%" }} /></div>
+                   <div><div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>GW Points</div><input type="number" value={m.gameweekPoints ?? 0} onChange={(e) => updateManagerField(m.id, "gameweekPoints", Number(e.target.value))} style={{ background: "var(--bg)", border: "1px solid var(--border)", color: "#fff", padding: "0.5rem", borderRadius: "6px", width: "100%" }} /></div>
+                   <div><div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>Coins</div><input type="number" value={m.coins ?? 0} onChange={(e) => updateManagerField(m.id, "coins", Number(e.target.value))} style={{ background: "var(--bg)", border: "1px solid var(--border)", color: "#fff", padding: "0.5rem", borderRadius: "6px", width: "100%" }} /></div>
+                   <div><div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>Bank</div><input type="number" step="0.1" value={m.Bank ?? 0} onChange={(e) => updateManagerField(m.id, "Bank", Number(e.target.value))} style={{ background: "var(--bg)", border: "1px solid var(--border)", color: "#fff", padding: "0.5rem", borderRadius: "6px", width: "100%" }} /></div>
+                   <div><div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>Free Trans</div><input type="number" value={m.freeTransfers ?? 0} onChange={(e) => updateManagerField(m.id, "freeTransfers", Number(e.target.value))} style={{ background: "var(--bg)", border: "1px solid var(--border)", color: "#fff", padding: "0.5rem", borderRadius: "6px", width: "100%" }} /></div>
+                   <button onClick={() => handleSaveManager(m)} style={{ background: saved === m.id ? "var(--green)" : "var(--accent)", color: "#000", border: "none", borderRadius: "6px", padding: "0.6rem", fontWeight: 700, cursor: "pointer", width: "100%" }}>
+                     {saving === m.id ? "..." : saved === m.id ? "✓" : "Save"}
+                   </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {tab === "players" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
+            {players.map(p => (
+              <div key={p.id} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "8px", padding: "0.75rem 1rem", display: "grid", gridTemplateColumns: "1.5fr 0.7fr 2fr auto", gap: "0.75rem", alignItems: "center" }}>
+                <div><div style={{ fontWeight: 600 }}>{p.name}</div><div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>{p.game}</div></div>
+                <input type="number" step="0.1" value={p.price} onChange={(e) => setPlayers(prev => prev.map(x => x.id === p.id ? {...x, price: Number(e.target.value)} : x))} style={{ background: "var(--bg)", border: "1px solid var(--border)", color: "#fff", padding: "0.5rem", borderRadius: "6px" }} />
+                <input type="text" value={p.desc} onChange={(e) => setPlayers(prev => prev.map(x => x.id === p.id ? {...x, desc: e.target.value} : x))} style={{ background: "var(--bg)", border: "1px solid var(--border)", color: "#fff", padding: "0.5rem", borderRadius: "6px" }} />
+                <button onClick={async () => { setSaving(p.id); await updateDoc(doc(db, "players", p.id), { price: p.price, desc: p.desc }); setSaving(null); markSaved(p.id); }} style={{ background: saved === p.id ? "var(--green)" : "var(--accent)", color: "#000", border: "none", borderRadius: "6px", padding: "0.6rem 1.2rem", fontWeight: 700, cursor: "pointer" }}>{saving === p.id ? "..." : "Save"}</button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </Shell>
   );
