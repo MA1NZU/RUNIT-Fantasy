@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { db } from "@/lib/firebase";
 import { collection, getDocs, query, where, doc, updateDoc } from "firebase/firestore";
 import { useAuth } from "@/lib/AuthContext";
@@ -30,6 +30,14 @@ type UserTeam = {
   ownerEmail: string;
 };
 
+// Global type for YouTube API
+declare global {
+  interface Window {
+    onYouTubeIframeAPIReady: () => void;
+    YT: any;
+  }
+}
+
 function getYouTubeId(url: string) {
   const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
   const match = url.match(regExp);
@@ -43,6 +51,11 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true);
   const [editingName, setEditingName] = useState(false);
   const [newName, setNewName] = useState("");
+  
+  // Player State
+  const [volume, setVolume] = useState(50);
+  const playerRef = useRef<any>(null);
+  const [playerReady, setPlayerReady] = useState(false);
 
   useEffect(() => {
     const userEmail = user?.email;
@@ -80,6 +93,60 @@ export default function ProfilePage() {
     loadProfile();
   }, [user]);
 
+  const songItem = team?.equippedSong ? items[team.equippedSong] : null;
+  const ytId = songItem?.songUrl ? getYouTubeId(songItem.songUrl) : null;
+
+  // Load YouTube IFrame API
+  useEffect(() => {
+    if (!ytId) return;
+
+    if (!window.YT) {
+      const tag = document.createElement('script');
+      tag.src = "https://www.youtube.com/iframe_api";
+      const firstScriptTag = document.getElementsByTagName('script')[0];
+      firstScriptTag.parentNode?.insertBefore(tag, firstScriptTag);
+    }
+
+    window.onYouTubeIframeAPIReady = () => {
+      playerRef.current = new window.YT.Player('yt-player', {
+        height: '100%',
+        width: '100%',
+        videoId: ytId,
+        playerVars: {
+          controls: 1, // Keep controls visible for standard usage
+          modestbranding: 1,
+          rel: 0,
+          iv_load_policy: 3
+        },
+        events: {
+          onReady: (event: any) => {
+            setPlayerReady(true);
+            event.target.setVolume(volume);
+          }
+        }
+      });
+    };
+
+    if (window.YT && window.YT.Player && !playerRef.current) {
+        window.onYouTubeIframeAPIReady();
+    }
+
+    return () => {
+      if (playerRef.current) {
+        playerRef.current.destroy();
+        playerRef.current = null;
+      }
+    };
+  }, [ytId]);
+
+  const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = parseInt(e.target.value);
+    setVolume(val);
+    if (playerRef.current && playerReady) {
+      playerRef.current.setVolume(val);
+    }
+  };
+
   const handleUpdateName = async () => {
     if (!team || !newName.trim()) return;
     try {
@@ -103,28 +170,19 @@ export default function ProfilePage() {
 
   const avatarItem = team.equippedAvatar ? items[team.equippedAvatar] : null;
   const bannerItem = team.equippedBanner ? items[team.equippedBanner] : null;
-  const songItem = team.equippedSong ? items[team.equippedSong] : null;
   const titleItem = team.equippedTitle ? items[team.equippedTitle] : null;
-
-  const ytId = songItem?.songUrl ? getYouTubeId(songItem.songUrl) : null;
-  const songThumbnail = ytId ? `https://img.youtube.com/vi/${ytId}/mqdefault.jpg` : null;
 
   return (
     <Shell>
       <div style={{ maxWidth: "900px", margin: "0 auto" }}>
-        
-        {/* PROFILE CARD */}
         <div style={{ background: "var(--surface)", borderRadius: "24px", border: "1px solid var(--border)", overflow: "hidden", position: "relative", marginBottom: "1.5rem", boxShadow: "0 20px 50px rgba(0,0,0,0.2)" }}>
-          
           <div style={{ height: "240px", background: "#111", position: "relative" }}>
             {bannerItem ? (
               <img src={getImageUrl(bannerItem.previewImage)} style={{ width: "100%", height: "100%", objectFit: "cover" }} alt="Banner" />
             ) : (
               <div style={{ width: "100%", height: "100%", background: "linear-gradient(135deg, #0347F4 0%, #7c3aed 100%)" }} />
             )}
-            <Link href="/inventory" style={{ position: "absolute", top: "1.25rem", right: "1.25rem", background: "rgba(0,0,0,0.6)", color: "#fff", padding: "0.6rem 1.2rem", borderRadius: "30px", fontSize: "0.75rem", fontWeight: 700, textDecoration: "none", backdropFilter: "blur(8px)", border: "1px solid rgba(255,255,255,0.1)", zIndex: 10 }}>
-              Customize
-            </Link>
+            <Link href="/inventory" style={{ position: "absolute", top: "1.25rem", right: "1.25rem", background: "rgba(0,0,0,0.6)", color: "#fff", padding: "0.5rem 1rem", borderRadius: "30px", fontSize: "0.75rem", fontWeight: 700, textDecoration: "none", backdropFilter: "blur(8px)", border: "1px solid rgba(255,255,255,0.1)", zIndex: 10 }}>Customize</Link>
           </div>
 
           <div style={{ padding: "0 3rem 3rem", textAlign: "center" }}>
@@ -146,14 +204,12 @@ export default function ProfilePage() {
                 </div>
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "0.5rem" }}>
-                  <h1 style={{ fontSize: "2.5rem", fontWeight: 900, margin: 0, display: "flex", alignItems: "center", justifyContent: "center", gap: "0.75rem", letterSpacing: "-1px" }}>
+                  <h1 style={{ fontSize: "2.5rem", fontWeight: 900, margin: 0, display: "flex", alignItems: "center", justifyContent: "center", gap: "0.75rem" }}>
                     {team.manager}
                     <button onClick={() => setEditingName(true)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: "1.2rem", opacity: 0.3 }}>✏️</button>
                   </h1>
                   {titleItem && (
-                    <div style={{ color: titleItem.titleColor || "var(--accent)", fontWeight: 800, fontSize: "0.9rem", textTransform: "uppercase", letterSpacing: "3px", background: "rgba(255,255,255,0.03)", padding: "0.5rem 1.5rem", borderRadius: "40px", border: "1px solid var(--border)" }}>
-                      {titleItem.titleText || titleItem.itemName}
-                    </div>
+                    <div style={{ color: titleItem.titleColor || "var(--accent)", fontWeight: 800, fontSize: "0.9rem", textTransform: "uppercase", letterSpacing: "3px", background: "rgba(255,255,255,0.03)", padding: "0.5rem 1.5rem", borderRadius: "40px", border: "1px solid var(--border)" }}>{titleItem.titleText || titleItem.itemName}</div>
                   )}
                 </div>
               )}
@@ -170,66 +226,29 @@ export default function ProfilePage() {
               </div>
             </div>
 
-            {/* HORIZONTAL MUSIC PLAYER */}
+            {/* HORIZONTAL YOUTUBE PLAYER WITH VOLUME */}
             {songItem && ytId && (
               <div style={{ 
-                marginTop: "2rem", 
-                padding: "0.75rem", 
-                background: "rgba(0,0,0,0.4)", 
-                borderRadius: "100px", 
-                border: "1px solid var(--border)", 
-                display: "flex", 
-                alignItems: "center", 
-                gap: "1.25rem", 
-                textAlign: "left",
-                maxWidth: "600px",
-                margin: "0 auto",
-                boxShadow: "inset 0 1px 1px rgba(255,255,255,0.05)"
+                marginTop: "2rem", padding: "1rem", background: "rgba(0,0,0,0.5)", borderRadius: "20px", border: "1px solid var(--border)", 
+                display: "flex", alignItems: "center", gap: "1.5rem", textAlign: "left", maxWidth: "700px", margin: "0 auto"
               }}>
-                <div style={{ width: "56px", height: "56px", borderRadius: "50%", background: "#000", overflow: "hidden", flexShrink: 0, border: "2px solid rgba(255,255,255,0.1)", animation: "rotate 10s linear infinite" }}>
-                  <img src={songThumbnail || ""} style={{ width: "100%", height: "100%", objectFit: "cover" }} alt="Disk" />
+                <div style={{ width: "120px", height: "68px", borderRadius: "12px", overflow: "hidden", background: "#000", flexShrink: 0 }}>
+                  <div id="yt-player"></div>
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                   <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                      <span style={{ fontSize: "0.6rem", color: "var(--blue)", fontWeight: 800, textTransform: "uppercase" }}>Music Player</span>
-                      <div className="audio-visualizer"><span></span><span></span><span></span></div>
+                   <div style={{ fontSize: "0.6rem", color: "var(--blue)", fontWeight: 800, textTransform: "uppercase", marginBottom: "0.2rem" }}>Now Playing</div>
+                   <div style={{ fontWeight: 700, fontSize: "1rem", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: "#fff", marginBottom: "0.5rem" }}>{songItem.itemName}</div>
+                   <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+                      <span style={{ fontSize: "1rem" }}>🔊</span>
+                      <input type="range" min="0" max="100" value={volume} onChange={handleVolumeChange} style={{ flex: 1, cursor: "pointer", accentColor: "var(--blue)" }} />
+                      <span style={{ fontSize: "0.75rem", fontWeight: 700, width: "30px" }}>{volume}%</span>
                    </div>
-                   <div style={{ fontWeight: 700, fontSize: "0.95rem", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: "#fff" }}>{songItem.itemName}</div>
-                </div>
-                <div style={{ width: "180px", height: "34px", overflow: "hidden", borderRadius: "30px", background: "rgba(0,0,0,0.8)", marginRight: "0.5rem" }}>
-                   <iframe 
-                      width="100%" height="100" 
-                      src={`https://www.youtube.com/embed/${ytId}?controls=1&modestbranding=1&rel=0&disablekb=1&fs=0`} 
-                      style={{ marginTop: "-48px" }} frameBorder="0" allow="autoplay; encrypted-media"
-                    ></iframe>
                 </div>
               </div>
             )}
           </div>
         </div>
-
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.5rem" }}>
-          <Link href="/team" style={{ background: "var(--surface)", border: "1px solid var(--border)", padding: "2rem", borderRadius: "24px", textDecoration: "none", color: "inherit", transition: "0.2s" }}>
-            <div style={{ fontSize: "2rem", marginBottom: "1rem" }}>🛡️</div>
-            <div style={{ fontWeight: 900, fontSize: "1.25rem", marginBottom: "0.25rem" }}>My Squad</div>
-            <div style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>Manage players and track points.</div>
-          </Link>
-          <Link href="/shop" style={{ background: "var(--surface)", border: "1px solid var(--border)", padding: "2rem", borderRadius: "24px", textDecoration: "none", color: "inherit", transition: "0.2s" }}>
-            <div style={{ fontSize: "2rem", marginBottom: "1rem" }}>🏪</div>
-            <div style={{ fontWeight: 900, fontSize: "1.25rem", marginBottom: "0.25rem" }}>Marketplace</div>
-            <div style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>Unlock premium profile cosmetics.</div>
-          </Link>
-        </div>
       </div>
-
-      <style jsx>{`
-        @keyframes rotate { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-        .audio-visualizer { display: flex; align-items: flex-end; gap: 2px; height: 10px; }
-        .audio-visualizer span { width: 2px; background: var(--blue); animation: wave 1s ease-in-out infinite; }
-        .audio-visualizer span:nth-child(2) { animation-delay: 0.2s; }
-        .audio-visualizer span:nth-child(3) { animation-delay: 0.4s; }
-        @keyframes wave { 0%, 100% { height: 40%; } 50% { height: 100%; } }
-      `}</style>
     </Shell>
   );
 }
