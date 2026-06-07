@@ -19,7 +19,6 @@ export default function InventoryPage() {
     const loadInv = async () => {
       setLoading(true);
       try {
-        // 1. Get currently equipped items from userTeams
         const teamSnap = await getDocs(query(collection(db, "userTeams"), where("ownerEmail", "==", user.email)));
         if (!teamSnap.empty) {
           const d = teamSnap.docs[0].data();
@@ -31,12 +30,13 @@ export default function InventoryPage() {
           });
         }
 
-        // 2. Load all shop definitions
         const shopSnap = await getDocs(collection(db, "shopItems"));
         const shopMap: Record<string, ShopItem> = {};
-        shopSnap.docs.forEach(d => { shopMap[d.data().ID] = d.data() as ShopItem; });
+        shopSnap.docs.forEach(d => { 
+          const data = d.data() as ShopItem;
+          shopMap[data.ID] = data; 
+        });
 
-        // 3. Load user's inventory
         const invSnap = await getDocs(query(collection(db, "userInventory"), where("ownerEmail", "==", user.email)));
         const list = invSnap.docs.map(d => shopMap[d.data().itemId]).filter(Boolean);
         setOwnedItems(list);
@@ -47,14 +47,26 @@ export default function InventoryPage() {
   }, [user]);
 
   const handleEquip = async (item: ShopItem) => {
+    if (!user?.email) return;
     try {
       const teamSnap = await getDocs(query(collection(db, "userTeams"), where("ownerEmail", "==", user.email)));
+      if (teamSnap.empty) return;
       const teamId = teamSnap.docs[0].id;
+      
       const field = `equipped${item.itemType.charAt(0).toUpperCase() + item.itemType.slice(1)}`;
       
       await updateDoc(doc(db, "userTeams", teamId), { [field]: item.ID });
       setEquipped(prev => ({ ...prev, [item.itemType]: item.ID }));
     } catch (err) { console.error(err); }
+  };
+
+  const getImageUrl = (url: string) => {
+    if (!url) return 'https://via.placeholder.com/100';
+    if (url.startsWith('wix:image://v1/')) {
+      const guid = url.split('/')[3];
+      return `https://static.wixstatic.com/media/${guid}~mv2.png`;
+    }
+    return url;
   };
 
   if (loading) return <Shell><p style={{ padding: "2rem" }}>Loading Inventory...</p></Shell>;
@@ -66,11 +78,11 @@ export default function InventoryPage() {
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: "1.5rem" }}>
           {ownedItems.map(item => {
             const isEquipped = equipped[item.itemType] === item.ID;
-            const img = item.previewImage?.startsWith('wix') ? 'https://static.wixstatic.com/media/' + item.previewImage.split('/')[3] + '~mv2.png' : item.previewImage;
+            const img = getImageUrl(item.previewImage);
 
             return (
               <div key={item.ID} style={{ background: "var(--surface)", border: `1px solid ${isEquipped ? "var(--blue)" : "var(--border)"}`, borderRadius: "12px", padding: "1rem", textAlign: "center" }}>
-                <img src={img || 'https://via.placeholder.com/100'} style={{ width: "80px", height: "80px", borderRadius: "12px", objectFit: "cover", marginBottom: "1rem" }} />
+                <img src={img} style={{ width: "80px", height: "80px", borderRadius: "12px", objectFit: "cover", marginBottom: "1rem" }} />
                 <div style={{ fontWeight: 700, fontSize: "0.9rem" }}>{item.itemName}</div>
                 <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", marginBottom: "1rem" }}>{item.itemType.toUpperCase()}</div>
                 <button onClick={() => handleEquip(item)} disabled={isEquipped} style={{ width: "100%", padding: "0.5rem", borderRadius: "6px", border: "none", cursor: isEquipped ? "default" : "pointer", background: isEquipped ? "var(--green)" : "var(--blue)", color: "#fff", fontWeight: 700 }}>
