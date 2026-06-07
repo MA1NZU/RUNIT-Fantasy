@@ -65,61 +65,71 @@ export default function ProfilePage() {
     const loadProfile = async () => {
       setLoading(true);
       try {
-        // 1. Fetch User Team
         const teamSnap = await getDocs(query(collection(db, "userTeams"), where("ownerEmail", "==", userEmail)));
         if (teamSnap.empty) return;
         const teamData = { id: teamSnap.docs[0].id, ...teamSnap.docs[0].data() } as UserTeam;
         setTeam(teamData);
         setNewName(teamData.manager);
 
-        // 2. Calculate Global Rank
         const allTeamsSnap = await getDocs(collection(db, "userTeams"));
         const allTeams = allTeamsSnap.docs
           .map(d => d.data() as UserTeam)
           .sort((a, b) => (b.totalPoints || 0) - (a.totalPoints || 0));
-        
         const userIndex = allTeams.findIndex(t => t.ownerEmail === userEmail);
         if (userIndex !== -1) setRank(userIndex + 1);
 
-        // 3. Fetch Equipped Items details
-        const equippedIds = [
-          teamData.equippedAvatar,
-          teamData.equippedBanner,
-          teamData.equippedSong,
-          teamData.equippedTitle
-        ].filter(Boolean) as string[];
-
+        const equippedIds = [teamData.equippedAvatar, teamData.equippedBanner, teamData.equippedSong, teamData.equippedTitle].filter(Boolean) as string[];
         if (equippedIds.length > 0) {
           const shopSnap = await getDocs(collection(db, "shopItems"));
           const shopMap: Record<string, ShopItem> = {};
           shopSnap.docs.forEach(d => {
             const data = d.data() as ShopItem;
-            if (equippedIds.includes(data.ID)) {
-              shopMap[data.ID] = data;
-            }
+            if (equippedIds.includes(data.ID)) shopMap[data.ID] = data;
           });
           setItems(shopMap);
         }
-      } catch (err) { console.error("Profile load error:", err); } finally { setLoading(false); }
+      } catch (err) { console.error(err); } finally { setLoading(false); }
     };
     loadProfile();
   }, [user]);
 
+  const songItem = team?.equippedSong ? items[team.equippedSong] : null;
+  const ytId = songItem?.songUrl ? getYouTubeId(songItem.songUrl) : null;
+  const songThumbnail = ytId ? `https://img.youtube.com/vi/${ytId}/mqdefault.jpg` : null;
+
+  useEffect(() => {
+    if (!ytId) return;
+    if (playerRef.current) { playerRef.current.destroy(); playerRef.current = null; setPlayerReady(false); setIsPlaying(false); }
+
+    const initPlayer = () => {
+      playerRef.current = new window.YT.Player('yt-player-container', {
+        height: '0', width: '0', videoId: ytId,
+        playerVars: { autoplay: 0, controls: 0, disablekb: 1, fs: 0, modestbranding: 1, rel: 0, showinfo: 0 },
+        events: {
+          onReady: (event: any) => { setPlayerReady(true); event.target.setVolume(volume); },
+          onStateChange: (event: any) => { setIsPlaying(event.data === window.YT.PlayerState.PLAYING); }
+        }
+      });
+    };
+
+    if (!window.YT || !window.YT.Player) {
+      const tag = document.createElement('script');
+      tag.src = "https://www.youtube.com/iframe_api";
+      const firstScriptTag = document.getElementsByTagName('script')[0];
+      firstScriptTag.parentNode?.insertBefore(tag, firstScriptTag);
+      window.onYouTubeIframeAPIReady = initPlayer;
+    } else { initPlayer(); }
+  }, [ytId]);
+
   const togglePlay = () => {
     if (!playerRef.current || !playerReady) return;
-    if (isPlaying) {
-      playerRef.current.pauseVideo();
-    } else {
-      playerRef.current.playVideo();
-    }
+    isPlaying ? playerRef.current.pauseVideo() : playerRef.current.playVideo();
   };
 
   const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = parseInt(e.target.value);
     setVolume(val);
-    if (playerRef.current && playerReady) {
-      playerRef.current.setVolume(val);
-    }
+    if (playerRef.current && playerReady) playerRef.current.setVolume(val);
   };
 
   const handleUpdateName = async () => {
@@ -128,7 +138,7 @@ export default function ProfilePage() {
       await updateDoc(doc(db, "userTeams", team.id), { manager: newName });
       setTeam({ ...team, manager: newName });
       setEditingName(false);
-    } catch (err) { console.error("Update name error:", err); }
+    } catch (err) { console.error(err); }
   };
 
   const getImageUrl = (url?: string) => {
@@ -140,45 +150,12 @@ export default function ProfilePage() {
     return url;
   };
 
-  // YouTube API Script Loader
-  useEffect(() => {
-    const songItem = team?.equippedSong ? items[team.equippedSong] : null;
-    const ytId = songItem?.songUrl ? getYouTubeId(songItem.songUrl) : null;
-    if (!ytId) return;
-
-    if (!window.YT) {
-      const tag = document.createElement('script');
-      tag.src = "https://www.youtube.com/iframe_api";
-      const firstScriptTag = document.getElementsByTagName('script')[0];
-      firstScriptTag.parentNode?.insertBefore(tag, firstScriptTag);
-    }
-
-    window.onYouTubeIframeAPIReady = () => {
-      if (playerRef.current) return;
-      playerRef.current = new window.YT.Player('yt-player-hidden', {
-        height: '0', width: '0', videoId: ytId,
-        playerVars: { controls: 0, modestbranding: 1, rel: 0, showinfo: 0 },
-        events: {
-          onReady: () => { setPlayerReady(true); playerRef.current.setVolume(volume); },
-          onStateChange: (event: any) => setIsPlaying(event.data === window.YT.PlayerState.PLAYING)
-        }
-      });
-    };
-
-    if (window.YT && window.YT.Player && !playerRef.current) window.onYouTubeIframeAPIReady();
-
-    return () => { if (playerRef.current) { playerRef.current.destroy(); playerRef.current = null; } };
-  }, [team, items, volume]);
-
   if (loading) return <Shell><p style={{ padding: "2rem" }}>Loading Profile...</p></Shell>;
   if (!team) return <Shell><p style={{ padding: "2rem" }}>Team not found.</p></Shell>;
 
   const avatarItem = team.equippedAvatar ? items[team.equippedAvatar] : null;
   const bannerItem = team.equippedBanner ? items[team.equippedBanner] : null;
-  const songItem = team.equippedSong ? items[team.equippedSong] : null;
   const titleItem = team.equippedTitle ? items[team.equippedTitle] : null;
-  const ytId = songItem?.songUrl ? getYouTubeId(songItem.songUrl) : null;
-  const songThumbnail = ytId ? `https://img.youtube.com/vi/${ytId}/mqdefault.jpg` : null;
 
   return (
     <Shell>
@@ -186,7 +163,7 @@ export default function ProfilePage() {
         <div style={{ background: "var(--surface)", borderRadius: "24px", border: "1px solid var(--border)", overflow: "hidden", position: "relative", marginBottom: "1.5rem", boxShadow: "0 20px 50px rgba(0,0,0,0.2)" }}>
           <div style={{ height: "240px", background: "#111", position: "relative" }}>
             {bannerItem ? <img src={getImageUrl(bannerItem.previewImage)} style={{ width: "100%", height: "100%", objectFit: "cover" }} alt="Banner" /> : <div style={{ width: "100%", height: "100%", background: "linear-gradient(135deg, #0347F4 0%, #7c3aed 100%)" }} />}
-            <Link href="/inventory" style={{ position: "absolute", top: "1.25rem", right: "1.25rem", background: "rgba(0,0,0,0.6)", color: "#fff", padding: "0.5rem 1rem", borderRadius: "30px", fontSize: "0.75rem", fontWeight: 700, textDecoration: "none", backdropFilter: "blur(8px)", border: "1px solid rgba(255,255,255,0.1)" }}>Customize</Link>
+            <Link href="/inventory" style={{ position: "absolute", top: "1.25rem", right: "1.25rem", background: "rgba(0,0,0,0.6)", color: "#fff", padding: "0.5rem 1rem", borderRadius: "30px", fontSize: "0.75rem", fontWeight: 700, textDecoration: "none", backdropFilter: "blur(8px)", border: "1px solid rgba(255,255,255,0.1)", zIndex: 10 }}>Customize</Link>
           </div>
 
           <div style={{ padding: "0 3rem 3rem", textAlign: "center" }}>
@@ -204,7 +181,7 @@ export default function ProfilePage() {
                 </div>
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "0.5rem" }}>
-                  <h1 style={{ fontSize: "2.5rem", fontWeight: 900, margin: 0, display: "flex", alignItems: "center", justifyContent: "center", gap: "0.75rem" }}>{team.manager} <button onClick={() => setEditingName(true)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: "1.2rem", opacity: 0.3 }}>✏️</button></h1>
+                  <h1 style={{ fontSize: "2.5rem", fontWeight: 900, margin: 0, display: "flex", alignItems: "center", justifyContent: "center", gap: "0.75rem", letterSpacing: "-1px" }}>{team.manager} <button onClick={() => setEditingName(true)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: "1.2rem", opacity: 0.3 }}>✏️</button></h1>
                   {titleItem && <div style={{ color: titleItem.titleColor || "var(--accent)", fontWeight: 800, fontSize: "0.9rem", textTransform: "uppercase", letterSpacing: "3px", background: "rgba(255,255,255,0.03)", padding: "0.5rem 1.5rem", borderRadius: "40px", border: "1px solid var(--border)" }}>{titleItem.titleText || titleItem.itemName}</div>}
                 </div>
               )}
@@ -216,15 +193,18 @@ export default function ProfilePage() {
             </div>
 
             {songItem && ytId && (
-              <div style={{ marginTop: "2rem", padding: "0.75rem 1.5rem", background: "rgba(0,0,0,0.4)", borderRadius: "100px", border: "1px solid var(--border)", display: "flex", alignItems: "center", gap: "1.5rem", textAlign: "left", maxWidth: "500px", margin: "0 auto" }}>
-                <div id="yt-player-hidden" style={{ display: "none" }}></div>
-                <div style={{ width: "50px", height: "50px", borderRadius: "50%", background: "#000", overflow: "hidden", flexShrink: 0, border: "2px solid rgba(255,255,255,0.1)", animation: isPlaying ? "rotate 10s linear infinite" : "none" }}><img src={songThumbnail || ""} style={{ width: "100%", height: "100%", objectFit: "cover" }} alt="Disk" /></div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                   <div style={{ fontSize: "0.6rem", color: "var(--blue)", fontWeight: 800, textTransform: "uppercase", display: "flex", alignItems: "center", gap: "0.5rem" }}>Music Player {isPlaying && <div className="audio-visualizer"><span></span><span></span><span></span></div>}</div>
-                   <div style={{ fontWeight: 700, fontSize: "1rem", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: "#fff", marginBottom: "0.25rem" }}>{songItem.itemName}</div>
-                   <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}><span style={{ fontSize: "0.8rem" }}>{volume === 0 ? "🔇" : "🔊"}</span><input type="range" min="0" max="100" value={volume} onChange={handleVolumeChange} style={{ flex: 1, height: "4px", accentColor: "var(--blue)", cursor: "pointer" }} /></div>
+              <div style={{ marginTop: "2rem", padding: "0.75rem 1.5rem", background: "rgba(0,0,0,0.4)", borderRadius: "100px", border: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: "0.75rem", maxWidth: "500px", margin: "0 auto", boxShadow: "inset 0 1px 1px rgba(255,255,255,0.05)" }}>
+                <div style={{ width: "100%", height: "1px", background: "var(--border)", opacity: 0.5, marginBottom: "0.25rem" }} />
+                <div style={{ display: "flex", alignItems: "center", gap: "1.5rem", width: "100%" }}>
+                  <div id="yt-player-container" style={{ position: "absolute", width: 0, height: 0, pointerEvents: "none" }}></div>
+                  <div style={{ width: "50px", height: "50px", borderRadius: "50%", background: "#000", overflow: "hidden", flexShrink: 0, border: "2px solid rgba(255,255,255,0.1)", animation: isPlaying ? "rotate 10s linear infinite" : "none" }}><img src={songThumbnail || ""} style={{ width: "100%", height: "100%", objectFit: "cover" }} alt="Disk" /></div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: "0.6rem", color: "var(--blue)", fontWeight: 800, textTransform: "uppercase", display: "flex", alignItems: "center", gap: "0.5rem" }}>Music Player {isPlaying && <div className="audio-visualizer"><span></span><span></span><span></span></div>}</div>
+                    <div style={{ fontWeight: 700, fontSize: "1rem", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: "#fff", marginBottom: "0.25rem" }}>{songItem.itemName}</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}><span style={{ fontSize: "0.8rem" }}>{volume === 0 ? "🔇" : "🔊"}</span><input type="range" min="0" max="100" value={volume} onChange={handleVolumeChange} style={{ flex: 1, height: "4px", accentColor: "var(--blue)", cursor: "pointer" }} /></div>
+                  </div>
+                  <button onClick={togglePlay} style={{ width: "44px", height: "44px", borderRadius: "50%", background: "var(--blue)", border: "none", color: "#fff", fontSize: "1.2rem", display: "flex", alignItems: "center", justifyContent: "center", cursor: playerReady ? "pointer" : "not-allowed", opacity: playerReady ? 1 : 0.5, transition: "0.2s" }}>{isPlaying ? "⏸" : "▶"}</button>
                 </div>
-                <button onClick={togglePlay} style={{ width: "44px", height: "44px", borderRadius: "50%", background: "var(--blue)", border: "none", color: "#fff", fontSize: "1.2rem", display: "flex", alignItems: "center", justifyContent: "center", cursor: playerReady ? "pointer" : "not-allowed", opacity: playerReady ? 1 : 0.5 }}>{isPlaying ? "⏸" : "▶"}</button>
               </div>
             )}
           </div>
