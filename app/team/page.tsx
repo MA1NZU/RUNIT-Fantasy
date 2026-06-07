@@ -27,13 +27,11 @@ function PlayerCard({ player, isCaptain, isSub }: { player: Player; isCaptain?: 
       position: "relative",
       width: "100%"
     }}>
-      {/* Badges */}
       <div style={{ position: "absolute", top: "0.4rem", left: "0.4rem", display: "flex", flexDirection: "column", gap: "0.2rem", zIndex: 2 }}>
         {isCaptain && <span style={{ background: "var(--blue)", color: "#fff", fontSize: "0.55rem", fontWeight: 700, padding: "0.1rem 0.3rem", borderRadius: "3px" }}>C</span>}
         {isSub && <span style={{ background: "#333", color: "#fff", fontSize: "0.55rem", fontWeight: 700, padding: "0.1rem 0.3rem", borderRadius: "3px" }}>SUB</span>}
       </div>
 
-      {/* Image */}
       <div style={{ width: "100%", aspectRatio: "1/1", borderRadius: "8px", overflow: "hidden", background: "#222", marginBottom: "0.5rem" }}>
         {player.image ? (
           <img src={player.image} alt={player.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
@@ -44,12 +42,10 @@ function PlayerCard({ player, isCaptain, isSub }: { player: Player; isCaptain?: 
         )}
       </div>
 
-      {/* Info */}
       <div style={{ fontWeight: 700, fontSize: "0.85rem", marginBottom: "0.1rem", width: "100%", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{player.name}</div>
       <div style={{ fontSize: "0.8rem", color: "var(--accent)", fontWeight: 700, marginBottom: "0.2rem" }}>
         {isCaptain ? player.points * 2 : player.points} pts {isCaptain && "(x2)"}
       </div>
-      {/* Fitness Status - Red if unfit */}
       <div style={{ 
         fontSize: "0.65rem", 
         color: isUnfit ? "var(--red)" : "var(--text-muted)", 
@@ -89,7 +85,6 @@ export default function TeamPage() {
         const teams = teamsSnap.docs.map((d) => ({ id: d.id, ...d.data() } as GWTeam));
         setGwTeams(teams);
 
-        // Auto-select latest completed GW
         if (teams.length > 0) {
           const validTeams = teams.filter(t => t.gameweek <= CURRENT_GW);
           if (validTeams.length > 0) setSelectedGW(validTeams[0].gameweek);
@@ -100,12 +95,7 @@ export default function TeamPage() {
   }, [user]);
 
   const currentTeam = gwTeams.find((t) => t.gameweek === selectedGW);
-  
-  // Only show buttons for GW7 and below
-  const availableGWs = Array.from(new Set(gwTeams.map(t => t.gameweek)))
-    .filter(gw => gw <= CURRENT_GW)
-    .sort((a, b) => b - a);
-
+  const availableGWs = Array.from(new Set(gwTeams.map(t => t.gameweek))).filter(gw => gw <= CURRENT_GW).sort((a, b) => b - a);
   const playerIds = currentTeam ? [currentTeam.player1, currentTeam.player2, currentTeam.player3, currentTeam.player4].filter(Boolean) : [];
   const getPlayer = (id: string) => players[id];
   const isCaptain = (id: string) => currentTeam?.captain === id;
@@ -126,6 +116,24 @@ export default function TeamPage() {
 
         {currentTeam ? (
           <div>
+            {/* Points Summary Header */}
+            <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "10px", padding: "1rem 1.5rem", marginBottom: "2rem", display: "flex", gap: "2rem", flexWrap: "wrap" }}>
+              <div>
+                <div style={{ color: "var(--text-muted)", fontSize: "0.75rem" }}>GW Points</div>
+                <div style={{ fontWeight: 700, fontSize: "1.4rem", color: "var(--accent)" }}>{currentTeam.gwPoints ?? 0}</div>
+              </div>
+              <div>
+                <div style={{ color: "var(--text-muted)", fontSize: "0.75rem" }}>Transfers</div>
+                <div style={{ fontWeight: 700, fontSize: "1.4rem" }}>{currentTeam.transfersMade ?? 0}</div>
+              </div>
+              <div>
+                <div style={{ color: "var(--text-muted)", fontSize: "0.75rem" }}>Penalty</div>
+                <div style={{ fontWeight: 700, fontSize: "1.4rem", color: currentTeam.transferPenalty ? "var(--red)" : "var(--text)" }}>
+                  {currentTeam.transferPenalty ?? 0}
+                </div>
+              </div>
+            </div>
+
             {/* Squad Row (4 players) */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "1rem", marginBottom: "2rem" }}>
               {playerIds.map((pid, i) => (
