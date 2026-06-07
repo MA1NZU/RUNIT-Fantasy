@@ -161,6 +161,14 @@ export default function TransfersPage() {
     return allSelected.filter(id => !prev.includes(id)).length;
   })();
 
+<div>
+  <h1 style={{ fontSize: "2rem", fontWeight: 700 }}>Transfers</h1>
+  <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+    <p style={{ color: "var(--text-muted)" }}>Gameweek {nextGW}</p>
+    {deadline && <CountdownTimer deadline={deadline} />}
+  </div>
+</div>
+
   const freeTransfers = userTeam?.freeTransfers ?? 1;
   const penalty = Math.max(0, transfersMade - freeTransfers) * 4;
 
