@@ -39,6 +39,7 @@ export default function AdminPage() {
   const [shopItems, setShopItems] = useState<ShopItem[]>([]);
   const [settings, setSettings] = useState<Settings | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState<string | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
 
@@ -50,23 +51,41 @@ export default function AdminPage() {
   const [newItem, setNewItem] = useState<Partial<ShopItem>>({ itemType: "avatar", rarity: "common", price: 0 });
 
   useEffect(() => {
-    if (user && user.email !== ADMIN_EMAIL) router.replace("/");
+    if (user && user.email !== ADMIN_EMAIL) {
+      console.log("Not admin, redirecting...");
+      router.replace("/");
+    }
   }, [user, router]);
 
   useEffect(() => {
     if (!user || user.email !== ADMIN_EMAIL) return;
+
     const load = async () => {
-      const [pSnap, mSnap, sSnap, shopSnap] = await Promise.all([
-        getDocs(collection(db, "players")),
-        getDocs(collection(db, "userTeams")),
-        getDocs(collection(db, "settings")),
-        getDocs(collection(db, "shopItems")),
-      ]);
-      setPlayers(pSnap.docs.map(d => ({ id: d.id, ...d.data() } as Player)).sort((a, b) => a.name.localeCompare(b.name)));
-      setManagers(mSnap.docs.map(d => ({ id: d.id, ...d.data() } as UserTeam)).sort((a, b) => (b.totalPoints ?? 0) - (a.totalPoints ?? 0)));
-      setShopItems(shopSnap.docs.map(d => ({ id: d.id, ...d.data() } as ShopItem)));
-      if (!sSnap.empty) setSettings({ id: sSnap.docs[0].id, ...sSnap.docs[0].data() } as Settings);
-      setLoading(false);
+      setLoading(true);
+      setError(null);
+      try {
+        const [pSnap, mSnap, sSnap, shopSnap] = await Promise.all([
+          getDocs(collection(db, "players")),
+          getDocs(collection(db, "userTeams")),
+          getDocs(collection(db, "settings")),
+          getDocs(collection(db, "shopItems")),
+        ]);
+
+        setPlayers(pSnap.docs.map(d => ({ id: d.id, ...d.data() } as Player)).sort((a, b) => a.name.localeCompare(b.name)));
+        setManagers(mSnap.docs.map(d => ({ id: d.id, ...d.data() } as UserTeam)).sort((a, b) => (b.totalPoints ?? 0) - (a.totalPoints ?? 0)));
+        setShopItems(shopSnap.docs.map(d => ({ id: d.id, ...d.data() } as ShopItem)));
+        
+        if (!sSnap.empty) {
+          setSettings({ id: sSnap.docs[0].id, ...sSnap.docs[0].data() } as Settings);
+        } else {
+          console.warn("Settings collection is empty.");
+        }
+      } catch (err: any) {
+        console.error("Fetch error:", err);
+        setError(err.message || "Failed to load data from Firebase.");
+      } finally {
+        setLoading(false);
+      }
     };
     load();
   }, [user]);
@@ -165,7 +184,7 @@ export default function AdminPage() {
     if (!newItem.itemName || !newItem.previewImage) return alert("Fill all fields");
     setSaving("newShopItem");
     try {
-      const id = crypto.randomUUID();
+      const id = Math.random().toString(36).substr(2, 9);
       const itemData = {
         ...newItem,
         ID: id,
@@ -212,8 +231,11 @@ export default function AdminPage() {
     setShopItems(prev => prev.map(i => i.id === id ? { ...i, [field]: value } : i));
   };
 
-  if (!user || user.email !== ADMIN_EMAIL) return null;
+  if (!user || user.email !== ADMIN_EMAIL) return <Shell><p style={{ padding: "2rem" }}>Access Denied.</p></Shell>;
+  
   if (loading) return <Shell><p style={{ padding: "2rem" }}>Loading Admin Panel...</p></Shell>;
+
+  if (error) return <Shell><div style={{ padding: "2rem", color: "var(--red)" }}><h2>Error</h2><p>{error}</p><button onClick={() => window.location.reload()} style={{ marginTop: "1rem", padding: "0.5rem 1rem", cursor: "pointer" }}>Retry</button></div></Shell>;
 
   const activePlayer = players.find(p => p.id === selectedPlayerId);
 
@@ -304,8 +326,8 @@ export default function AdminPage() {
                   <input type="number" value={item.price} onChange={e => updateShopItemField(item.id, "price", e.target.value)} style={{ width: "100%", background: "var(--bg)", border: "1px solid var(--border)", color: "#fff", padding: "0.4rem", borderRadius: "4px" }} />
                   <input value={item.previewImage} onChange={e => updateShopItemField(item.id, "previewImage", e.target.value)} style={{ width: "100%", background: "var(--bg)", border: "1px solid var(--border)", color: "#fff", padding: "0.4rem", borderRadius: "4px" }} />
                   <input value={item.rarity} onChange={e => updateShopItemField(item.id, "rarity", e.target.value)} style={{ width: "100%", background: "var(--bg)", border: "1px solid var(--border)", color: "#fff", padding: "0.4rem", borderRadius: "4px" }} />
-                  <button onClick={() => handleUpdateShopItem(item)} style={{ background: saved === item.id ? "var(--green)" : "var(--accent)", color: "#000", border: "none", borderRadius: "4px", padding: "0.4rem 0.8rem", fontWeight: 700, cursor: "pointer" }}>Save</button>
-                  <button onClick={() => handleDeleteShopItem(item.id)} style={{ background: "transparent", border: "1px solid var(--border)", color: "var(--red)", borderRadius: "4px", padding: "0.4rem", cursor: "pointer" }}>✕</button>
+                  <button onClick={() => handleUpdateShopItem(item)} style={{ background: saved === item.id ? "var(--green)" : "var(--accent)", color: "#000", border: "none", borderRadius: "4px", padding: "0.4rem 0.8rem", fontWeight: 700 }}>Save</button>
+                  <button onClick={() => handleDeleteShopItem(item.id)} style={{ background: "transparent", border: "1px solid var(--border)", color: "var(--red)", padding: "0.4rem" }}>✕</button>
                 </div>
               ))}
             </div>
