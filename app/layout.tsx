@@ -59,24 +59,51 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
         borderBottom: "1px solid var(--border)",
         padding: "0.875rem 2rem",
         display: "flex",
-        gap: "1.5rem",
         alignItems: "center",
         position: "sticky",
         top: 0,
         zIndex: 100,
       }}>
-        <span style={{ color: "var(--accent)", fontWeight: 700, fontSize: "1rem", letterSpacing: "0.5px" }}>
+        {/* Logo — left */}
+        <span style={{ color: "var(--accent)", fontWeight: 700, fontSize: "1rem", letterSpacing: "0.5px", minWidth: "140px" }}>
           RUNIT Fantasy
         </span>
-        <a href="/" style={{ color: "var(--text-muted)", fontSize: "0.875rem" }}>Home</a>
-        <a href="/leaderboard" style={{ color: "var(--text-muted)", fontSize: "0.875rem" }}>Leaderboard</a>
-        <a href="/team" style={{ color: "var(--text-muted)", fontSize: "0.875rem" }}>My Team</a>
-        <a href="/transfers" style={{ color: "var(--text-muted)", fontSize: "0.875rem" }}>Transfers</a>
-        {user?.email === "yahyaayman2006@gmail.com" && (
-          <a href="/admin" style={{ color: "var(--text-muted)", fontSize: "0.875rem" }}>Admin</a>
-        )}
-        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "1rem" }}>
-          <span style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>{user?.email}</span>
+
+        {/* Nav links — center */}
+        <div style={{ display: "flex", gap: "0.25rem", flex: 1, justifyContent: "center" }}>
+          {[
+            { href: "/", label: "Home" },
+            { href: "/leaderboard", label: "Leaderboard" },
+            { href: "/team", label: "My Team" },
+            { href: "/transfers", label: "Transfers" },
+            ...(user?.email === "yahyaayman2006@gmail.com" ? [{ href: "/admin", label: "Admin" }] : []),
+          ].map(({ href, label }) => {
+            const isActive = pathname === href;
+            return (
+              
+                key={href}
+                href={href}
+                style={{
+                  fontSize: "0.875rem",
+                  fontWeight: isActive ? 600 : 400,
+                  color: isActive ? "#fff" : "var(--text-muted)",
+                  background: isActive ? "var(--blue)" : "transparent",
+                  padding: "0.4rem 1rem",
+                  borderRadius: "7px",
+                  transition: "all 0.15s",
+                }}
+              >
+                {label}
+              </a>
+            );
+          })}
+        </div>
+
+        {/* User + logout — right */}
+        <div style={{ display: "flex", alignItems: "center", gap: "1rem", minWidth: "140px", justifyContent: "flex-end" }}>
+          <span style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>
+            {user?.email?.split("@")[0]}
+          </span>
           <button
             onClick={() => logout().then(() => router.replace("/login"))}
             style={{
