@@ -24,7 +24,9 @@ export default function ShopPage() {
   const [buying, setBuying] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!user?.email) return;
+    const userEmail = user?.email;
+    if (!userEmail) return;
+
     const loadShop = async () => {
       setLoading(true);
       try {
@@ -32,34 +34,41 @@ export default function ShopPage() {
         const itemList = itemSnap.docs.map(d => ({ ...d.data() } as ShopItem));
         setItems(itemList);
 
-        const teamSnap = await getDocs(query(collection(db, "userTeams"), where("ownerEmail", "==", user.email)));
+        const teamSnap = await getDocs(query(collection(db, "userTeams"), where("ownerEmail", "==", userEmail)));
         if (!teamSnap.empty) {
           setUserCoins(teamSnap.docs[0].data().coins || 0);
         }
 
-        const invSnap = await getDocs(query(collection(db, "userInventory"), where("ownerEmail", "==", user.email)));
+        const invSnap = await getDocs(query(collection(db, "userInventory"), where("ownerEmail", "==", userEmail)));
         setOwnedIds(invSnap.docs.map(d => d.data().itemId));
-      } catch (err) { console.error(err); }
-      setLoading(false);
+      } catch (err) { 
+        console.error("Shop load error:", err); 
+      } finally {
+        setLoading(false);
+      }
     };
     loadShop();
   }, [user]);
 
   const handleBuy = async (item: ShopItem) => {
-    if (!user?.email) return;
+    const userEmail = user?.email;
+    if (!userEmail) return;
+    
     if (userCoins < item.price) return alert("Not enough coins!");
     if (!confirm(`Buy ${item.itemName} for ${item.price} coins?`)) return;
 
     setBuying(item.ID);
     try {
       await addDoc(collection(db, "userInventory"), {
-        ownerEmail: user.email,
+        ownerEmail: userEmail,
         itemId: item.ID,
         purchaseDate: new Date().toISOString(),
         equipped: false
       });
 
-      const teamSnap = await getDocs(query(collection(db, "userTeams"), where("ownerEmail", "==", user.email)));
+      const teamSnap = await getDocs(query(collection(db, "userTeams"), where("ownerEmail", "==", userEmail)));
+      if (teamSnap.empty) throw new Error("Team doc not found");
+      
       const teamDoc = teamSnap.docs[0];
       await updateDoc(doc(db, "userTeams", teamDoc.id), {
         coins: userCoins - item.price
@@ -68,7 +77,10 @@ export default function ShopPage() {
       setUserCoins(prev => prev - item.price);
       setOwnedIds(prev => [...prev, item.ID]);
       alert("Purchase successful!");
-    } catch (err) { console.error(err); alert("Purchase failed."); }
+    } catch (err) { 
+      console.error("Purchase error:", err); 
+      alert("Purchase failed."); 
+    }
     setBuying(null);
   };
 
