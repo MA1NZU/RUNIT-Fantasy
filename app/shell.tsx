@@ -1,14 +1,18 @@
 "use client";
+
 import { useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { useAuth } from "@/lib/AuthContext";
 import { logout } from "@/lib/auth";
+import Link from "next/link";
 
 const NAV = [
   { href: "/", label: "Home" },
   { href: "/leaderboard", label: "Leaderboard" },
   { href: "/team", label: "My Team" },
   { href: "/transfers", label: "Transfers" },
+  { href: "/shop", label: "Shop" },
+  { href: "/inventory", label: "Inventory" },
 ];
 
 const ADMIN_EMAIL = "yahyaayman2006@gmail.com";
@@ -54,19 +58,36 @@ export default function Shell({ children }: { children: React.ReactNode }) {
         <span style={{ color: "var(--accent)", fontWeight: 700, fontSize: "1rem", minWidth: "140px" }}>
           RUNIT Fantasy
         </span>
+        
         <div style={{ display: "flex", gap: "0.25rem", flex: 1, justifyContent: "center" }}>
-          {links.map(function(link) {
+          {links.map((link) => {
             const active = pathname === link.href;
             return (
-              <a key={link.href} href={link.href} style={{ fontSize: "0.875rem", fontWeight: active ? 600 : 400, color: active ? "#fff" : "var(--text-muted)", background: active ? "var(--blue)" : "transparent", padding: "0.4rem 1rem", borderRadius: "7px" }}>
+              <Link 
+                key={link.href} 
+                href={link.href} 
+                style={{ 
+                  fontSize: "0.875rem", 
+                  fontWeight: active ? 600 : 400, 
+                  color: active ? "#fff" : "var(--text-muted)", 
+                  background: active ? "var(--blue)" : "transparent", 
+                  padding: "0.4rem 1rem", 
+                  borderRadius: "7px",
+                  textDecoration: "none"
+                }}
+              >
                 {link.label}
-              </a>
+              </Link>
             );
           })}
         </div>
+
         <div style={{ display: "flex", alignItems: "center", gap: "1rem", minWidth: "140px", justifyContent: "flex-end" }}>
           <span style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>{user?.email?.split("@")[0]}</span>
-          <button onClick={function() { logout().then(function() { router.replace("/login"); }); }} style={{ background: "transparent", border: "1px solid var(--border)", color: "var(--text-muted)", padding: "0.35rem 0.85rem", borderRadius: "6px", cursor: "pointer", fontSize: "0.8rem" }}>
+          <button 
+            onClick={() => logout().then(() => router.replace("/login"))} 
+            style={{ background: "transparent", border: "1px solid var(--border)", color: "var(--text-muted)", padding: "0.35rem 0.85rem", borderRadius: "6px", cursor: "pointer", fontSize: "0.8rem" }}
+          >
             Logout
           </button>
         </div>
