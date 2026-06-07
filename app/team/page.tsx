@@ -9,8 +9,6 @@ import Shell from "@/app/shell";
 type Player = { id: string; name: string; game: string; price: number; points: number; desc: string; image?: string; ID?: string; };
 type GWTeam = { id: string; gameweek: number; player1: string; player2: string; player3: string; player4: string; captain: string; sub: string; gwPoints: number; transfersMade: number; transferPenalty: number; ownerEmail: string; };
 
-const CURRENT_GW = 7;
-
 function PlayerCard({ player, points, isCaptain, isSub }: { player: Player; points: number; isCaptain?: boolean; isSub?: boolean }) {
   const isUnfit = player.desc !== "Fit to play";
   
@@ -27,13 +25,11 @@ function PlayerCard({ player, points, isCaptain, isSub }: { player: Player; poin
       position: "relative",
       width: "100%"
     }}>
-      {/* Badges */}
       <div style={{ position: "absolute", top: "0.4rem", left: "0.4rem", display: "flex", flexDirection: "column", gap: "0.2rem", zIndex: 2 }}>
         {isCaptain && <span style={{ background: "var(--blue)", color: "#fff", fontSize: "0.55rem", fontWeight: 700, padding: "0.1rem 0.3rem", borderRadius: "3px" }}>C</span>}
         {isSub && <span style={{ background: "#333", color: "#fff", fontSize: "0.55rem", fontWeight: 700, padding: "0.1rem 0.3rem", borderRadius: "3px" }}>SUB</span>}
       </div>
 
-      {/* Image */}
       <div style={{ width: "100%", aspectRatio: "1/1", borderRadius: "8px", overflow: "hidden", background: "#222", marginBottom: "0.5rem" }}>
         {player.image ? (
           <img src={player.image} alt={player.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
@@ -44,20 +40,11 @@ function PlayerCard({ player, points, isCaptain, isSub }: { player: Player; poin
         )}
       </div>
 
-      {/* Info */}
       <div style={{ fontWeight: 700, fontSize: "0.85rem", marginBottom: "0.1rem", width: "100%", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{player.name}</div>
-      <div style={{ fontSize: "0.85rem", color: "var(--accent)", fontWeight: 700, marginBottom: "0.2rem" }}>
+      <div style={{ fontSize: "0.8rem", color: "var(--accent)", fontWeight: 700, marginBottom: "0.2rem" }}>
         {isCaptain ? (points * 2) : points} pts {isCaptain && "(x2)"}
       </div>
-      <div style={{ 
-        fontSize: "0.65rem", 
-        color: isUnfit ? "var(--red)" : "var(--text-muted)", 
-        height: "1.5rem", 
-        overflow: "hidden",
-        fontWeight: isUnfit ? 600 : 400 
-      }}>
-        {player.desc}
-      </div>
+      <div style={{ fontSize: "0.65rem", color: isUnfit ? "var(--red)" : "var(--text-muted)", height: "1.5rem", overflow: "hidden", fontWeight: isUnfit ? 600 : 400 }}>{player.desc}</div>
     </div>
   );
 }
@@ -67,14 +54,24 @@ export default function TeamPage() {
   const [players, setPlayers] = useState<Record<string, Player>>({});
   const [gwTeams, setGwTeams] = useState<GWTeam[]>([]);
   const [matchStats, setMatchStats] = useState<Record<string, number>>({});
-  const [selectedGW, setSelectedGW] = useState<number>(CURRENT_GW);
+  const [currentGW, setCurrentGW] = useState<number>(7);
+  const [selectedGW, setSelectedGW] = useState<number>(7);
   const [loading, setLoading] = useState(true);
 
-  // 1. Load Players and Teams
+  // 1. Load Players, Teams, and Settings
   useEffect(() => {
     async function loadBaseData() {
       if (!user?.email) return;
       try {
+        // Fetch Settings first
+        const settingsSnap = await getDocs(collection(db, "settings"));
+        let activeGW = 7;
+        if (!settingsSnap.empty) {
+          activeGW = settingsSnap.docs[0].data().currentGameweek || 7;
+          setCurrentGW(activeGW);
+          setSelectedGW(activeGW);
+        }
+
         const playersSnap = await getDocs(collection(db, "players"));
         const playersMap: Record<string, Player> = {};
         playersSnap.docs.forEach((d) => {
@@ -90,7 +87,7 @@ export default function TeamPage() {
         setGwTeams(teams);
 
         if (teams.length > 0) {
-          const validTeams = teams.filter(t => t.gameweek <= CURRENT_GW);
+          const validTeams = teams.filter(t => t.gameweek <= activeGW);
           if (validTeams.length > 0) setSelectedGW(validTeams[0].gameweek);
         }
       } catch (err) { console.error(err); }
@@ -98,7 +95,7 @@ export default function TeamPage() {
     loadBaseData();
   }, [user]);
 
-  // 2. Load Match Stats (Linked by Title)
+  // 2. Load Point Stats from playerMatchStats
   useEffect(() => {
     async function loadStats() {
       setLoading(true);
@@ -111,7 +108,7 @@ export default function TeamPage() {
         const statsMap: Record<string, number> = {};
         statsSnap.docs.forEach(d => {
           const data = d.data();
-          // Using 'Title' as the linking field and 'gwPoints' for the score
+          // stats are in 'gwPoints' and linked by 'Title' (based on user confirmation)
           if (data.Title) {
             statsMap[data.Title] = Number(data.gwPoints || 0);
           }
@@ -127,14 +124,13 @@ export default function TeamPage() {
   }, [selectedGW]);
 
   const currentTeam = gwTeams.find((t) => t.gameweek === selectedGW);
-  const availableGWs = Array.from(new Set(gwTeams.map(t => t.gameweek))).filter(gw => gw <= CURRENT_GW).sort((a, b) => b - a);
+  const availableGWs = Array.from(new Set(gwTeams.map(t => t.gameweek))).filter(gw => gw <= currentGW).sort((a, b) => b - a);
   const playerIds = currentTeam ? [currentTeam.player1, currentTeam.player2, currentTeam.player3, currentTeam.player4].filter(Boolean) : [];
   
   const getPlayer = (id: string) => players[id];
   const getPoints = (id: string) => {
     const p = players[id];
     if (!p) return 0;
-    // Link using the player's name to the match stats 'Title'
     return matchStats[p.name] ?? 0;
   };
   const isCaptain = (id: string) => currentTeam?.captain === id;
