@@ -6,7 +6,7 @@ import { collection, getDocs, query, where, orderBy, doc, updateDoc, addDoc } fr
 import { useAuth } from "@/lib/AuthContext";
 import Shell from "@/app/shell";
 
-type Player = { id: string; name: string; game: string; price: number; points: number; totalPoints: number; desc: string; image?: string; };
+type Player = { id: string; name: string; game: string; price: number; points: number; totalPoints: number; desc: string; image?: string; ID?: string; };
 type GWTeam = { id: string; gameweek: number; player1: string; player2: string; player3: string; player4: string; captain: string; sub: string; gwPoints: number; transfersMade: number; transferPenalty: number; ownerEmail: string; };
 type UserTeam = { id: string; Bank: number; freeTransfers: number; namez: string; ownerEmail: string; };
 
@@ -83,6 +83,40 @@ function PlayerCard({
   );
 }
 
+function CountdownTimer({ deadline }: { deadline: string }) {
+  const [timeLeft, setTimeLeft] = useState<string>("");
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const now = new Date().getTime();
+      const target = new Date(deadline).getTime();
+      const diff = target - now;
+
+      if (diff <= 0) {
+        setTimeLeft("Deadline passed");
+        clearInterval(timer);
+        return;
+      }
+
+      const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+      const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+      const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+
+      setTimeLeft(`${days}d ${hours}h ${minutes}m ${seconds}s`);
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [deadline]);
+
+  return (
+    <div style={{ background: "rgba(3,71,244,0.1)", border: "1px solid var(--blue)", padding: "0.5rem 1rem", borderRadius: "8px", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+      <span style={{ fontSize: "0.7rem", fontWeight: 700, color: "var(--blue)", textTransform: "uppercase" }}>Deadline:</span>
+      <span style={{ fontSize: "0.9rem", fontWeight: 700, fontFamily: "monospace" }}>{timeLeft || "Loading..."}</span>
+    </div>
+  );
+}
+
 export default function TransfersPage() {
   const { user } = useAuth();
   const [playerMap, setPlayerMap] = useState<Record<string, Player>>({});
@@ -99,16 +133,19 @@ export default function TransfersPage() {
   const [error, setError] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [nextGW, setNextGW] = useState<number>(8);
+  const [deadline, setDeadline] = useState<string>("");
 
   useEffect(() => {
     if (!user?.email) return;
     const load = async () => {
-      // 0. Fetch Settings for Next Gameweek
+      // 0. Fetch Settings
       const settingsSnap = await getDocs(collection(db, "settings"));
       let activeNextGW = 8;
       if (!settingsSnap.empty) {
-        activeNextGW = (settingsSnap.docs[0].data().currentGameweek || 7) + 1;
+        const s = settingsSnap.docs[0].data();
+        activeNextGW = (s.currentGameweek || 7) + 1;
         setNextGW(activeNextGW);
+        setDeadline(s.deadline || "");
       }
 
       const playersSnap = await getDocs(collection(db, "players"));
@@ -161,28 +198,18 @@ export default function TransfersPage() {
     return allSelected.filter(id => !prev.includes(id)).length;
   })();
 
-<div>
-  <h1 style={{ fontSize: "2rem", fontWeight: 700 }}>Transfers</h1>
-  <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
-    <p style={{ color: "var(--text-muted)" }}>Gameweek {nextGW}</p>
-    {deadline && <CountdownTimer deadline={deadline} />}
-  </div>
-</div>
-
   const freeTransfers = userTeam?.freeTransfers ?? 1;
   const penalty = Math.max(0, transfersMade - freeTransfers) * 4;
 
   const handlePlayerSelect = (p: Player) => {
     if (allSelected.includes(p.id)) return;
     if (totalCost + p.price > budget) { setError(`Budget exceeded.`); return; }
-    
     if (squad.length < 4) {
       setSquad([...squad, p.id]);
     } else if (!sub) {
       setSub(p.id);
     }
     setIsModalOpen(false);
-    setError("");
   };
 
   const removeFromSquad = (id: string) => {
@@ -222,7 +249,10 @@ export default function TransfersPage() {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: "2rem" }}>
           <div>
             <h1 style={{ fontSize: "2rem", fontWeight: 700 }}>Transfers</h1>
-            <p style={{ color: "var(--text-muted)" }}>Gameweek {nextGW}</p>
+            <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+              <p style={{ color: "var(--text-muted)" }}>Gameweek {nextGW}</p>
+              {deadline && <CountdownTimer deadline={deadline} />}
+            </div>
           </div>
           <div style={{ display: "flex", gap: "1.5rem", background: "var(--surface)", padding: "0.75rem 1.5rem", borderRadius: "12px", border: "1px solid var(--border)" }}>
             <div style={{ textAlign: "center" }}><div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>BANK</div><div style={{ fontWeight: 700 }}>{remaining.toFixed(1)}m</div></div>
