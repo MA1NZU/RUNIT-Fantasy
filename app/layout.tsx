@@ -18,11 +18,7 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
 
   if (loading) {
     return (
-      <div style={{
-        minHeight: "100vh", display: "flex",
-        alignItems: "center", justifyContent: "center",
-        background: "var(--bg)",
-      }}>
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--bg)" }}>
         <p style={{ color: "var(--text-muted)" }}>Loading...</p>
       </div>
     );
@@ -30,51 +26,41 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
 
   if (!user && pathname !== "/login") {
     return (
-      <div style={{
-        minHeight: "100vh", display: "flex",
-        alignItems: "center", justifyContent: "center",
-        background: "var(--bg)",
-      }}>
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--bg)" }}>
         <p style={{ color: "var(--text-muted)" }}>Redirecting...</p>
       </div>
     );
   }
 
-  if (pathname === "/login") return <>{children}</>;
+  if (pathname === "/login") {
+    return <>{children}</>;
+  }
 
   const navLinks = [
     { href: "/", label: "Home" },
     { href: "/leaderboard", label: "Leaderboard" },
     { href: "/team", label: "My Team" },
     { href: "/transfers", label: "Transfers" },
-    ...(user?.email === "yahyaayman2006@gmail.com" ? [{ href: "/admin", label: "Admin" }] : []),
   ];
 
+  if (user?.email === "yahyaayman2006@gmail.com") {
+    navLinks.push({ href: "/admin", label: "Admin" });
+  }
+
   return (
-    <>
-      <nav style={{
-        background: "var(--surface)",
-        borderBottom: "1px solid var(--border)",
-        padding: "0.875rem 2rem",
-        display: "flex",
-        alignItems: "center",
-        position: "sticky",
-        top: 0,
-        zIndex: 100,
-      }}>
-        <span style={{
-          color: "var(--accent)", fontWeight: 700,
-          fontSize: "1rem", letterSpacing: "0.5px", minWidth: "140px",
-        }}>
+    <div>
+      <nav style={{ background: "var(--surface)", borderBottom: "1px solid var(--border)", padding: "0.875rem 2rem", display: "flex", alignItems: "center", position: "sticky", top: 0, zIndex: 100 }}>
+        <span style={{ color: "var(--accent)", fontWeight: 700, fontSize: "1rem", letterSpacing: "0.5px", minWidth: "140px" }}>
           RUNIT Fantasy
         </span>
 
         <div style={{ display: "flex", gap: "0.25rem", flex: 1, justifyContent: "center" }}>
-          {navLinks.map(({ href, label }) => {
-            const isActive = pathname === href;
+          {navLinks.map(function(link) {
+            const isActive = pathname === link.href;
             return (
-                key={href}
-                href={href}
+              
+                key={link.href}
+                href={link.href}
                 style={{
                   fontSize: "0.875rem",
                   fontWeight: isActive ? 600 : 400,
@@ -82,33 +68,21 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
                   background: isActive ? "var(--blue)" : "transparent",
                   padding: "0.4rem 1rem",
                   borderRadius: "7px",
-                  transition: "all 0.15s",
                 }}
               >
-                {label}
+                {link.label}
               </a>
             );
           })}
         </div>
 
-        <div style={{
-          display: "flex", alignItems: "center",
-          gap: "1rem", minWidth: "140px", justifyContent: "flex-end",
-        }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "1rem", minWidth: "140px", justifyContent: "flex-end" }}>
           <span style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>
             {user?.email?.split("@")[0]}
           </span>
           <button
-            onClick={() => logout().then(() => router.replace("/login"))}
-            style={{
-              background: "transparent",
-              border: "1px solid var(--border)",
-              color: "var(--text-muted)",
-              padding: "0.35rem 0.85rem",
-              borderRadius: "6px",
-              cursor: "pointer",
-              fontSize: "0.8rem",
-            }}
+            onClick={function() { logout().then(function() { router.replace("/login"); }); }}
+            style={{ background: "transparent", border: "1px solid var(--border)", color: "var(--text-muted)", padding: "0.35rem 0.85rem", borderRadius: "6px", cursor: "pointer", fontSize: "0.8rem" }}
           >
             Logout
           </button>
@@ -116,7 +90,7 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
       </nav>
 
       <main style={{ padding: "2rem" }}>{children}</main>
-    </>
+    </div>
   );
 }
 
