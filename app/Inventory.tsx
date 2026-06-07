@@ -6,7 +6,7 @@ import { collection, getDocs, doc, updateDoc, query, where } from "firebase/fire
 import { useAuth } from "@/lib/AuthContext";
 import Shell from "@/app/shell";
 
-type ShopItem = { id: string; name: string; type: "PFP" | "Banner" | "Song"; imageUrl: string; };
+type ShopItem = { ID: string; itemName: string; itemType: string; previewImage: string; };
 
 export default function InventoryPage() {
   const { user } = useAuth();
@@ -16,47 +16,44 @@ export default function InventoryPage() {
 
   useEffect(() => {
     if (!user?.email) return;
-    const loadInventory = async () => {
+    const loadInv = async () => {
       setLoading(true);
       try {
-        // 1. Get equipped status
+        // 1. Get currently equipped items from userTeams
         const teamSnap = await getDocs(query(collection(db, "userTeams"), where("ownerEmail", "==", user.email)));
         if (!teamSnap.empty) {
-          const data = teamSnap.docs[0].data();
+          const d = teamSnap.docs[0].data();
           setEquipped({
-            PFP: data.equippedAvatar || "",
-            Banner: data.equippedBanner || "",
-            Song: data.equippedSong || ""
+            avatar: d.equippedAvatar || "",
+            banner: d.equippedBanner || "",
+            song: d.equippedSong || "",
+            title: d.equippedTitle || ""
           });
         }
 
-        // 2. Get all shop item details
+        // 2. Load all shop definitions
         const shopSnap = await getDocs(collection(db, "shopItems"));
         const shopMap: Record<string, ShopItem> = {};
-        shopSnap.docs.forEach(d => { shopMap[d.id] = { id: d.id, ...d.data() } as ShopItem; });
+        shopSnap.docs.forEach(d => { shopMap[d.data().ID] = d.data() as ShopItem; });
 
-        // 3. Get user inventory
+        // 3. Load user's inventory
         const invSnap = await getDocs(query(collection(db, "userInventory"), where("ownerEmail", "==", user.email)));
-        const userItems = invSnap.docs.map(d => shopMap[d.data().itemId]).filter(Boolean);
-        setOwnedItems(userItems);
+        const list = invSnap.docs.map(d => shopMap[d.data().itemId]).filter(Boolean);
+        setOwnedItems(list);
       } catch (err) { console.error(err); }
       setLoading(false);
     };
-    loadInventory();
+    loadInv();
   }, [user]);
 
   const handleEquip = async (item: ShopItem) => {
     try {
       const teamSnap = await getDocs(query(collection(db, "userTeams"), where("ownerEmail", "==", user.email)));
-      const teamDocId = teamSnap.docs[0].id;
+      const teamId = teamSnap.docs[0].id;
+      const field = `equipped${item.itemType.charAt(0).toUpperCase() + item.itemType.slice(1)}`;
       
-      const updateKey = item.type === "PFP" ? "equippedAvatar" : item.type === "Banner" ? "equippedBanner" : "equippedSong";
-      
-      await updateDoc(doc(db, "userTeams", teamDocId), {
-        [updateKey]: item.id
-      });
-
-      setEquipped(prev => ({ ...prev, [item.type]: item.id }));
+      await updateDoc(doc(db, "userTeams", teamId), { [field]: item.ID });
+      setEquipped(prev => ({ ...prev, [item.itemType]: item.ID }));
     } catch (err) { console.error(err); }
   };
 
@@ -65,31 +62,24 @@ export default function InventoryPage() {
   return (
     <Shell>
       <div style={{ maxWidth: "1000px", margin: "0 auto" }}>
-        <h1 style={{ fontSize: "2rem", fontWeight: 700, marginBottom: "2rem" }}>Your Inventory</h1>
+        <h1 style={{ fontSize: "2rem", fontWeight: 700, marginBottom: "2rem" }}>Inventory</h1>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: "1.5rem" }}>
+          {ownedItems.map(item => {
+            const isEquipped = equipped[item.itemType] === item.ID;
+            const img = item.previewImage?.startsWith('wix') ? 'https://static.wixstatic.com/media/' + item.previewImage.split('/')[3] + '~mv2.png' : item.previewImage;
 
-        {ownedItems.length === 0 ? (
-          <p style={{ color: "var(--text-muted)" }}>You don't own any cosmetics yet. Head to the Shop!</p>
-        ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: "1rem" }}>
-            {ownedItems.map(item => {
-              const isEquipped = equipped[item.type] === item.id;
-              return (
-                <div key={item.id} style={{ background: "var(--surface)", border: `1px solid ${isEquipped ? "var(--blue)" : "var(--border)"}`, borderRadius: "12px", padding: "1rem", textAlign: "center" }}>
-                   <img src={item.imageUrl || 'https://via.placeholder.com/100'} style={{ width: "80px", height: "80px", borderRadius: "50%", marginBottom: "1rem" }} />
-                   <div style={{ fontWeight: 700, fontSize: "0.9rem" }}>{item.name}</div>
-                   <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", marginBottom: "1rem" }}>{item.type}</div>
-                   <button 
-                    onClick={() => handleEquip(item)}
-                    disabled={isEquipped}
-                    style={{ width: "100%", padding: "0.5rem", borderRadius: "6px", border: "none", cursor: isEquipped ? "default" : "pointer", background: isEquipped ? "var(--green)" : "var(--blue)", color: "#fff", fontWeight: 700 }}
-                   >
-                     {isEquipped ? "EQUIPPED" : "EQUIP"}
-                   </button>
-                </div>
-              );
-            })}
-          </div>
-        )}
+            return (
+              <div key={item.ID} style={{ background: "var(--surface)", border: `1px solid ${isEquipped ? "var(--blue)" : "var(--border)"}`, borderRadius: "12px", padding: "1rem", textAlign: "center" }}>
+                <img src={img || 'https://via.placeholder.com/100'} style={{ width: "80px", height: "80px", borderRadius: "12px", objectFit: "cover", marginBottom: "1rem" }} />
+                <div style={{ fontWeight: 700, fontSize: "0.9rem" }}>{item.itemName}</div>
+                <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", marginBottom: "1rem" }}>{item.itemType.toUpperCase()}</div>
+                <button onClick={() => handleEquip(item)} disabled={isEquipped} style={{ width: "100%", padding: "0.5rem", borderRadius: "6px", border: "none", cursor: isEquipped ? "default" : "pointer", background: isEquipped ? "var(--green)" : "var(--blue)", color: "#fff", fontWeight: 700 }}>
+                  {isEquipped ? "EQUIPPED" : "EQUIP"}
+                </button>
+              </div>
+            );
+          })}
+        </div>
       </div>
     </Shell>
   );
