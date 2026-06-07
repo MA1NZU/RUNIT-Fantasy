@@ -31,8 +31,9 @@ function PlayerCard({ player, points, isCaptain, isSub }: { player: Player; poin
 function TeamContent() {
   const { user } = useAuth();
   const searchParams = useSearchParams();
-  const targetEmail = searchParams.get("email") || user?.email;
-  const isOwnTeam = !searchParams.get("email") || searchParams.get("email") === user?.email;
+  const queryEmail = searchParams.get("email");
+  const targetEmail = queryEmail || user?.email;
+  const isOwnTeam = !queryEmail || queryEmail === user?.email;
 
   const [players, setPlayers] = useState<Record<string, Player>>({});
   const [gwTeams, setGwTeams] = useState<GWTeam[]>([]);
@@ -45,6 +46,7 @@ function TeamContent() {
     if (!targetEmail) return;
     const loadData = async () => {
       setLoading(true);
+      setGwTeams([]); // Clear old state immediately
       try {
         const settingsSnap = await getDocs(collection(db, "settings"));
         let activeGW = 7;
@@ -90,12 +92,12 @@ function TeamContent() {
   const playerIds = currentTeam ? [currentTeam.player1, currentTeam.player2, currentTeam.player3, currentTeam.player4].filter(Boolean) : [];
   const getPoints = (id: string) => players[id] ? (matchStats[players[id].name] ?? 0) : 0;
 
-  if (loading) return <p style={{ padding: "2rem" }}>Loading Squad...</p>;
+  if (loading && gwTeams.length === 0) return <p style={{ padding: "2rem" }}>Loading Squad...</p>;
 
   return (
     <div style={{ maxWidth: "800px", margin: "0 auto" }}>
       <h1 style={{ fontSize: "2rem", fontWeight: 700, marginBottom: "0.5rem" }}>{isOwnTeam ? "My Team" : "Manager Squad"}</h1>
-      <p style={{ color: "var(--text-muted)", marginBottom: "2rem" }}>Viewing {targetEmail} — GW{selectedGW}</p>
+      <p style={{ color: "var(--text-muted)", marginBottom: "2rem" }}>Viewing {targetEmail}</p>
       
       <div style={{ display: "flex", gap: "0.5rem", marginBottom: "2rem", flexWrap: "wrap" }}>
         {availableGWs.map(gw => <button key={gw} onClick={() => setSelectedGW(gw)} style={{ padding: "0.4rem 0.9rem", borderRadius: "8px", border: "1px solid var(--border)", background: selectedGW === gw ? "var(--blue)" : "var(--surface)", color: "#fff", cursor: "pointer" }}>GW{gw}</button>)}
