@@ -75,7 +75,7 @@ export default function ProfilePage() {
           });
           setItems(shopMap);
         }
-      } catch (err) { console.error(err); } finally { setLoading(false); }
+      } catch (err) { console.error("Profile load error:", err); } finally { setLoading(false); }
     };
     loadProfile();
   }, [user]);
@@ -86,7 +86,7 @@ export default function ProfilePage() {
       await updateDoc(doc(db, "userTeams", team.id), { manager: newName });
       setTeam({ ...team, manager: newName });
       setEditingName(false);
-    } catch (err) { console.error(err); }
+    } catch (err) { console.error("Update name error:", err); }
   };
 
   const getImageUrl = (url?: string) => {
@@ -107,121 +107,128 @@ export default function ProfilePage() {
   const titleItem = team.equippedTitle ? items[team.equippedTitle] : null;
 
   const ytId = songItem?.songUrl ? getYouTubeId(songItem.songUrl) : null;
-  const songThumbnail = ytId ? `https://img.youtube.com/vi/${ytId}/maxresdefault.jpg` : null;
+  const songThumbnail = ytId ? `https://img.youtube.com/vi/${ytId}/mqdefault.jpg` : null;
 
   return (
     <Shell>
-      <div style={{ maxWidth: "800px", margin: "0 auto" }}>
+      <div style={{ maxWidth: "900px", margin: "0 auto" }}>
         
-        {/* PROFILE HEADER */}
-        <div style={{ background: "var(--surface)", borderRadius: "24px", border: "1px solid var(--border)", overflow: "hidden", position: "relative", marginBottom: "1.5rem" }}>
+        {/* PROFILE CARD */}
+        <div style={{ background: "var(--surface)", borderRadius: "24px", border: "1px solid var(--border)", overflow: "hidden", position: "relative", marginBottom: "1.5rem", boxShadow: "0 20px 50px rgba(0,0,0,0.2)" }}>
           
-          <div style={{ height: "220px", background: "#111", position: "relative" }}>
+          <div style={{ height: "240px", background: "#111", position: "relative" }}>
             {bannerItem ? (
               <img src={getImageUrl(bannerItem.previewImage)} style={{ width: "100%", height: "100%", objectFit: "cover" }} alt="Banner" />
             ) : (
               <div style={{ width: "100%", height: "100%", background: "linear-gradient(135deg, #0347F4 0%, #7c3aed 100%)" }} />
             )}
-            <Link href="/inventory" style={{ position: "absolute", top: "1.25rem", right: "1.25rem", background: "rgba(0,0,0,0.6)", color: "#fff", padding: "0.6rem 1.2rem", borderRadius: "30px", fontSize: "0.75rem", fontWeight: 700, textDecoration: "none", backdropFilter: "blur(8px)", border: "1px solid rgba(255,255,255,0.1)", transition: "0.2s" }}>
+            <Link href="/inventory" style={{ position: "absolute", top: "1.25rem", right: "1.25rem", background: "rgba(0,0,0,0.6)", color: "#fff", padding: "0.6rem 1.2rem", borderRadius: "30px", fontSize: "0.75rem", fontWeight: 700, textDecoration: "none", backdropFilter: "blur(8px)", border: "1px solid rgba(255,255,255,0.1)", zIndex: 10 }}>
               Customize
             </Link>
           </div>
 
-          <div style={{ padding: "0 2rem 2.5rem", textAlign: "center" }}>
-            <div style={{ width: "140px", height: "120px", margin: "-70px auto 1rem", position: "relative" }}>
-              <div style={{ width: "140px", height: "140px", borderRadius: "50%", border: "8px solid var(--surface)", background: "#222", overflow: "hidden", boxShadow: "0 10px 25px rgba(0,0,0,0.3)" }}>
+          <div style={{ padding: "0 3rem 3rem", textAlign: "center" }}>
+            <div style={{ width: "160px", height: "120px", margin: "-80px auto 1.5rem", position: "relative" }}>
+              <div style={{ width: "160px", height: "160px", borderRadius: "50%", border: "8px solid var(--surface)", background: "#222", overflow: "hidden", boxShadow: "0 10px 30px rgba(0,0,0,0.4)" }}>
                 {avatarItem ? (
                   <img src={getImageUrl(avatarItem.previewImage)} style={{ width: "100%", height: "100%", objectFit: "cover" }} alt="Avatar" />
                 ) : (
-                  <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "3rem", fontWeight: 800, color: "#444" }}>{team.manager.slice(0, 1)}</div>
+                  <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "3.5rem", fontWeight: 800, color: "#444" }}>{team.manager.slice(0, 1)}</div>
                 )}
               </div>
             </div>
 
-            <div style={{ marginBottom: "2rem" }}>
+            <div style={{ marginBottom: "2.5rem" }}>
               {editingName ? (
                 <div style={{ display: "flex", gap: "0.5rem", justifyContent: "center", alignItems: "center" }}>
                   <input value={newName} onChange={e => setNewName(e.target.value)} style={{ background: "var(--bg)", border: "2px solid var(--blue)", color: "#fff", padding: "0.5rem 1rem", borderRadius: "12px", fontSize: "1.75rem", fontWeight: 800, textAlign: "center", width: "300px" }} />
-                  <button onClick={handleUpdateName} style={{ background: "var(--blue)", border: "none", color: "#fff", padding: "0.7rem 1.2rem", borderRadius: "12px", cursor: "pointer", fontWeight: 700 }}>Save</button>
+                  <button onClick={handleUpdateName} style={{ background: "var(--blue)", color: "#fff", border: "none", padding: "0.75rem 1.2rem", borderRadius: "12px", cursor: "pointer", fontWeight: 700 }}>Save</button>
                 </div>
               ) : (
-                <>
-                  <h1 style={{ fontSize: "2.25rem", fontWeight: 900, margin: "0 0 0.5rem", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.75rem" }}>
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "0.5rem" }}>
+                  <h1 style={{ fontSize: "2.5rem", fontWeight: 900, margin: 0, display: "flex", alignItems: "center", justifyContent: "center", gap: "0.75rem", letterSpacing: "-1px" }}>
                     {team.manager}
-                    <button onClick={() => setEditingName(true)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: "1.2rem", opacity: 0.4 }}>✏️</button>
+                    <button onClick={() => setEditingName(true)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: "1.2rem", opacity: 0.3 }}>✏️</button>
                   </h1>
                   {titleItem && (
-                    <span style={{ color: titleItem.titleColor || "var(--accent)", fontWeight: 800, fontSize: "0.9rem", textTransform: "uppercase", letterSpacing: "2px", background: "rgba(255,255,255,0.03)", padding: "0.4rem 1.2rem", borderRadius: "30px", border: "1px solid var(--border)" }}>
+                    <div style={{ color: titleItem.titleColor || "var(--accent)", fontWeight: 800, fontSize: "0.9rem", textTransform: "uppercase", letterSpacing: "3px", background: "rgba(255,255,255,0.03)", padding: "0.5rem 1.5rem", borderRadius: "40px", border: "1px solid var(--border)" }}>
                       {titleItem.titleText || titleItem.itemName}
-                    </span>
+                    </div>
                   )}
-                </>
+                </div>
               )}
             </div>
 
-            <div style={{ display: "flex", justifyContent: "center", gap: "4rem" }}>
-              <div>
-                <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "1.5px", marginBottom: "0.25rem" }}>Total Points</div>
-                <div style={{ fontSize: "1.75rem", fontWeight: 900 }}>{team.totalPoints}</div>
+            <div style={{ display: "flex", justifyContent: "center", gap: "6rem", marginBottom: "3rem" }}>
+              <div style={{ textAlign: "center" }}>
+                <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "2px", marginBottom: "0.5rem" }}>Total Points</div>
+                <div style={{ fontSize: "2rem", fontWeight: 900 }}>{team.totalPoints}</div>
               </div>
-              <div>
-                <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "1.5px", marginBottom: "0.25rem" }}>Coins</div>
-                <div style={{ fontSize: "1.75rem", fontWeight: 900, color: "#ffae00" }}>🪙 {team.coins}</div>
+              <div style={{ textAlign: "center" }}>
+                <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "2px", marginBottom: "0.5rem" }}>Bank</div>
+                <div style={{ fontSize: "2rem", fontWeight: 900, color: "#ffae00" }}>🪙 {team.coins}</div>
               </div>
             </div>
 
-            {/* MUSIC PLAYER CARD */}
+            {/* HORIZONTAL MUSIC PLAYER */}
             {songItem && ytId && (
-              <div style={{ marginTop: "2.5rem", padding: "1rem", background: "rgba(0,0,0,0.2)", borderRadius: "20px", border: "1px solid var(--border)", display: "flex", alignItems: "center", gap: "1.25rem", textAlign: "left" }}>
-                <div style={{ width: "80px", height: "80px", borderRadius: "12px", background: "#000", overflow: "hidden", flexShrink: 0, border: "1px solid rgba(255,255,255,0.1)" }}>
-                  <img src={songThumbnail || ""} style={{ width: "100%", height: "100%", objectFit: "cover" }} alt="Song Cover" />
+              <div style={{ 
+                marginTop: "2rem", 
+                padding: "0.75rem", 
+                background: "rgba(0,0,0,0.4)", 
+                borderRadius: "100px", 
+                border: "1px solid var(--border)", 
+                display: "flex", 
+                alignItems: "center", 
+                gap: "1.25rem", 
+                textAlign: "left",
+                maxWidth: "600px",
+                margin: "0 auto",
+                boxShadow: "inset 0 1px 1px rgba(255,255,255,0.05)"
+              }}>
+                <div style={{ width: "56px", height: "56px", borderRadius: "50%", background: "#000", overflow: "hidden", flexShrink: 0, border: "2px solid rgba(255,255,255,0.1)", animation: "rotate 10s linear infinite" }}>
+                  <img src={songThumbnail || ""} style={{ width: "100%", height: "100%", objectFit: "cover" }} alt="Disk" />
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: "0.65rem", color: "var(--blue)", fontWeight: 800, textTransform: "uppercase", marginBottom: "0.2rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                    <span style={{ display: "inline-block", width: "8px", height: "8px", borderRadius: "50%", background: "var(--blue)", animation: "pulse 1.5s infinite" }}></span>
-                    Now Playing
-                  </div>
-                  <div style={{ fontWeight: 700, fontSize: "1rem", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", marginBottom: "0.5rem" }}>{songItem.itemName}</div>
-                  
-                  {/* The YouTube Iframe styled as an Audio Bar */}
-                  <div style={{ height: "45px", overflow: "hidden", borderRadius: "8px", background: "#111" }}>
-                    <iframe 
-                      width="100%" 
-                      height="120" 
-                      src={`https://www.youtube.com/embed/${ytId}?controls=1&modestbranding=1&rel=0&autoplay=0`} 
-                      style={{ marginTop: "-65px" }} // Clips the video, shows only the control bar
-                      frameBorder="0" 
-                      allow="autoplay; encrypted-media"
+                   <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                      <span style={{ fontSize: "0.6rem", color: "var(--blue)", fontWeight: 800, textTransform: "uppercase" }}>Music Player</span>
+                      <div className="audio-visualizer"><span></span><span></span><span></span></div>
+                   </div>
+                   <div style={{ fontWeight: 700, fontSize: "0.95rem", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: "#fff" }}>{songItem.itemName}</div>
+                </div>
+                <div style={{ width: "180px", height: "34px", overflow: "hidden", borderRadius: "30px", background: "rgba(0,0,0,0.8)", marginRight: "0.5rem" }}>
+                   <iframe 
+                      width="100%" height="100" 
+                      src={`https://www.youtube.com/embed/${ytId}?controls=1&modestbranding=1&rel=0&disablekb=1&fs=0`} 
+                      style={{ marginTop: "-48px" }} frameBorder="0" allow="autoplay; encrypted-media"
                     ></iframe>
-                  </div>
                 </div>
               </div>
             )}
-
           </div>
         </div>
 
-        {/* QUICK ACTIONS */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
-          <Link href="/team" style={{ background: "var(--surface)", border: "1px solid var(--border)", padding: "1.5rem", borderRadius: "20px", textDecoration: "none", color: "inherit", transition: "0.2s" }}>
-            <div style={{ fontSize: "1.5rem", marginBottom: "0.5rem" }}>🛡️</div>
-            <div style={{ fontWeight: 800 }}>My Squad</div>
-            <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>View active players and performance</div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.5rem" }}>
+          <Link href="/team" style={{ background: "var(--surface)", border: "1px solid var(--border)", padding: "2rem", borderRadius: "24px", textDecoration: "none", color: "inherit", transition: "0.2s" }}>
+            <div style={{ fontSize: "2rem", marginBottom: "1rem" }}>🛡️</div>
+            <div style={{ fontWeight: 900, fontSize: "1.25rem", marginBottom: "0.25rem" }}>My Squad</div>
+            <div style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>Manage players and track points.</div>
           </Link>
-          <Link href="/shop" style={{ background: "var(--surface)", border: "1px solid var(--border)", padding: "1.5rem", borderRadius: "20px", textDecoration: "none", color: "inherit", transition: "0.2s" }}>
-            <div style={{ fontSize: "1.5rem", marginBottom: "0.5rem" }}>🏪</div>
-            <div style={{ fontWeight: 800 }}>Item Shop</div>
-            <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>Get new banners and avatars</div>
+          <Link href="/shop" style={{ background: "var(--surface)", border: "1px solid var(--border)", padding: "2rem", borderRadius: "24px", textDecoration: "none", color: "inherit", transition: "0.2s" }}>
+            <div style={{ fontSize: "2rem", marginBottom: "1rem" }}>🏪</div>
+            <div style={{ fontWeight: 900, fontSize: "1.25rem", marginBottom: "0.25rem" }}>Marketplace</div>
+            <div style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>Unlock premium profile cosmetics.</div>
           </Link>
         </div>
       </div>
 
       <style jsx>{`
-        @keyframes pulse {
-          0% { transform: scale(0.9); opacity: 0.8; }
-          50% { transform: scale(1.2); opacity: 1; }
-          100% { transform: scale(0.9); opacity: 0.8; }
-        }
+        @keyframes rotate { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        .audio-visualizer { display: flex; align-items: flex-end; gap: 2px; height: 10px; }
+        .audio-visualizer span { width: 2px; background: var(--blue); animation: wave 1s ease-in-out infinite; }
+        .audio-visualizer span:nth-child(2) { animation-delay: 0.2s; }
+        .audio-visualizer span:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes wave { 0%, 100% { height: 40%; } 50% { height: 100%; } }
       `}</style>
     </Shell>
   );
