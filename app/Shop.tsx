@@ -31,8 +31,7 @@ export default function ShopPage() {
       setLoading(true);
       try {
         const itemSnap = await getDocs(collection(db, "shopItems"));
-        const itemList = itemSnap.docs.map(d => ({ ...d.data() } as ShopItem));
-        setItems(itemList);
+        setItems(itemSnap.docs.map(d => ({ ...d.data() } as ShopItem)));
 
         const teamSnap = await getDocs(query(collection(db, "userTeams"), where("ownerEmail", "==", userEmail)));
         if (!teamSnap.empty) {
@@ -41,11 +40,8 @@ export default function ShopPage() {
 
         const invSnap = await getDocs(query(collection(db, "userInventory"), where("ownerEmail", "==", userEmail)));
         setOwnedIds(invSnap.docs.map(d => d.data().itemId));
-      } catch (err) { 
-        console.error("Shop load error:", err); 
-      } finally {
-        setLoading(false);
-      }
+      } catch (err) { console.error(err); }
+      setLoading(false);
     };
     loadShop();
   }, [user]);
@@ -67,20 +63,14 @@ export default function ShopPage() {
       });
 
       const teamSnap = await getDocs(query(collection(db, "userTeams"), where("ownerEmail", "==", userEmail)));
-      if (teamSnap.empty) throw new Error("Team doc not found");
-      
-      const teamDoc = teamSnap.docs[0];
-      await updateDoc(doc(db, "userTeams", teamDoc.id), {
+      await updateDoc(doc(db, "userTeams", teamSnap.docs[0].id), {
         coins: userCoins - item.price
       });
 
       setUserCoins(prev => prev - item.price);
       setOwnedIds(prev => [...prev, item.ID]);
       alert("Purchase successful!");
-    } catch (err) { 
-      console.error("Purchase error:", err); 
-      alert("Purchase failed."); 
-    }
+    } catch (err) { console.error(err); }
     setBuying(null);
   };
 
@@ -101,44 +91,28 @@ export default function ShopPage() {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "2rem" }}>
           <div>
             <h1 style={{ fontSize: "2rem", fontWeight: 700 }}>Shop</h1>
-            <p style={{ color: "var(--text-muted)" }}>Customize your manager profile</p>
+            <p style={{ color: "var(--text-muted)" }}>Manager Cosmetics</p>
           </div>
           <div style={{ background: "var(--surface)", border: "1px solid var(--border)", padding: "0.75rem 1.5rem", borderRadius: "12px", display: "flex", alignItems: "center", gap: "0.75rem" }}>
-            <span style={{ fontSize: "1.2rem" }}>🪙</span>
-            <span style={{ fontWeight: 800, fontSize: "1.2rem" }}>{userCoins}</span>
+            <span>🪙 {userCoins}</span>
           </div>
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: "1.5rem" }}>
-          {items.map(item => {
-            const isOwned = ownedIds.includes(item.ID);
-            const canAfford = userCoins >= item.price;
-            const img = getImageUrl(item.previewImage);
-
-            return (
-              <div key={item.ID} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "16px", overflow: "hidden" }}>
-                <div style={{ width: "100%", aspectRatio: item.itemType === "banner" ? "16/7" : "1/1", background: "#111" }}>
-                   <img src={img} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                </div>
-                <div style={{ padding: "1rem" }}>
-                  <div style={{ fontSize: "0.65rem", color: "var(--accent)", fontWeight: 800, textTransform: "uppercase" }}>{item.itemType}</div>
-                  <div style={{ fontWeight: 700, margin: "0.25rem 0 1rem" }}>{item.itemName}</div>
-                  <button 
-                    onClick={() => handleBuy(item)}
-                    disabled={isOwned || !canAfford || buying === item.ID}
-                    style={{ 
-                      width: "100%", padding: "0.6rem", borderRadius: "8px", border: "none", fontWeight: 700, fontSize: "0.85rem",
-                      cursor: isOwned ? "default" : canAfford ? "pointer" : "not-allowed",
-                      background: isOwned ? "var(--border)" : canAfford ? "var(--blue)" : "rgba(255,255,255,0.05)",
-                      color: isOwned ? "var(--text-muted)" : "#fff"
-                    }}
-                  >
-                    {isOwned ? "OWNED" : buying === item.ID ? "..." : `${item.price} Coins`}
-                  </button>
-                </div>
+          {items.map(item => (
+            <div key={item.ID} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "16px", overflow: "hidden" }}>
+              <div style={{ width: "100%", aspectRatio: item.itemType === "banner" ? "16/7" : "1/1", background: "#111" }}>
+                 <img src={getImageUrl(item.previewImage)} style={{ width: "100%", height: "100%", objectFit: "cover" }} alt="" />
               </div>
-            );
-          })}
+              <div style={{ padding: "1rem" }}>
+                <div style={{ fontSize: "0.65rem", color: "var(--accent)", fontWeight: 800 }}>{item.itemType.toUpperCase()}</div>
+                <div style={{ fontWeight: 700, margin: "0.25rem 0 1rem" }}>{item.itemName}</div>
+                <button onClick={() => handleBuy(item)} disabled={ownedIds.includes(item.ID) || userCoins < item.price || buying === item.ID} style={{ width: "100%", padding: "0.6rem", borderRadius: "8px", border: "none", fontWeight: 700, cursor: "pointer", background: ownedIds.includes(item.ID) ? "var(--border)" : "var(--blue)", color: "#fff" }}>
+                  {ownedIds.includes(item.ID) ? "OWNED" : `${item.price} Coins`}
+                </button>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     </Shell>
