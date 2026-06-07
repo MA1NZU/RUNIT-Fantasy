@@ -16,14 +16,11 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
     }
   }, [user, loading, pathname, router]);
 
-  // still checking auth
   if (loading) {
     return (
       <div style={{
-        minHeight: "100vh",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
+        minHeight: "100vh", display: "flex",
+        alignItems: "center", justifyContent: "center",
         background: "var(--bg)",
       }}>
         <p style={{ color: "var(--text-muted)" }}>Loading...</p>
@@ -31,14 +28,11 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
     );
   }
 
-  // not logged in — render nothing while redirect happens
   if (!user && pathname !== "/login") {
     return (
       <div style={{
-        minHeight: "100vh",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
+        minHeight: "100vh", display: "flex",
+        alignItems: "center", justifyContent: "center",
         background: "var(--bg)",
       }}>
         <p style={{ color: "var(--text-muted)" }}>Redirecting...</p>
@@ -46,12 +40,16 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
     );
   }
 
-  // on login page — just show it with no navbar
-  if (pathname === "/login") {
-    return <>{children}</>;
-  }
+  if (pathname === "/login") return <>{children}</>;
 
-  // logged in — show full app
+  const navLinks = [
+    { href: "/", label: "Home" },
+    { href: "/leaderboard", label: "Leaderboard" },
+    { href: "/team", label: "My Team" },
+    { href: "/transfers", label: "Transfers" },
+    ...(user?.email === "yahyaayman2006@gmail.com" ? [{ href: "/admin", label: "Admin" }] : []),
+  ];
+
   return (
     <>
       <nav style={{
@@ -64,20 +62,15 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
         top: 0,
         zIndex: 100,
       }}>
-        {/* Logo — left */}
-        <span style={{ color: "var(--accent)", fontWeight: 700, fontSize: "1rem", letterSpacing: "0.5px", minWidth: "140px" }}>
+        <span style={{
+          color: "var(--accent)", fontWeight: 700,
+          fontSize: "1rem", letterSpacing: "0.5px", minWidth: "140px",
+        }}>
           RUNIT Fantasy
         </span>
 
-        {/* Nav links — center */}
         <div style={{ display: "flex", gap: "0.25rem", flex: 1, justifyContent: "center" }}>
-          {[
-            { href: "/", label: "Home" },
-            { href: "/leaderboard", label: "Leaderboard" },
-            { href: "/team", label: "My Team" },
-            { href: "/transfers", label: "Transfers" },
-            ...(user?.email === "yahyaayman2006@gmail.com" ? [{ href: "/admin", label: "Admin" }] : []),
-          ].map(({ href, label }) => {
+          {navLinks.map(({ href, label }) => {
             const isActive = pathname === href;
             return (
               
@@ -99,8 +92,10 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
           })}
         </div>
 
-        {/* User + logout — right */}
-        <div style={{ display: "flex", alignItems: "center", gap: "1rem", minWidth: "140px", justifyContent: "flex-end" }}>
+        <div style={{
+          display: "flex", alignItems: "center",
+          gap: "1rem", minWidth: "140px", justifyContent: "flex-end",
+        }}>
           <span style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>
             {user?.email?.split("@")[0]}
           </span>
@@ -120,6 +115,7 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
           </button>
         </div>
       </nav>
+
       <main style={{ padding: "2rem" }}>{children}</main>
     </>
   );
