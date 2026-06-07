@@ -28,18 +28,15 @@ export default function ShopPage() {
     const loadShop = async () => {
       setLoading(true);
       try {
-        // 1. Fetch Items
         const itemSnap = await getDocs(collection(db, "shopItems"));
         const itemList = itemSnap.docs.map(d => ({ ...d.data() } as ShopItem));
         setItems(itemList);
 
-        // 2. Fetch User Coins
         const teamSnap = await getDocs(query(collection(db, "userTeams"), where("ownerEmail", "==", user.email)));
         if (!teamSnap.empty) {
           setUserCoins(teamSnap.docs[0].data().coins || 0);
         }
 
-        // 3. Fetch Owned Items (Inventory)
         const invSnap = await getDocs(query(collection(db, "userInventory"), where("ownerEmail", "==", user.email)));
         setOwnedIds(invSnap.docs.map(d => d.data().itemId));
       } catch (err) { console.error(err); }
@@ -49,20 +46,19 @@ export default function ShopPage() {
   }, [user]);
 
   const handleBuy = async (item: ShopItem) => {
+    if (!user?.email) return;
     if (userCoins < item.price) return alert("Not enough coins!");
     if (!confirm(`Buy ${item.itemName} for ${item.price} coins?`)) return;
 
     setBuying(item.ID);
     try {
-      // 1. Add to userInventory collection
       await addDoc(collection(db, "userInventory"), {
-        ownerEmail: user!.email,
+        ownerEmail: user.email,
         itemId: item.ID,
         purchaseDate: new Date().toISOString(),
         equipped: false
       });
 
-      // 2. Deduct Coins from userTeams
       const teamSnap = await getDocs(query(collection(db, "userTeams"), where("ownerEmail", "==", user.email)));
       const teamDoc = teamSnap.docs[0];
       await updateDoc(doc(db, "userTeams", teamDoc.id), {
@@ -74,6 +70,15 @@ export default function ShopPage() {
       alert("Purchase successful!");
     } catch (err) { console.error(err); alert("Purchase failed."); }
     setBuying(null);
+  };
+
+  const getImageUrl = (url: string) => {
+    if (!url) return 'https://via.placeholder.com/200';
+    if (url.startsWith('wix:image://v1/')) {
+      const guid = url.split('/')[3];
+      return `https://static.wixstatic.com/media/${guid}~mv2.png`;
+    }
+    return url;
   };
 
   if (loading) return <Shell><p style={{ padding: "2rem" }}>Loading Shop...</p></Shell>;
@@ -96,12 +101,12 @@ export default function ShopPage() {
           {items.map(item => {
             const isOwned = ownedIds.includes(item.ID);
             const canAfford = userCoins >= item.price;
-            const img = item.previewImage?.startsWith('wix') ? 'https://static.wixstatic.com/media/' + item.previewImage.split('/')[3] + '~mv2.png' : item.previewImage;
+            const img = getImageUrl(item.previewImage);
 
             return (
               <div key={item.ID} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "16px", overflow: "hidden" }}>
                 <div style={{ width: "100%", aspectRatio: item.itemType === "banner" ? "16/7" : "1/1", background: "#111" }}>
-                   <img src={img || 'https://via.placeholder.com/200'} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                   <img src={img} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                 </div>
                 <div style={{ padding: "1rem" }}>
                   <div style={{ fontSize: "0.65rem", color: "var(--accent)", fontWeight: 800, textTransform: "uppercase" }}>{item.itemType}</div>
