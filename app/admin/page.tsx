@@ -11,8 +11,15 @@ const ADMIN_EMAIL = "yahyaayman2006@gmail.com";
 
 type Player = { id: string; name: string; game: string; price: number; points: number; totalPoints: number; desc: string; ID?: string; };
 type UserTeam = { id: string; manager: string; totalPoints: number; gameweekPoints: number; coins: number; Bank: number; freeTransfers: number; ownerEmail: string; };
-type Settings = { id: string; currentGameweek: number; deadline: string; shopDeadline: string; };
-type Tab = "players" | "stats" | "managers" | "settings";
+type Settings = { 
+  id: string; 
+  currentGameweek: number; 
+  deadline: string; 
+  shopDeadline: string;
+  lockTeamLeaderboard?: boolean;
+  lockTransfers?: boolean;
+};
+type Tab = "players" | "stats" | "managers" | "settings" | "locks";
 
 export default function AdminPage() {
   const { user } = useAuth();
@@ -115,7 +122,9 @@ export default function AdminPage() {
       await updateDoc(doc(db, "settings", settings.id), {
         currentGameweek: Number(settings.currentGameweek),
         deadline: settings.deadline,
-        shopDeadline: settings.shopDeadline
+        shopDeadline: settings.shopDeadline,
+        lockTeamLeaderboard: !!settings.lockTeamLeaderboard,
+        lockTransfers: !!settings.lockTransfers
       });
       markSaved("settings");
     } catch (err) { console.error(err); }
@@ -152,10 +161,35 @@ export default function AdminPage() {
         <h1 style={{ fontSize: "2rem", fontWeight: 700, marginBottom: "2rem" }}>Admin Panel</h1>
         
         <div style={{ display: "flex", gap: "0.5rem", marginBottom: "2rem", flexWrap: "wrap" }}>
-          {["players", "stats", "managers", "settings"].map((t) => (
+          {["players", "stats", "managers", "settings", "locks"].map((t) => (
             <button key={t} onClick={() => setTab(t as Tab)} style={{ padding: "0.6rem 1.2rem", borderRadius: "8px", border: "1px solid var(--border)", background: tab === t ? "var(--blue)" : "var(--surface)", color: "#fff", cursor: "pointer", fontWeight: 600 }}>{t.toUpperCase()}</button>
           ))}
         </div>
+
+        {tab === "locks" && settings && (
+          <div style={{ maxWidth: "500px" }}>
+            <h2 style={{ fontSize: "1.2rem", fontWeight: 700, marginBottom: "1.5rem" }}>Page Access Locks</h2>
+            <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "12px", padding: "1.5rem", display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div>
+                  <div style={{ fontWeight: 600 }}>My Team & Leaderboard</div>
+                  <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Restrict access to these pages</div>
+                </div>
+                <input type="checkbox" checked={settings.lockTeamLeaderboard || false} onChange={(e) => setSettings({...settings, lockTeamLeaderboard: e.target.checked})} style={{ width: "24px", height: "24px", cursor: "pointer" }} />
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div>
+                  <div style={{ fontWeight: 600 }}>Transfers Page</div>
+                  <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Lock squad building and transfers</div>
+                </div>
+                <input type="checkbox" checked={settings.lockTransfers || false} onChange={(e) => setSettings({...settings, lockTransfers: e.target.checked})} style={{ width: "24px", height: "24px", cursor: "pointer" }} />
+              </div>
+              <button onClick={handleSaveSettings} disabled={saving === "settings"} style={{ background: saved === "settings" ? "var(--green)" : "var(--blue)", color: "#fff", border: "none", padding: "0.8rem", borderRadius: "8px", fontWeight: 700, cursor: "pointer", marginTop: "1rem" }}>
+                {saving === "settings" ? "Saving..." : saved === "settings" ? "✓ Status Saved" : "Save Lock Settings"}
+              </button>
+            </div>
+          </div>
+        )}
 
         {tab === "settings" && settings && (
           <div style={{ maxWidth: "600px" }}>
