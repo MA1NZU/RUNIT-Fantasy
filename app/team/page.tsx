@@ -46,7 +46,7 @@ function TeamContent() {
     if (!targetEmail) return;
     const loadData = async () => {
       setLoading(true);
-      setGwTeams([]); // Clear old state immediately
+      setGwTeams([]); 
       try {
         const settingsSnap = await getDocs(collection(db, "settings"));
         let activeGW = 7;
@@ -105,6 +105,22 @@ function TeamContent() {
 
       {currentTeam ? (
         <div>
+          {/* Points Summary Header */}
+          <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "10px", padding: "1rem 1.5rem", marginBottom: "2rem", display: "flex", gap: "2rem", flexWrap: "wrap" }}>
+              <div>
+                <div style={{ color: "var(--text-muted)", fontSize: "0.75rem" }}>GW Points</div>
+                <div style={{ fontWeight: 700, fontSize: "1.4rem", color: "var(--accent)" }}>{currentTeam.gwPoints ?? 0}</div>
+              </div>
+              <div>
+                <div style={{ color: "var(--text-muted)", fontSize: "0.75rem" }}>Transfers</div>
+                <div style={{ fontWeight: 700, fontSize: "1.4rem" }}>{currentTeam.transfersMade ?? 0}</div>
+              </div>
+              <div>
+                <div style={{ color: "var(--text-muted)", fontSize: "0.75rem" }}>Penalty</div>
+                <div style={{ fontWeight: 700, fontSize: "1.4rem", color: currentTeam.transferPenalty ? "var(--red)" : "var(--text)" }}>{currentTeam.transferPenalty ?? 0}</div>
+              </div>
+          </div>
+
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "1rem", marginBottom: "2rem" }}>
             {playerIds.map((pid, i) => <PlayerCard key={i} player={players[pid]!} points={getPoints(pid)} isCaptain={currentTeam.captain === pid} />)}
           </div>
