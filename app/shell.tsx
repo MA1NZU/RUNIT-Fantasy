@@ -13,6 +13,7 @@ const NAV = [
   { href: "/transfers", label: "Transfers" },
   { href: "/shop", label: "Shop" },
   { href: "/inventory", label: "Inventory" },
+  { href: "/profile", label: "Profile" },
 ];
 
 const ADMIN_EMAIL = "yahyaayman2006@gmail.com";
