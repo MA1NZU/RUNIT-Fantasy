@@ -147,9 +147,9 @@ export default function TeamPage() {
   if (isLocked) return (
     <Shell>
       <div style={{ maxWidth: "800px", margin: "4rem auto", textAlign: "center" }}>
-        <div style={{ fontSize: "3rem", marginBottom: "1rem" }}>📅</div>
+        <div style={{ fontSize: "3rem", marginBottom: "1rem" }}>⏱</div>
         <h1 style={{ fontSize: "1.5rem", fontWeight: 700, marginBottom: "0.5rem" }}>DEADLINE TIMEOUT!</h1>
-        <p style={{ color: "var(--text-muted)" }}>You can't access your team right now.</p>
+        <p style={{ color: "var(--text-muted)" }}>Your Team is currently locked. Please wait for the next gameweek.</p>
       </div>
     </Shell>
   );
