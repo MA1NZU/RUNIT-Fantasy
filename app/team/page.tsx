@@ -173,8 +173,10 @@ export default function TeamPage() {
                     <div>
                       <div style={{ fontWeight: 600 }}>{p?.name ?? "Unknown Player"}</div>
                       <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: "0.2rem" }}>{p?.game ?? ""} · {p?.desc ?? ""}</div>
-                      <div style={{ fontSize: "0.85rem", color: "var(--accent)", marginTop: "0.2rem", fontWeight: 600 }}>{p?.points ?? 0} pts</div>
+                      <div style={{ fontSize: "0.85rem", color: "var(--accent)", marginTop: "0.2rem", fontWeight: 600 }}>
+                      {isCaptain(pid) ? (p?.points ?? 0) * 2 : (p?.points ?? 0)} pts {isCaptain(pid) && "(x2)"} this GW
                     </div>
+                  </div>
                     {isCaptain(pid) && (
                       <span style={{ background: "var(--blue)", color: "#fff", fontSize: "0.7rem", fontWeight: 700, padding: "0.25rem 0.6rem", borderRadius: "4px" }}>C</span>
                     )}
