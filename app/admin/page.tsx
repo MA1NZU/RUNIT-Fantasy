@@ -10,7 +10,7 @@ import Shell from "@/app/shell";
 const ADMIN_EMAIL = "yahyaayman2006@gmail.com";
 
 type Player = { id: string; name: string; game: string; price: number; points: number; totalPoints: number; desc: string; ID?: string; };
-type UserTeam = { id: string; namez: string; manager?: string; Totalpoints: number; totalGameweekPoints: number; coins: number; Bank: number; freeTransfers: number; ownerEmail: string; };
+type UserTeam = { id: string; manager: string; totalPoints: number; gameweekPoints: number; coins: number; Bank: number; freeTransfers: number; ownerEmail: string; };
 type Settings = { id: string; currentGameweek: number; deadline: string; shopDeadline: string; };
 type Tab = "players" | "stats" | "managers" | "settings";
 
@@ -42,7 +42,7 @@ export default function AdminPage() {
         getDocs(collection(db, "settings")),
       ]);
       setPlayers(pSnap.docs.map(d => ({ id: d.id, ...d.data() } as Player)).sort((a, b) => a.name.localeCompare(b.name)));
-      setManagers(mSnap.docs.map(d => ({ id: d.id, ...d.data() } as UserTeam)).sort((a, b) => (b.Totalpoints ?? 0) - (a.Totalpoints ?? 0)));
+      setManagers(mSnap.docs.map(d => ({ id: d.id, ...d.data() } as UserTeam)).sort((a, b) => (b.totalPoints ?? 0) - (a.totalPoints ?? 0)));
       if (!sSnap.empty) setSettings({ id: sSnap.docs[0].id, ...sSnap.docs[0].data() } as Settings);
       setLoading(false);
     };
@@ -126,8 +126,8 @@ export default function AdminPage() {
     setSaving(m.id);
     try {
       await updateDoc(doc(db, "userTeams", m.id), {
-        Totalpoints: Number(m.Totalpoints || 0),
-        totalGameweekPoints: Number(m.totalGameweekPoints || 0),
+        totalPoints: Number(m.totalPoints || 0),
+        gameweekPoints: Number(m.gameweekPoints || 0),
         coins: Number(m.coins || 0),
         Bank: Number(m.Bank || 0),
         freeTransfers: Number(m.freeTransfers || 0)
@@ -186,14 +186,51 @@ export default function AdminPage() {
           </div>
         )}
 
+        {tab === "stats" && (
+          <div style={{ display: "grid", gridTemplateColumns: "300px 1fr", gap: "2rem" }}>
+            <div style={{ background: "var(--surface)", borderRadius: "12px", border: "1px solid var(--border)", overflow: "hidden" }}>
+              <div style={{ padding: "1rem", borderBottom: "1px solid var(--border)", fontWeight: 700 }}>Select Player</div>
+              <div style={{ maxHeight: "600px", overflowY: "auto" }}>
+                {players.map(p => (
+                  <div key={p.id} onClick={() => setSelectedPlayerId(p.id)} style={{ padding: "0.75rem 1rem", cursor: "pointer", borderBottom: "1px solid var(--border)", background: selectedPlayerId === p.id ? "rgba(3,71,244,0.15)" : "transparent" }}>
+                    <div style={{ fontWeight: 600, fontSize: "0.9rem" }}>{p.name}</div>
+                    <div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>{p.game}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div style={{ background: "var(--surface)", borderRadius: "12px", border: "1px solid var(--border)", padding: "1.5rem" }}>
+              {activePlayer ? (
+                <div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.5rem" }}>
+                    <div><h2 style={{ fontSize: "1.25rem", fontWeight: 700 }}>{activePlayer.name}</h2><p style={{ color: "var(--accent)", fontSize: "0.8rem" }}>GW{settings?.currentGameweek} Rules</p></div>
+                    <div style={{ textAlign: "right" }}><div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>CALCULATED GW POINTS</div><div style={{ fontSize: "2rem", fontWeight: 800, color: "var(--accent)" }}>{calculatePoints(activePlayer)}</div></div>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "1rem" }}>
+                    {["matchWin", "matchLose", "mvp", "svp", "bonus"].map(f => <StatInput key={f} label={f.replace(/([A-Z])/g, ' $1').trim()} id={f} val={calcStats} set={setCalcStats} />)}
+                    <div style={{ gridColumn: "1/-1", borderTop: "1px solid var(--border)", margin: "0.5rem 0" }}></div>
+                    {activePlayer.game === "Valorant" ? 
+                      ["kills", "assists", "deaths", "firstBlood", "firstDeath", "tripleKill", "quadraKill", "ace", "clutch"].map(f => <StatInput key={f} label={f.replace(/([A-Z])/g, ' $1').trim()} id={f} val={calcStats} set={setCalcStats} />) :
+                      ["kills", "assists", "deaths", "lastKills", "headKill", "healing", "damage", "blocked", "soloKills"].map(f => <StatInput key={f} label={f.replace(/([A-Z])/g, ' $1').trim()} id={f} val={calcStats} set={setCalcStats} />)
+                    }
+                  </div>
+                  <button onClick={handleSaveStats} disabled={saving === "matchstats"} style={{ width: "100%", marginTop: "2rem", background: saved === "matchstats" ? "var(--green)" : "var(--blue)", color: "#fff", border: "none", padding: "1rem", borderRadius: "8px", fontWeight: 700, cursor: "pointer" }}>
+                    {saving === "matchstats" ? "Saving..." : saved === "matchstats" ? "✓ Saved Success!" : "Save Match Stats"}
+                  </button>
+                </div>
+              ) : <div style={{ height: "400px", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)" }}>Select a player to start.</div>}
+            </div>
+          </div>
+        )}
+
         {tab === "managers" && (
           <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
             {managers.map(m => (
               <div key={m.id} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "10px", padding: "1rem" }}>
-                <div style={{ fontWeight: 700, marginBottom: "1rem", fontSize: "1.1rem" }}>{m.manager || m.namez || "Unknown Manager"}</div>
+                <div style={{ fontWeight: 700, marginBottom: "1rem", fontSize: "1.1rem" }}>{m.manager || "Unknown Manager"}</div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr) 100px", gap: "0.75rem", alignItems: "end" }}>
-                   <div><div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>Total Points</div><input type="number" value={m.Totalpoints ?? 0} onChange={(e) => updateManagerField(m.id, "Totalpoints", Number(e.target.value))} style={{ background: "var(--bg)", border: "1px solid var(--border)", color: "#fff", padding: "0.5rem", borderRadius: "6px", width: "100%" }} /></div>
-                   <div><div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>GW Points</div><input type="number" value={m.totalGameweekPoints ?? 0} onChange={(e) => updateManagerField(m.id, "totalGameweekPoints", Number(e.target.value))} style={{ background: "var(--bg)", border: "1px solid var(--border)", color: "#fff", padding: "0.5rem", borderRadius: "6px", width: "100%" }} /></div>
+                   <div><div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>Total Points</div><input type="number" value={m.totalPoints ?? 0} onChange={(e) => updateManagerField(m.id, "totalPoints", Number(e.target.value))} style={{ background: "var(--bg)", border: "1px solid var(--border)", color: "#fff", padding: "0.5rem", borderRadius: "6px", width: "100%" }} /></div>
+                   <div><div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>GW Points</div><input type="number" value={m.gameweekPoints ?? 0} onChange={(e) => updateManagerField(m.id, "gameweekPoints", Number(e.target.value))} style={{ background: "var(--bg)", border: "1px solid var(--border)", color: "#fff", padding: "0.5rem", borderRadius: "6px", width: "100%" }} /></div>
                    <div><div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>Coins</div><input type="number" value={m.coins ?? 0} onChange={(e) => updateManagerField(m.id, "coins", Number(e.target.value))} style={{ background: "var(--bg)", border: "1px solid var(--border)", color: "#fff", padding: "0.5rem", borderRadius: "6px", width: "100%" }} /></div>
                    <div><div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>Bank</div><input type="number" step="0.1" value={m.Bank ?? 0} onChange={(e) => updateManagerField(m.id, "Bank", Number(e.target.value))} style={{ background: "var(--bg)", border: "1px solid var(--border)", color: "#fff", padding: "0.5rem", borderRadius: "6px", width: "100%" }} /></div>
                    <div><div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>Free Trans</div><input type="number" value={m.freeTransfers ?? 0} onChange={(e) => updateManagerField(m.id, "freeTransfers", Number(e.target.value))} style={{ background: "var(--bg)", border: "1px solid var(--border)", color: "#fff", padding: "0.5rem", borderRadius: "6px", width: "100%" }} /></div>
@@ -206,8 +243,28 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* Tab content for players and stats stays consistent with last version */}
+        {tab === "players" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
+            {players.map(p => (
+              <div key={p.id} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "8px", padding: "0.75rem 1rem", display: "grid", gridTemplateColumns: "1.5fr 0.7fr 2fr auto", gap: "0.75rem", alignItems: "center" }}>
+                <div><div style={{ fontWeight: 600 }}>{p.name}</div><div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>{p.game}</div></div>
+                <input type="number" step="0.1" value={p.price} onChange={(e) => setPlayers(prev => prev.map(x => x.id === p.id ? {...x, price: Number(e.target.value)} : x))} style={{ background: "var(--bg)", border: "1px solid var(--border)", color: "#fff", padding: "0.5rem", borderRadius: "6px" }} />
+                <input type="text" value={p.desc} onChange={(e) => setPlayers(prev => prev.map(x => x.id === p.id ? {...x, desc: e.target.value} : x))} style={{ background: "var(--bg)", border: "1px solid var(--border)", color: "#fff", padding: "0.5rem", borderRadius: "6px" }} />
+                <button onClick={async () => { setSaving(p.id); await updateDoc(doc(db, "players", p.id), { price: p.price, desc: p.desc }); setSaving(null); markSaved(p.id); }} style={{ background: saved === p.id ? "var(--green)" : "var(--accent)", color: "#000", border: "none", borderRadius: "6px", padding: "0.6rem 1.2rem", fontWeight: 700, cursor: "pointer" }}>{saving === p.id ? "..." : "Save"}</button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </Shell>
+  );
+}
+
+function StatInput({ label, id, val, set }: { label: string; id: string; val: any; set: any }) {
+  return (
+    <div>
+      <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginBottom: "0.3rem" }}>{label}</div>
+      <input type="number" value={val[id] || ""} onChange={(e) => set({ ...val, [id]: e.target.value })} style={{ width: "100%", background: "var(--bg)", border: "1px solid var(--border)", color: "#fff", padding: "0.5rem", borderRadius: "6px" }} />
+    </div>
   );
 }
