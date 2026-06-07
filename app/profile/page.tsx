@@ -8,35 +8,10 @@ import Shell from "@/app/shell";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 
-type ShopItem = {
-  ID: string;
-  itemName: string;
-  itemType: string;
-  previewImage: string;
-  songUrl?: string;
-  titleText?: string;
-  titleColor?: string;
-};
+type ShopItem = { ID: string; itemName: string; itemType: string; previewImage: string; songUrl?: string; titleText?: string; titleColor?: string; };
+type UserTeam = { id: string; manager: string; totalPoints: number; gameweekPoints: number; coins: number; equippedAvatar?: string; equippedBanner?: string; equippedSong?: string; equippedTitle?: string; ownerEmail: string; };
 
-type UserTeam = {
-  id: string;
-  manager: string;
-  totalPoints: number;
-  gameweekPoints: number;
-  coins: number;
-  equippedAvatar?: string;
-  equippedBanner?: string;
-  equippedSong?: string;
-  equippedTitle?: string;
-  ownerEmail: string;
-};
-
-declare global {
-  interface Window {
-    onYouTubeIframeAPIReady: () => void;
-    YT: any;
-  }
-}
+declare global { interface Window { onYouTubeIframeAPIReady: () => void; YT: any; } }
 
 function getYouTubeId(url: string) {
   const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
@@ -47,8 +22,9 @@ function getYouTubeId(url: string) {
 function ProfileContent() {
   const { user } = useAuth();
   const searchParams = useSearchParams();
-  const targetEmail = searchParams.get("email") || user?.email;
-  const isOwnProfile = !searchParams.get("email") || searchParams.get("email") === user?.email;
+  const queryEmail = searchParams.get("email");
+  const targetEmail = queryEmail || user?.email;
+  const isOwnProfile = !queryEmail || queryEmail === user?.email;
 
   const [team, setTeam] = useState<UserTeam | null>(null);
   const [items, setItems] = useState<Record<string, ShopItem>>({});
@@ -64,7 +40,6 @@ function ProfileContent() {
 
   useEffect(() => {
     if (!targetEmail) return;
-
     const loadProfile = async () => {
       setLoading(true);
       try {
@@ -75,10 +50,7 @@ function ProfileContent() {
         setNewName(teamData.manager);
 
         const allTeamsSnap = await getDocs(collection(db, "userTeams"));
-        const allTeams = allTeamsSnap.docs
-          .map(d => d.data() as UserTeam)
-          .sort((a, b) => (b.totalPoints || 0) - (a.totalPoints || 0));
-        
+        const allTeams = allTeamsSnap.docs.map(d => d.data() as UserTeam).sort((a, b) => (b.totalPoints || 0) - (a.totalPoints || 0));
         const userIndex = allTeams.findIndex(t => t.ownerEmail === targetEmail);
         if (userIndex !== -1) setRank(userIndex + 1);
 
@@ -101,7 +73,6 @@ function ProfileContent() {
     const songItem = team?.equippedSong ? items[team.equippedSong] : null;
     const ytId = songItem?.songUrl ? getYouTubeId(songItem.songUrl) : null;
     if (!ytId) return;
-
     const initPlayer = () => {
         if (playerRef.current) { playerRef.current.destroy(); playerRef.current = null; }
         playerRef.current = new window.YT.Player('yt-player-hidden', {
@@ -113,7 +84,6 @@ function ProfileContent() {
             }
         });
     }
-
     if (window.YT && window.YT.Player) { initPlayer(); } 
     else {
         const tag = document.createElement('script');
