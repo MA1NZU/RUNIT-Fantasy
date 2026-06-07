@@ -52,9 +52,9 @@ export default function ProfilePage() {
   const [newName, setNewName] = useState("");
   
   // Player State
-  const [volume, setVolume] = useState(50);
   const playerRef = useRef<any>(null);
   const [playerReady, setPlayerReady] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
 
   useEffect(() => {
     const userEmail = user?.email;
@@ -94,12 +94,12 @@ export default function ProfilePage() {
 
   const songItem = team?.equippedSong ? items[team.equippedSong] : null;
   const ytId = songItem?.songUrl ? getYouTubeId(songItem.songUrl) : null;
+  const songThumbnail = ytId ? `https://img.youtube.com/vi/${ytId}/mqdefault.jpg` : null;
 
   // Load YouTube API
   useEffect(() => {
     if (!ytId) return;
 
-    // Load Script
     if (!window.YT) {
       const tag = document.createElement('script');
       tag.src = "https://www.youtube.com/iframe_api";
@@ -108,27 +108,26 @@ export default function ProfilePage() {
     }
 
     window.onYouTubeIframeAPIReady = () => {
-      playerRef.current = new window.YT.Player('yt-player', {
-        height: '100%',
-        width: '100%',
+      if (playerRef.current) return;
+      playerRef.current = new window.YT.Player('yt-player-hidden', {
+        height: '0',
+        width: '0',
         videoId: ytId,
         playerVars: {
           controls: 0,
           modestbranding: 1,
           rel: 0,
           showinfo: 0,
-          iv_load_policy: 3
         },
         events: {
-          onReady: (event: any) => {
-            setPlayerReady(true);
-            event.target.setVolume(volume);
+          onReady: () => setPlayerReady(true),
+          onStateChange: (event: any) => {
+            setIsPlaying(event.data === window.YT.PlayerState.PLAYING);
           }
         }
       });
     };
 
-    // If API already loaded but component re-mounted
     if (window.YT && window.YT.Player && !playerRef.current) {
         window.onYouTubeIframeAPIReady();
     }
@@ -141,11 +140,12 @@ export default function ProfilePage() {
     };
   }, [ytId]);
 
-  const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = parseInt(e.target.value);
-    setVolume(val);
-    if (playerRef.current && playerReady) {
-      playerRef.current.setVolume(val);
+  const togglePlay = () => {
+    if (!playerRef.current || !playerReady) return;
+    if (isPlaying) {
+      playerRef.current.pauseVideo();
+    } else {
+      playerRef.current.playVideo();
     }
   };
 
@@ -178,10 +178,8 @@ export default function ProfilePage() {
     <Shell>
       <div style={{ maxWidth: "900px", margin: "0 auto" }}>
         
-        {/* PROFILE CARD */}
         <div style={{ background: "var(--surface)", borderRadius: "24px", border: "1px solid var(--border)", overflow: "hidden", position: "relative", marginBottom: "1.5rem", boxShadow: "0 20px 50px rgba(0,0,0,0.2)" }}>
           
-          {/* BANNER */}
           <div style={{ height: "240px", background: "#111", position: "relative" }}>
             {bannerItem ? (
               <img src={getImageUrl(bannerItem.previewImage)} style={{ width: "100%", height: "100%", objectFit: "cover" }} alt="Banner" />
@@ -195,7 +193,6 @@ export default function ProfilePage() {
 
           <div style={{ padding: "0 3rem 3rem", textAlign: "center" }}>
             
-            {/* AVATAR */}
             <div style={{ width: "160px", height: "120px", margin: "-80px auto 1.5rem", position: "relative" }}>
               <div style={{ width: "160px", height: "160px", borderRadius: "50%", border: "8px solid var(--surface)", background: "#222", overflow: "hidden", boxShadow: "0 10px 30px rgba(0,0,0,0.4)" }}>
                 {avatarItem ? (
@@ -206,7 +203,6 @@ export default function ProfilePage() {
               </div>
             </div>
 
-            {/* NAME & TITLE */}
             <div style={{ marginBottom: "2.5rem" }}>
               {editingName ? (
                 <div style={{ display: "flex", gap: "0.5rem", justifyContent: "center", alignItems: "center" }}>
@@ -228,7 +224,6 @@ export default function ProfilePage() {
               )}
             </div>
 
-            {/* STATS */}
             <div style={{ display: "flex", justifyContent: "center", gap: "6rem", marginBottom: "3rem" }}>
               <div style={{ textAlign: "center" }}>
                 <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "2px", marginBottom: "0.5rem" }}>Total Points</div>
@@ -240,45 +235,60 @@ export default function ProfilePage() {
               </div>
             </div>
 
-            {/* HORIZONTAL YOUTUBE PLAYER */}
+            {/* MINIMAL HORIZONTAL MUSIC PLAYER */}
             {songItem && ytId && (
               <div style={{ 
                 marginTop: "2rem", 
-                padding: "1rem", 
-                background: "rgba(0,0,0,0.5)", 
-                borderRadius: "20px", 
+                padding: "0.75rem 1.5rem", 
+                background: "rgba(0,0,0,0.4)", 
+                borderRadius: "100px", 
                 border: "1px solid var(--border)", 
                 display: "flex", 
                 alignItems: "center", 
                 gap: "1.5rem", 
                 textAlign: "left",
-                maxWidth: "700px",
+                maxWidth: "500px",
                 margin: "0 auto",
                 boxShadow: "inset 0 1px 1px rgba(255,255,255,0.05)"
               }}>
-                {/* The actual video container */}
-                <div style={{ width: "120px", height: "68px", borderRadius: "12px", overflow: "hidden", background: "#000", flexShrink: 0 }}>
-                  <div id="yt-player"></div>
+                {/* Hidden Player Div */}
+                <div id="yt-player-hidden" style={{ display: "none" }}></div>
+
+                {/* Rotating Disk (Thumbnail) */}
+                <div style={{ width: "50px", height: "50px", borderRadius: "50%", background: "#000", overflow: "hidden", flexShrink: 0, border: "2px solid rgba(255,255,255,0.1)", animation: isPlaying ? "rotate 10s linear infinite" : "none" }}>
+                  <img src={songThumbnail || ""} style={{ width: "100%", height: "100%", objectFit: "cover" }} alt="Disk" />
                 </div>
                 
-                {/* Info and Volume */}
+                {/* Track Info */}
                 <div style={{ flex: 1, minWidth: 0 }}>
-                   <div style={{ fontSize: "0.6rem", color: "var(--blue)", fontWeight: 800, textTransform: "uppercase", marginBottom: "0.2rem" }}>Now Playing</div>
-                   <div style={{ fontWeight: 700, fontSize: "1rem", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: "#fff", marginBottom: "0.5rem" }}>{songItem.itemName}</div>
-                   
-                   <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
-                      <span style={{ fontSize: "1rem" }}>🔊</span>
-                      <input 
-                        type="range" 
-                        min="0" 
-                        max="100" 
-                        value={volume} 
-                        onChange={handleVolumeChange}
-                        style={{ flex: 1, cursor: "pointer", accentColor: "var(--blue)" }}
-                      />
-                      <span style={{ fontSize: "0.75rem", fontWeight: 700, width: "30px" }}>{volume}%</span>
+                   <div style={{ fontSize: "0.6rem", color: "var(--blue)", fontWeight: 800, textTransform: "uppercase", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                      Music Player
+                      {isPlaying && <div className="audio-visualizer"><span></span><span></span><span></span></div>}
                    </div>
+                   <div style={{ fontWeight: 700, fontSize: "1rem", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: "#fff" }}>{songItem.itemName}</div>
                 </div>
+
+                {/* Minimalist Play/Pause Button */}
+                <button 
+                  onClick={togglePlay}
+                  style={{ 
+                    width: "44px", 
+                    height: "44px", 
+                    borderRadius: "50%", 
+                    background: "var(--blue)", 
+                    border: "none", 
+                    color: "#fff", 
+                    fontSize: "1.2rem", 
+                    display: "flex", 
+                    alignItems: "center", 
+                    justifyContent: "center", 
+                    cursor: playerReady ? "pointer" : "not-allowed",
+                    opacity: playerReady ? 1 : 0.5,
+                    transition: "0.2s"
+                  }}
+                >
+                  {isPlaying ? "⏸" : "▶"}
+                </button>
               </div>
             )}
 
@@ -299,6 +309,15 @@ export default function ProfilePage() {
           </Link>
         </div>
       </div>
+
+      <style jsx>{`
+        @keyframes rotate { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        .audio-visualizer { display: flex; align-items: flex-end; gap: 2px; height: 10px; }
+        .audio-visualizer span { width: 2px; background: var(--blue); animation: wave 1s ease-in-out infinite; }
+        .audio-visualizer span:nth-child(2) { animation-delay: 0.2s; }
+        .audio-visualizer span:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes wave { 0%, 100% { height: 40%; } 50% { height: 100%; } }
+      `}</style>
     </Shell>
   );
 }
