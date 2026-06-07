@@ -18,17 +18,24 @@ export default function Leaderboard() {
   const [sortBy, setSortBy] = useState<"totalPoints" | "gameweekPoints">("totalPoints");
   const [loading, setLoading] = useState(true);
   const [currentGW, setCurrentGW] = useState<number>(7);
+  const [isLocked, setIsLocked] = useState(false);
 
   useEffect(() => {
     async function loadLeaderboard() {
       setLoading(true);
       try {
-        // 0. Fetch Settings for Current Gameweek
+        // 0. Fetch Settings for Current Gameweek and Locks
         const settingsSnap = await getDocs(collection(db, "settings"));
         let gw = 7;
         if (!settingsSnap.empty) {
-          gw = settingsSnap.docs[0].data().currentGameweek || 7;
+          const data = settingsSnap.docs[0].data();
+          gw = data.currentGameweek || 7;
           setCurrentGW(gw);
+          if (data.lockTeamLeaderboard) {
+            setIsLocked(true);
+            setLoading(false);
+            return;
+          }
         }
 
         // 1. Fetch all user teams
@@ -74,6 +81,18 @@ export default function Leaderboard() {
 
   const sorted = [...teams].sort((a, b) => (b[sortBy] ?? 0) - (a[sortBy] ?? 0));
 
+  if (loading) return <Shell><p style={{ color: "var(--text-muted)", padding: "2rem" }}>Loading leaderboard...</p></Shell>;
+
+  if (isLocked) return (
+    <Shell>
+      <div style={{ maxWidth: "700px", margin: "4rem auto", textAlign: "center" }}>
+        <div style={{ fontSize: "3rem", marginBottom: "1rem" }}>🔒</div>
+        <h1 style={{ fontSize: "1.5rem", fontWeight: 700, marginBottom: "0.5rem" }}>Leaderboard is Locked</h1>
+        <p style={{ color: "var(--text-muted)" }}>Access to standings is currently restricted by the admin.</p>
+      </div>
+    </Shell>
+  );
+
   return (
     <Shell>
       <div style={{ maxWidth: "700px", margin: "0 auto" }}>
@@ -101,37 +120,33 @@ export default function Leaderboard() {
           ))}
         </div>
 
-        {loading ? (
-          <p style={{ color: "var(--text-muted)" }}>Loading leaderboard...</p>
-        ) : (
-          <div>
-            <div style={{ display: "grid", gridTemplateColumns: "40px 1fr 90px 90px", gap: "8px", padding: "0 12px 10px", borderBottom: "1px solid var(--border)", marginBottom: "8px" }}>
-              {["#", "Manager", "GW Pts", "Total"].map((h, i) => (
-                <div key={h} style={{ fontSize: "0.7rem", color: "var(--text-muted)", textAlign: i > 1 ? "right" : "left" }}>{h}</div>
-              ))}
-            </div>
-
-            {sorted.map((team, i) => (
-              <div key={team.id} style={{ display: "grid", gridTemplateColumns: "40px 1fr 90px 90px", gap: "8px", alignItems: "center", padding: "0.75rem", borderRadius: "10px", marginBottom: "6px", background: i === 0 ? "var(--blue-dim)" : "var(--surface)", border: "1px solid " + (i === 0 ? "var(--blue-border)" : "var(--border)") }}>
-                <div style={{ fontSize: "0.9rem", fontWeight: 700, color: i === 0 ? "var(--accent)" : i === 1 ? "#aaa" : i === 2 ? "#cd7f32" : "var(--text-muted)" }}>
-                  {i + 1}
-                </div>
-                <div style={{ fontSize: "0.875rem", fontWeight: 600, display: "flex", alignItems: "center", gap: "6px" }}>
-                  {team.manager}
-                  {i === 0 && (
-                    <span style={{ background: "var(--accent-dim)", color: "var(--accent)", fontSize: "0.6rem", fontWeight: 700, padding: "2px 6px", borderRadius: "4px" }}>★ Leader</span>
-                  )}
-                </div>
-                <div style={{ fontSize: "0.875rem", textAlign: "right", color: sortBy === "gameweekPoints" ? "var(--accent)" : "var(--text-muted)", fontWeight: sortBy === "gameweekPoints" ? 700 : 400 }}>
-                  {team.gameweekPoints}
-                </div>
-                <div style={{ fontSize: "0.875rem", fontWeight: sortBy === "totalPoints" ? 700 : 400, textAlign: "right", color: sortBy === "totalPoints" ? "var(--text)" : "var(--text-muted)" }}>
-                  {team.totalPoints}
-                </div>
-              </div>
+        <div>
+          <div style={{ display: "grid", gridTemplateColumns: "40px 1fr 90px 90px", gap: "8px", padding: "0 12px 10px", borderBottom: "1px solid var(--border)", marginBottom: "8px" }}>
+            {["#", "Manager", "GW Pts", "Total"].map((h, i) => (
+              <div key={h} style={{ fontSize: "0.7rem", color: "var(--text-muted)", textAlign: i > 1 ? "right" : "left" }}>{h}</div>
             ))}
           </div>
-        )}
+
+          {sorted.map((team, i) => (
+            <div key={team.id} style={{ display: "grid", gridTemplateColumns: "40px 1fr 90px 90px", gap: "8px", alignItems: "center", padding: "0.75rem", borderRadius: "10px", marginBottom: "6px", background: i === 0 ? "var(--blue-dim)" : "var(--surface)", border: "1px solid " + (i === 0 ? "var(--blue-border)" : "var(--border)") }}>
+              <div style={{ fontSize: "0.9rem", fontWeight: 700, color: i === 0 ? "var(--accent)" : i === 1 ? "#aaa" : i === 2 ? "#cd7f32" : "var(--text-muted)" }}>
+                {i + 1}
+              </div>
+              <div style={{ fontSize: "0.875rem", fontWeight: 600, display: "flex", alignItems: "center", gap: "6px" }}>
+                {team.manager}
+                {i === 0 && (
+                  <span style={{ background: "var(--accent-dim)", color: "var(--accent)", fontSize: "0.6rem", fontWeight: 700, padding: "2px 6px", borderRadius: "4px" }}>★ Leader</span>
+                )}
+              </div>
+              <div style={{ fontSize: "0.875rem", textAlign: "right", color: sortBy === "gameweekPoints" ? "var(--accent)" : "var(--text-muted)", fontWeight: sortBy === "gameweekPoints" ? 700 : 400 }}>
+                {team.gameweekPoints}
+              </div>
+              <div style={{ fontSize: "0.875rem", fontWeight: sortBy === "totalPoints" ? 700 : 400, textAlign: "right", color: sortBy === "totalPoints" ? "var(--text)" : "var(--text-muted)" }}>
+                {team.totalPoints}
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     </Shell>
   );
