@@ -160,13 +160,16 @@ export default function ProfilePage() {
   return (
     <Shell>
       <div style={{ maxWidth: "900px", margin: "0 auto" }}>
+        
         <div style={{ background: "var(--surface)", borderRadius: "24px", border: "1px solid var(--border)", overflow: "hidden", position: "relative", marginBottom: "1.5rem", boxShadow: "0 20px 50px rgba(0,0,0,0.2)" }}>
+          
           <div style={{ height: "240px", background: "#111", position: "relative" }}>
             {bannerItem ? <img src={getImageUrl(bannerItem.previewImage)} style={{ width: "100%", height: "100%", objectFit: "cover" }} alt="Banner" /> : <div style={{ width: "100%", height: "100%", background: "linear-gradient(135deg, #0347F4 0%, #7c3aed 100%)" }} />}
             <Link href="/inventory" style={{ position: "absolute", top: "1.25rem", right: "1.25rem", background: "rgba(0,0,0,0.6)", color: "#fff", padding: "0.5rem 1rem", borderRadius: "30px", fontSize: "0.75rem", fontWeight: 700, textDecoration: "none", backdropFilter: "blur(8px)", border: "1px solid rgba(255,255,255,0.1)", zIndex: 10 }}>Customize</Link>
           </div>
 
           <div style={{ padding: "0 3rem 3rem", textAlign: "center" }}>
+            
             <div style={{ width: "160px", height: "120px", margin: "-80px auto 1.5rem", position: "relative" }}>
               <div style={{ width: "160px", height: "160px", borderRadius: "50%", border: "8px solid var(--surface)", background: "#222", overflow: "hidden", boxShadow: "0 10px 30px rgba(0,0,0,0.4)" }}>
                 {avatarItem ? <img src={getImageUrl(avatarItem.previewImage)} style={{ width: "100%", height: "100%", objectFit: "cover" }} alt="Avatar" /> : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "3.5rem", fontWeight: 800, color: "#444" }}>{team.manager.slice(0, 1)}</div>}
@@ -192,19 +195,21 @@ export default function ProfilePage() {
               <div style={{ textAlign: "center" }}><div style={{ fontSize: "0.7rem", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "2px", marginBottom: "0.5rem" }}>Rank</div><div style={{ fontSize: "2rem", fontWeight: 900, color: "var(--accent)" }}>#{rank}</div></div>
             </div>
 
+            {/* MINIMAL HORIZONTAL MUSIC PLAYER */}
             {songItem && ytId && (
-              <div style={{ marginTop: "2rem", padding: "0.75rem 1.5rem", background: "rgba(0,0,0,0.4)", borderRadius: "100px", border: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: "0.75rem", maxWidth: "500px", margin: "0 auto", boxShadow: "inset 0 1px 1px rgba(255,255,255,0.05)" }}>
-                <div style={{ width: "100%", height: "1px", background: "var(--border)", opacity: 0.5, marginBottom: "0.25rem" }} />
-                <div style={{ display: "flex", alignItems: "center", gap: "1.5rem", width: "100%" }}>
-                  <div id="yt-player-container" style={{ position: "absolute", width: 0, height: 0, pointerEvents: "none" }}></div>
-                  <div style={{ width: "50px", height: "50px", borderRadius: "50%", background: "#000", overflow: "hidden", flexShrink: 0, border: "2px solid rgba(255,255,255,0.1)", animation: isPlaying ? "rotate 10s linear infinite" : "none" }}><img src={songThumbnail || ""} style={{ width: "100%", height: "100%", objectFit: "cover" }} alt="Disk" /></div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: "0.6rem", color: "var(--blue)", fontWeight: 800, textTransform: "uppercase", display: "flex", alignItems: "center", gap: "0.5rem" }}>Music Player {isPlaying && <div className="audio-visualizer"><span></span><span></span><span></span></div>}</div>
-                    <div style={{ fontWeight: 700, fontSize: "1rem", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: "#fff", marginBottom: "0.25rem" }}>{songItem.itemName}</div>
-                    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}><span style={{ fontSize: "0.8rem" }}>{volume === 0 ? "🔇" : "🔊"}</span><input type="range" min="0" max="100" value={volume} onChange={handleVolumeChange} style={{ flex: 1, height: "4px", accentColor: "var(--blue)", cursor: "pointer" }} /></div>
-                  </div>
-                  <button onClick={togglePlay} style={{ width: "44px", height: "44px", borderRadius: "50%", background: "var(--blue)", border: "none", color: "#fff", fontSize: "1.2rem", display: "flex", alignItems: "center", justifyContent: "center", cursor: playerReady ? "pointer" : "not-allowed", opacity: playerReady ? 1 : 0.5, transition: "0.2s" }}>{isPlaying ? "⏸" : "▶"}</button>
+              <div style={{ 
+                marginTop: "2rem", padding: "0.75rem 1.5rem", background: "rgba(0,0,0,0.4)", borderRadius: "100px", border: "1px solid var(--border)", 
+                display: "flex", alignItems: "center", gap: "1.5rem", textAlign: "left", maxWidth: "500px", margin: "0 auto",
+                boxShadow: "inset 0 1px 1px rgba(255,255,255,0.05)"
+              }}>
+                <div id="yt-player-container" style={{ position: "absolute", width: 0, height: 0, pointerEvents: "none" }}></div>
+                <div style={{ width: "50px", height: "50px", borderRadius: "50%", background: "#000", overflow: "hidden", flexShrink: 0, border: "2px solid rgba(255,255,255,0.1)", animation: isPlaying ? "rotate 10s linear infinite" : "none" }}><img src={songThumbnail || ""} style={{ width: "100%", height: "100%", objectFit: "cover" }} alt="Disk" /></div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                   <div style={{ fontSize: "0.6rem", color: "var(--blue)", fontWeight: 800, textTransform: "uppercase", display: "flex", alignItems: "center", gap: "0.5rem" }}>Music Player {isPlaying && <div className="audio-visualizer"><span></span><span></span><span></span></div>}</div>
+                   <div style={{ fontWeight: 700, fontSize: "1rem", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: "#fff", marginBottom: "0.25rem" }}>{songItem.itemName}</div>
+                   <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}><span style={{ fontSize: "0.8rem" }}>{volume === 0 ? "🔇" : "🔊"}</span><input type="range" min="0" max="100" value={volume} onChange={handleVolumeChange} style={{ flex: 1, height: "4px", accentColor: "var(--blue)", cursor: "pointer" }} /></div>
                 </div>
+                <button onClick={togglePlay} style={{ width: "44px", height: "44px", borderRadius: "50%", background: "var(--blue)", border: "none", color: "#fff", fontSize: "1.2rem", display: "flex", alignItems: "center", justifyContent: "center", cursor: playerReady ? "pointer" : "not-allowed", opacity: playerReady ? 1 : 0.5, transition: "0.2s" }}>{isPlaying ? "⏸" : "▶"}</button>
               </div>
             )}
           </div>
