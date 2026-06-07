@@ -30,6 +30,13 @@ type UserTeam = {
   ownerEmail: string;
 };
 
+// Helper to extract YouTube ID
+function getYouTubeId(url: string) {
+  const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+  const match = url.match(regExp);
+  return (match && match[2].length === 11) ? match[2] : null;
+}
+
 export default function ProfilePage() {
   const { user } = useAuth();
   const [team, setTeam] = useState<UserTeam | null>(null);
@@ -45,14 +52,12 @@ export default function ProfilePage() {
     const loadProfile = async () => {
       setLoading(true);
       try {
-        // 1. Fetch User Team
         const teamSnap = await getDocs(query(collection(db, "userTeams"), where("ownerEmail", "==", userEmail)));
         if (teamSnap.empty) return;
         const teamData = { id: teamSnap.docs[0].id, ...teamSnap.docs[0].data() } as UserTeam;
         setTeam(teamData);
         setNewName(teamData.manager);
 
-        // 2. Fetch Equipped Items details
         const equippedIds = [
           teamData.equippedAvatar,
           teamData.equippedBanner,
@@ -108,13 +113,15 @@ export default function ProfilePage() {
   const songItem = team.equippedSong ? items[team.equippedSong] : null;
   const titleItem = team.equippedTitle ? items[team.equippedTitle] : null;
 
+  // YouTube Audio Logic
+  const ytId = songItem?.songUrl ? getYouTubeId(songItem.songUrl) : null;
+  const songThumbnail = ytId ? `https://img.youtube.com/vi/${ytId}/mqdefault.jpg` : null;
+
   return (
     <Shell>
       <div style={{ maxWidth: "800px", margin: "0 auto" }}>
-        {/* Profile Card */}
         <div style={{ background: "var(--surface)", borderRadius: "20px", border: "1px solid var(--border)", overflow: "hidden", position: "relative" }}>
           
-          {/* Banner */}
           <div style={{ height: "200px", background: "#111", position: "relative" }}>
             {bannerItem ? (
               <img src={getImageUrl(bannerItem.previewImage)} style={{ width: "100%", height: "100%", objectFit: "cover" }} alt="Banner" />
@@ -122,16 +129,13 @@ export default function ProfilePage() {
               <div style={{ width: "100%", height: "100%", background: "linear-gradient(45deg, #0347F4, #7c3aed)" }} />
             )}
             
-            {/* Edit Profile Button Overlay */}
             <Link href="/inventory" style={{ position: "absolute", top: "1rem", right: "1rem", background: "rgba(0,0,0,0.5)", color: "#fff", padding: "0.5rem 1rem", borderRadius: "20px", fontSize: "0.75rem", fontWeight: 700, textDecoration: "none", backdropFilter: "blur(4px)", border: "1px solid rgba(255,255,255,0.2)" }}>
               Customize Profile
             </Link>
           </div>
 
-          {/* Profile Info Section */}
           <div style={{ padding: "0 2rem 2rem", position: "relative", textAlign: "center" }}>
             
-            {/* Avatar */}
             <div style={{ width: "120px", height: "120px", borderRadius: "50%", border: "6px solid var(--surface)", background: "#222", overflow: "hidden", margin: "-60px auto 1rem", position: "relative", zIndex: 5 }}>
               {avatarItem ? (
                 <img src={getImageUrl(avatarItem.previewImage)} style={{ width: "100%", height: "100%", objectFit: "cover" }} alt="Avatar" />
@@ -142,7 +146,6 @@ export default function ProfilePage() {
               )}
             </div>
 
-            {/* Manager Name & Title */}
             <div style={{ marginBottom: "1.5rem" }}>
               {editingName ? (
                 <div style={{ display: "flex", gap: "0.5rem", justifyContent: "center", alignItems: "center" }}>
@@ -164,7 +167,6 @@ export default function ProfilePage() {
               )}
             </div>
 
-            {/* Stats Row */}
             <div style={{ display: "flex", justifyContent: "center", gap: "3rem", borderTop: "1px solid var(--border)", paddingTop: "1.5rem" }}>
               <div style={{ textAlign: "center" }}>
                 <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "1px" }}>Total Points</div>
@@ -180,16 +182,28 @@ export default function ProfilePage() {
             {songItem && (
               <div style={{ marginTop: "2rem", padding: "1.5rem", background: "rgba(255,255,255,0.03)", borderRadius: "16px", border: "1px solid var(--border)" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: "1rem", textAlign: "left" }}>
-                  <div style={{ width: "50px", height: "50px", borderRadius: "8px", background: "#000", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.5rem" }}>🎵</div>
+                  <div style={{ width: "60px", height: "60px", borderRadius: "8px", background: "#000", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    {songThumbnail ? (
+                      <img src={songThumbnail} style={{ width: "100%", height: "100%", objectFit: "cover" }} alt="Song Thumbnail" />
+                    ) : (
+                      <div style={{ fontSize: "1.5rem" }}>🎵</div>
+                    )}
+                  </div>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase" }}>Now Playing</div>
-                    <div style={{ fontWeight: 700 }}>{songItem.itemName}</div>
+                    <div style={{ fontWeight: 700, marginBottom: "0.5rem" }}>{songItem.itemName}</div>
+                    {ytId && (
+                      <iframe 
+                        width="100%" 
+                        height="40" 
+                        src={`https://www.youtube.com/embed/${ytId}?controls=1&modestbranding=1&rel=0`} 
+                        title="YouTube video player" 
+                        frameBorder="0" 
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                        style={{ borderRadius: "8px" }}
+                      ></iframe>
+                    )}
                   </div>
-                  {songItem.songUrl && (
-                    <audio controls style={{ height: "30px", width: "200px" }}>
-                      <source src={songItem.songUrl} type="audio/mpeg" />
-                    </audio>
-                  )}
                 </div>
               </div>
             )}
@@ -197,7 +211,6 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        {/* Quick Links */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem", marginTop: "1rem" }}>
           <Link href="/team" style={{ background: "var(--surface)", border: "1px solid var(--border)", padding: "1.5rem", borderRadius: "16px", textDecoration: "none", color: "inherit", transition: "0.2s" }}>
             <div style={{ fontSize: "1.2rem", marginBottom: "0.5rem" }}>🛡️</div>
@@ -205,7 +218,7 @@ export default function ProfilePage() {
             <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>View your active players and points</div>
           </Link>
           <Link href="/shop" style={{ background: "var(--surface)", border: "1px solid var(--border)", padding: "1.5rem", borderRadius: "16px", textDecoration: "none", color: "inherit", transition: "0.2s" }}>
-            <div style={{ fontSize: "1.2rem", marginBottom: "0.5rem" }}>🏪</div>
+            <div style={{ fontSize: "1.2rem", marginBottom: "0.5rem" }}>🛒</div>
             <div style={{ fontWeight: 700 }}>Shop</div>
             <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>Buy more skins and banners</div>
           </Link>
