@@ -15,31 +15,24 @@ export default function InventoryPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!user?.email) return;
+    const userEmail = user?.email;
+    if (!userEmail) return;
+
     const loadInv = async () => {
       setLoading(true);
       try {
-        const teamSnap = await getDocs(query(collection(db, "userTeams"), where("ownerEmail", "==", user.email)));
+        const teamSnap = await getDocs(query(collection(db, "userTeams"), where("ownerEmail", "==", userEmail)));
         if (!teamSnap.empty) {
           const d = teamSnap.docs[0].data();
-          setEquipped({
-            avatar: d.equippedAvatar || "",
-            banner: d.equippedBanner || "",
-            song: d.equippedSong || "",
-            title: d.equippedTitle || ""
-          });
+          setEquipped({ avatar: d.equippedAvatar || "", banner: d.equippedBanner || "", song: d.equippedSong || "", title: d.equippedTitle || "" });
         }
 
         const shopSnap = await getDocs(collection(db, "shopItems"));
         const shopMap: Record<string, ShopItem> = {};
-        shopSnap.docs.forEach(d => { 
-          const data = d.data() as ShopItem;
-          shopMap[data.ID] = data; 
-        });
+        shopSnap.docs.forEach(d => { shopMap[d.data().ID] = d.data() as ShopItem; });
 
-        const invSnap = await getDocs(query(collection(db, "userInventory"), where("ownerEmail", "==", user.email)));
-        const list = invSnap.docs.map(d => shopMap[d.data().itemId]).filter(Boolean);
-        setOwnedItems(list);
+        const invSnap = await getDocs(query(collection(db, "userInventory"), where("ownerEmail", "==", userEmail)));
+        setOwnedItems(invSnap.docs.map(d => shopMap[d.data().itemId]).filter(Boolean));
       } catch (err) { console.error(err); }
       setLoading(false);
     };
@@ -47,16 +40,13 @@ export default function InventoryPage() {
   }, [user]);
 
   const handleEquip = async (item: ShopItem) => {
-    if (!user?.email) return;
+    const userEmail = user?.email;
+    if (!userEmail) return;
     try {
-      const teamSnap = await getDocs(query(collection(db, "userTeams"), where("ownerEmail", "==", user.email)));
-      if (teamSnap.empty) return;
-      const teamId = teamSnap.docs[0].id;
-      
+      const teamSnap = await getDocs(query(collection(db, "userTeams"), where("ownerEmail", "==", userEmail)));
       const field = `equipped${item.itemType.charAt(0).toUpperCase() + item.itemType.slice(1)}`;
-      
-      await updateDoc(doc(db, "userTeams", teamId), { [field]: item.ID });
-      setEquipped(prev => ({ ...prev, [item.itemType]: item.ID }));
+      await updateDoc(doc(db, "userTeams", teamSnap.docs[0].id), { [field]: item.ID });
+      setEquipped(prev => ({ ...prev, [item.itemType.toLowerCase()]: item.ID }));
     } catch (err) { console.error(err); }
   };
 
@@ -76,21 +66,15 @@ export default function InventoryPage() {
       <div style={{ maxWidth: "1000px", margin: "0 auto" }}>
         <h1 style={{ fontSize: "2rem", fontWeight: 700, marginBottom: "2rem" }}>Inventory</h1>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: "1.5rem" }}>
-          {ownedItems.map(item => {
-            const isEquipped = equipped[item.itemType] === item.ID;
-            const img = getImageUrl(item.previewImage);
-
-            return (
-              <div key={item.ID} style={{ background: "var(--surface)", border: `1px solid ${isEquipped ? "var(--blue)" : "var(--border)"}`, borderRadius: "12px", padding: "1rem", textAlign: "center" }}>
-                <img src={img} style={{ width: "80px", height: "80px", borderRadius: "12px", objectFit: "cover", marginBottom: "1rem" }} />
-                <div style={{ fontWeight: 700, fontSize: "0.9rem" }}>{item.itemName}</div>
-                <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", marginBottom: "1rem" }}>{item.itemType.toUpperCase()}</div>
-                <button onClick={() => handleEquip(item)} disabled={isEquipped} style={{ width: "100%", padding: "0.5rem", borderRadius: "6px", border: "none", cursor: isEquipped ? "default" : "pointer", background: isEquipped ? "var(--green)" : "var(--blue)", color: "#fff", fontWeight: 700 }}>
-                  {isEquipped ? "EQUIPPED" : "EQUIP"}
-                </button>
-              </div>
-            );
-          })}
+          {ownedItems.map(item => (
+            <div key={item.ID} style={{ background: "var(--surface)", border: `1px solid ${equipped[item.itemType.toLowerCase()] === item.ID ? "var(--blue)" : "var(--border)"}`, borderRadius: "12px", padding: "1rem", textAlign: "center" }}>
+              <img src={getImageUrl(item.previewImage)} style={{ width: "80px", height: "80px", borderRadius: "12px", objectFit: "cover", marginBottom: "1rem" }} alt="" />
+              <div style={{ fontWeight: 700, fontSize: "0.9rem" }}>{item.itemName}</div>
+              <button onClick={() => handleEquip(item)} disabled={equipped[item.itemType.toLowerCase()] === item.ID} style={{ width: "100%", marginTop: "1rem", padding: "0.5rem", borderRadius: "6px", border: "none", cursor: "pointer", background: equipped[item.itemType.toLowerCase()] === item.ID ? "var(--green)" : "var(--blue)", color: "#fff" }}>
+                {equipped[item.itemType.toLowerCase()] === item.ID ? "EQUIPPED" : "EQUIP"}
+              </button>
+            </div>
+          ))}
         </div>
       </div>
     </Shell>
