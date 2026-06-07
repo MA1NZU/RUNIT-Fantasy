@@ -55,6 +55,7 @@ export default function ProfilePage() {
   const playerRef = useRef<any>(null);
   const [playerReady, setPlayerReady] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [volume, setVolume] = useState(50);
 
   useEffect(() => {
     const userEmail = user?.email;
@@ -149,6 +150,14 @@ export default function ProfilePage() {
     }
   };
 
+  const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = parseInt(e.target.value);
+    setVolume(val);
+    if (playerRef.current && playerReady) {
+      playerRef.current.setVolume(val);
+    }
+  };
+
   const handleUpdateName = async () => {
     if (!team || !newName.trim()) return;
     try {
@@ -186,7 +195,7 @@ export default function ProfilePage() {
             ) : (
               <div style={{ width: "100%", height: "100%", background: "linear-gradient(135deg, #0347F4 0%, #7c3aed 100%)" }} />
             )}
-            <Link href="/inventory" style={{ position: "absolute", top: "1.25rem", right: "1.25rem", background: "rgba(0,0,0,0.6)", color: "#fff", padding: "0.6rem 1.2rem", borderRadius: "30px", fontSize: "0.75rem", fontWeight: 700, textDecoration: "none", backdropFilter: "blur(8px)", border: "1px solid rgba(255,255,255,0.1)", zIndex: 10 }}>
+            <Link href="/inventory" style={{ position: "absolute", top: "1.25rem", right: "1.25rem", background: "rgba(0,0,0,0.6)", color: "#fff", padding: "0.5rem 1rem", borderRadius: "30px", fontSize: "0.75rem", fontWeight: 700, textDecoration: "none", backdropFilter: "blur(8px)", border: "1px solid rgba(255,255,255,0.1)", zIndex: 10 }}>
               Customize
             </Link>
           </div>
@@ -251,51 +260,29 @@ export default function ProfilePage() {
                 margin: "0 auto",
                 boxShadow: "inset 0 1px 1px rgba(255,255,255,0.05)"
               }}>
-                {/* Hidden Player Div */}
                 <div id="yt-player-hidden" style={{ display: "none" }}></div>
-
-                {/* Rotating Disk (Thumbnail) */}
                 <div style={{ width: "50px", height: "50px", borderRadius: "50%", background: "#000", overflow: "hidden", flexShrink: 0, border: "2px solid rgba(255,255,255,0.1)", animation: isPlaying ? "rotate 10s linear infinite" : "none" }}>
                   <img src={songThumbnail || ""} style={{ width: "100%", height: "100%", objectFit: "cover" }} alt="Disk" />
                 </div>
-                
-                {/* Track Info */}
                 <div style={{ flex: 1, minWidth: 0 }}>
                    <div style={{ fontSize: "0.6rem", color: "var(--blue)", fontWeight: 800, textTransform: "uppercase", display: "flex", alignItems: "center", gap: "0.5rem" }}>
                       Music Player
                       {isPlaying && <div className="audio-visualizer"><span></span><span></span><span></span></div>}
                    </div>
-                   <div style={{ fontWeight: 700, fontSize: "1rem", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: "#fff" }}>{songItem.itemName}</div>
+                   <div style={{ fontWeight: 700, fontSize: "1rem", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: "#fff", marginBottom: "0.25rem" }}>{songItem.itemName}</div>
+                   <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                      <span style={{ fontSize: "0.8rem" }}>{volume === 0 ? "🔇" : "🔊"}</span>
+                      <input type="range" min="0" max="100" value={volume} onChange={handleVolumeChange} style={{ flex: 1, height: "4px", accentColor: "var(--blue)", cursor: "pointer" }} />
+                   </div>
                 </div>
-
-                {/* Minimalist Play/Pause Button */}
-                <button 
-                  onClick={togglePlay}
-                  style={{ 
-                    width: "44px", 
-                    height: "44px", 
-                    borderRadius: "50%", 
-                    background: "var(--blue)", 
-                    border: "none", 
-                    color: "#fff", 
-                    fontSize: "1.2rem", 
-                    display: "flex", 
-                    alignItems: "center", 
-                    justifyContent: "center", 
-                    cursor: playerReady ? "pointer" : "not-allowed",
-                    opacity: playerReady ? 1 : 0.5,
-                    transition: "0.2s"
-                  }}
-                >
+                <button onClick={togglePlay} style={{ width: "44px", height: "44px", borderRadius: "50%", background: "var(--blue)", border: "none", color: "#fff", fontSize: "1.2rem", display: "flex", alignItems: "center", justifyContent: "center", cursor: playerReady ? "pointer" : "not-allowed", opacity: playerReady ? 1 : 0.5 }}>
                   {isPlaying ? "⏸" : "▶"}
                 </button>
               </div>
             )}
-
           </div>
         </div>
 
-        {/* NAVIGATION LINKS */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.5rem" }}>
           <Link href="/team" style={{ background: "var(--surface)", border: "1px solid var(--border)", padding: "2rem", borderRadius: "24px", textDecoration: "none", color: "inherit", transition: "transform 0.2s" }}>
             <div style={{ fontSize: "2rem", marginBottom: "1rem" }}>🛡️</div>
