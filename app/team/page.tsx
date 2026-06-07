@@ -46,15 +46,7 @@ function PlayerCard({ player, points, isCaptain, isSub }: { player: Player; poin
       <div style={{ fontSize: "0.8rem", color: "var(--accent)", fontWeight: 700, marginBottom: "0.2rem" }}>
         {isCaptain ? points * 2 : points} pts {isCaptain && "(x2)"}
       </div>
-      <div style={{ 
-        fontSize: "0.65rem", 
-        color: isUnfit ? "var(--red)" : "var(--text-muted)", 
-        height: "1.5rem", 
-        overflow: "hidden",
-        fontWeight: isUnfit ? 600 : 400 
-      }}>
-        {player.desc}
-      </div>
+      <div style={{ fontSize: "0.65rem", color: isUnfit ? "var(--red)" : "var(--text-muted)", height: "1.5rem", overflow: "hidden", fontWeight: isUnfit ? 600 : 400 }}>{player.desc}</div>
     </div>
   );
 }
@@ -100,17 +92,21 @@ export default function TeamPage() {
     async function loadStats() {
       setLoading(true);
       try {
+        // Query handling both number and string gameweek types
         const statsSnap = await getDocs(query(
           collection(db, "playerMatchStats"), 
-          where("gameweek", "==", selectedGW)
+          where("gameweek", "in", [selectedGW, String(selectedGW)])
         ));
+        
         const statsMap: Record<string, number> = {};
         statsSnap.docs.forEach(d => {
           const data = d.data();
-          // Map by the various IDs players might be identified by
-          if (data.playerId) statsMap[data.playerId] = data.gwPoints ?? 0;
-          if (data.riotId) statsMap[data.riotId] = data.gwPoints ?? 0;
-          if (data.ID) statsMap[data.ID] = data.gwPoints ?? 0;
+          const pts = Number(data.gwPoints || 0);
+          // Map by any field that might hold the player's ID/UUID
+          if (data.playerId) statsMap[data.playerId] = pts;
+          if (data.playerID) statsMap[data.playerID] = pts;
+          if (data.ID) statsMap[data.ID] = pts;
+          if (data.id) statsMap[data.id] = pts;
         });
         setMatchStats(statsMap);
       } catch (err) { 
@@ -123,13 +119,16 @@ export default function TeamPage() {
   }, [selectedGW]);
 
   const currentTeam = gwTeams.find((t) => t.gameweek === selectedGW);
-  const availableGWs = Array.from(new Set(gwTeams.map(t => t.gameweek))).filter(gw => gw <= CURRENT_GW).sort((a, b) => b - a);
+  const availableGWs = Array.from(new Set(gwTeams.map(t => t.gameweek)))
+    .filter(gw => gw <= CURRENT_GW)
+    .sort((a, b) => b - a);
+    
   const playerIds = currentTeam ? [currentTeam.player1, currentTeam.player2, currentTeam.player3, currentTeam.player4].filter(Boolean) : [];
   
   const getPlayer = (id: string) => players[id];
   const getPoints = (id: string) => {
     const p = players[id];
-    // Return stats for this GW, or 0 if not found
+    // Check matchStats by direct ID or by the internal UUID (p.ID)
     return matchStats[id] ?? (p?.ID ? matchStats[p.ID] : 0);
   };
   const isCaptain = (id: string) => currentTeam?.captain === id;
@@ -150,7 +149,6 @@ export default function TeamPage() {
 
         {currentTeam ? (
           <div>
-            {/* Points Summary Header */}
             <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "10px", padding: "1rem 1.5rem", marginBottom: "2rem", display: "flex", gap: "2rem", flexWrap: "wrap" }}>
               <div>
                 <div style={{ color: "var(--text-muted)", fontSize: "0.75rem" }}>GW Points</div>
@@ -162,20 +160,16 @@ export default function TeamPage() {
               </div>
               <div>
                 <div style={{ color: "var(--text-muted)", fontSize: "0.75rem" }}>Penalty</div>
-                <div style={{ fontWeight: 700, fontSize: "1.4rem", color: currentTeam.transferPenalty ? "var(--red)" : "var(--text)" }}>
-                  {currentTeam.transferPenalty ?? 0}
-                </div>
+                <div style={{ fontWeight: 700, fontSize: "1.4rem", color: currentTeam.transferPenalty ? "var(--red)" : "var(--text)" }}>{currentTeam.transferPenalty ?? 0}</div>
               </div>
             </div>
 
-            {/* Squad Row (4 players) */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "1rem", marginBottom: "2rem" }}>
               {playerIds.map((pid, i) => (
                 <PlayerCard key={i} player={getPlayer(pid)!} points={getPoints(pid)} isCaptain={isCaptain(pid)} />
               ))}
             </div>
             
-            {/* Centered Substitute */}
             {currentTeam.sub && getPlayer(currentTeam.sub) && (
               <div style={{ display: "flex", justifyContent: "center" }}>
                 <div style={{ width: "23.5%" }}>
