@@ -57,6 +57,7 @@ export default function TeamPage() {
   const [currentGW, setCurrentGW] = useState<number>(7);
   const [selectedGW, setSelectedGW] = useState<number>(7);
   const [loading, setLoading] = useState(true);
+  const [isLocked, setIsLocked] = useState(false);
 
   // 1. Load Players, Teams, and Settings
   useEffect(() => {
@@ -67,9 +68,15 @@ export default function TeamPage() {
         const settingsSnap = await getDocs(collection(db, "settings"));
         let activeGW = 7;
         if (!settingsSnap.empty) {
-          activeGW = settingsSnap.docs[0].data().currentGameweek || 7;
+          const data = settingsSnap.docs[0].data();
+          activeGW = data.currentGameweek || 7;
           setCurrentGW(activeGW);
           setSelectedGW(activeGW);
+          if (data.lockTeamLeaderboard) {
+            setIsLocked(true);
+            setLoading(false);
+            return;
+          }
         }
 
         const playersSnap = await getDocs(collection(db, "players"));
@@ -136,6 +143,16 @@ export default function TeamPage() {
   const isCaptain = (id: string) => currentTeam?.captain === id;
 
   if (loading && Object.keys(players).length === 0) return <Shell><p style={{ padding: "2rem" }}>Loading team...</p></Shell>;
+
+  if (isLocked) return (
+    <Shell>
+      <div style={{ maxWidth: "800px", margin: "4rem auto", textAlign: "center" }}>
+        <div style={{ fontSize: "3rem", marginBottom: "1rem" }}>🔒</div>
+        <h1 style={{ fontSize: "1.5rem", fontWeight: 700, marginBottom: "0.5rem" }}>My Team is Locked</h1>
+        <p style={{ color: "var(--text-muted)" }}>Access to your team history is currently restricted by the admin.</p>
+      </div>
+    </Shell>
+  );
 
   return (
     <Shell>
