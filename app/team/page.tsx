@@ -43,8 +43,8 @@ function PlayerCard({ player, points, isCaptain, isSub }: { player: Player; poin
       </div>
 
       <div style={{ fontWeight: 700, fontSize: "0.85rem", marginBottom: "0.1rem", width: "100%", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{player.name}</div>
-      <div style={{ fontSize: "0.8rem", color: "var(--accent)", fontWeight: 700, marginBottom: "0.2rem" }}>
-        {isCaptain ? points * 2 : points} pts {isCaptain && "(x2)"}
+      <div style={{ fontSize: "0.85rem", color: "var(--accent)", fontWeight: 700, marginBottom: "0.2rem" }}>
+        {isCaptain ? (points * 2) : points} pts {isCaptain && "(x2)"}
       </div>
       <div style={{ fontSize: "0.65rem", color: isUnfit ? "var(--red)" : "var(--text-muted)", height: "1.5rem", overflow: "hidden", fontWeight: isUnfit ? 600 : 400 }}>{player.desc}</div>
     </div>
@@ -59,7 +59,6 @@ export default function TeamPage() {
   const [selectedGW, setSelectedGW] = useState<number>(CURRENT_GW);
   const [loading, setLoading] = useState(true);
 
-  // Load Players and Teams
   useEffect(() => {
     async function loadBaseData() {
       if (!user?.email) return;
@@ -82,17 +81,15 @@ export default function TeamPage() {
           const validTeams = teams.filter(t => t.gameweek <= CURRENT_GW);
           if (validTeams.length > 0) setSelectedGW(validTeams[0].gameweek);
         }
-      } catch (err) { console.error(err); }
+      } catch (err) { console.error("Error loading players/teams:", err); }
     }
     loadBaseData();
   }, [user]);
 
-  // Load Match Stats when selectedGW changes
   useEffect(() => {
     async function loadStats() {
       setLoading(true);
       try {
-        // Query handling both number and string gameweek types
         const statsSnap = await getDocs(query(
           collection(db, "playerMatchStats"), 
           where("gameweek", "in", [selectedGW, String(selectedGW)])
@@ -101,16 +98,20 @@ export default function TeamPage() {
         const statsMap: Record<string, number> = {};
         statsSnap.docs.forEach(d => {
           const data = d.data();
-          const pts = Number(data.gwPoints || 0);
-          // Map by any field that might hold the player's ID/UUID
+          // Support both camelCase and lowercase field names
+          const pts = Number(data.gwPoints ?? data.gwpoints ?? 0);
+          
+          // Map by every possible identifier to ensure a hit
           if (data.playerId) statsMap[data.playerId] = pts;
           if (data.playerID) statsMap[data.playerID] = pts;
+          if (data.playerName) statsMap[data.playerName] = pts;
+          if (data.riotId) statsMap[data.riotId] = pts;
           if (data.ID) statsMap[data.ID] = pts;
           if (data.id) statsMap[data.id] = pts;
         });
         setMatchStats(statsMap);
       } catch (err) { 
-        console.error("Error loading match stats:", err); 
+        console.error("Error loading stats:", err); 
       } finally { 
         setLoading(false); 
       }
@@ -119,21 +120,18 @@ export default function TeamPage() {
   }, [selectedGW]);
 
   const currentTeam = gwTeams.find((t) => t.gameweek === selectedGW);
-  const availableGWs = Array.from(new Set(gwTeams.map(t => t.gameweek)))
-    .filter(gw => gw <= CURRENT_GW)
-    .sort((a, b) => b - a);
-    
+  const availableGWs = Array.from(new Set(gwTeams.map(t => t.gameweek))).filter(gw => gw <= CURRENT_GW).sort((a, b) => b - a);
   const playerIds = currentTeam ? [currentTeam.player1, currentTeam.player2, currentTeam.player3, currentTeam.player4].filter(Boolean) : [];
   
   const getPlayer = (id: string) => players[id];
   const getPoints = (id: string) => {
     const p = players[id];
-    // Check matchStats by direct ID or by the internal UUID (p.ID)
-    return matchStats[id] ?? (p?.ID ? matchStats[p.ID] : 0);
+    // Check by document ID, internal UUID, or Player Name
+    return matchStats[id] ?? (p?.ID ? matchStats[p.ID] : 0) ?? (p?.name ? matchStats[p.name] : 0);
   };
   const isCaptain = (id: string) => currentTeam?.captain === id;
 
-  if (loading && Object.keys(players).length === 0) return <Shell><p style={{ padding: "2rem" }}>Loading...</p></Shell>;
+  if (loading && Object.keys(players).length === 0) return <Shell><p style={{ padding: "2rem" }}>Loading team...</p></Shell>;
 
   return (
     <Shell>
