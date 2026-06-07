@@ -6,13 +6,24 @@ import { collection, getDocs, query, where, orderBy, doc, updateDoc, addDoc } fr
 import { useAuth } from "@/lib/AuthContext";
 import Shell from "@/app/shell";
 
-type Player = { id: string; name: string; game: string; price: number; points: number; totalPoints: number; desc: string; };
+type Player = { id: string; name: string; game: string; price: number; points: number; totalPoints: number; desc: string; image?: string; };
 type GWTeam = { id: string; gameweek: number; player1: string; player2: string; player3: string; player4: string; captain: string; sub: string; gwPoints: number; transfersMade: number; transferPenalty: number; ownerEmail: string; };
 type UserTeam = { id: string; Bank: number; freeTransfers: number; namez: string; ownerEmail: string; };
 
 const NEXT_GW = 8;
 
-function Avatar({ name, size = 48 }: { name: string; size?: number }) {
+function Avatar({ name, image, size = 48 }: { name: string; image?: string; size?: number }) {
+  if (image) {
+    return (
+      <img 
+        src={image} 
+        alt={name} 
+        style={{ width: size, height: size, borderRadius: "8px", objectFit: "cover", flexShrink: 0, background: "var(--surface)" }}
+        onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+      />
+    );
+  }
+
   const initials = name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
   const colors = ["#0347F4", "#7c3aed", "#0891b2", "#059669", "#d97706"];
   const color = colors[name.charCodeAt(0) % colors.length];
@@ -45,8 +56,10 @@ export default function TransfersPage() {
       const map: Record<string, Player> = {};
       const list: Player[] = [];
       playersSnap.docs.forEach(d => {
-        const p = { id: d.id, ...d.data() } as Player;
+        const data = d.data();
+        const p = { id: d.id, ...data } as Player;
         map[d.id] = p;
+        if (data.ID) map[data.ID] = p;
         list.push(p);
       });
       setPlayerMap(map);
@@ -213,7 +226,7 @@ export default function TransfersPage() {
                 const name = p?.name ?? pid;
                 return (
                   <div key={pid} style={{ background: "var(--surface)", border: `1px solid ${captain === pid ? "var(--blue)" : "var(--border)"}`, borderRadius: "10px", padding: "0.75rem", display: "flex", alignItems: "center", gap: "0.75rem" }}>
-                    <Avatar name={name} size={44} />
+                    <Avatar name={name} image={p?.image} size={44} />
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontWeight: 700, fontSize: "0.95rem", display: "flex", alignItems: "center", gap: "0.4rem" }}>
                         {name}
@@ -253,7 +266,7 @@ export default function TransfersPage() {
             <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "10px", padding: "0.75rem", marginBottom: "1.5rem", minHeight: "68px", display: "flex", alignItems: "center" }}>
               {sub && getPlayer(sub) ? (
                 <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", width: "100%" }}>
-                  <Avatar name={getPlayer(sub)!.name} size={44} />
+                  <Avatar name={getPlayer(sub)!.name} image={getPlayer(sub)!.image} size={44} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: 700, fontSize: "0.95rem", display: "flex", alignItems: "center", gap: "0.4rem" }}>
                       {getPlayer(sub)!.name}
@@ -302,7 +315,7 @@ export default function TransfersPage() {
                 const canAfford = selected || remaining >= p.price;
                 return (
                   <div key={p.id} onClick={() => canAfford && handlePlayerClick(p)} style={{ background: selected ? "rgba(3,71,244,0.08)" : "var(--surface)", border: `1px solid ${inSquad ? "var(--blue)" : isSub ? "#555" : "var(--border)"}`, borderRadius: "8px", padding: "0.65rem 0.85rem", display: "flex", alignItems: "center", gap: "0.75rem", cursor: canAfford ? "pointer" : "not-allowed", opacity: canAfford ? 1 : 0.4 }}>
-                    <Avatar name={p.name} size={36} />
+                    <Avatar name={p.name} image={p.image} size={36} />
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontWeight: 600, fontSize: "0.875rem", display: "flex", alignItems: "center", gap: "0.35rem" }}>
                         {p.name}
