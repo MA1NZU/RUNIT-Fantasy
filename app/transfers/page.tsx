@@ -19,7 +19,7 @@ function PlayerCard({
   onCaptain, 
   onSub, 
   onRemove,
-  showDesc = true 
+  compact = false
 }: { 
   player: Player; 
   isCaptain?: boolean; 
@@ -27,70 +27,58 @@ function PlayerCard({
   onCaptain?: () => void; 
   onSub?: () => void; 
   onRemove?: () => void;
-  showDesc?: boolean;
+  compact?: boolean;
 }) {
   return (
     <div style={{ 
       background: "var(--surface)", 
       border: `1px solid ${isCaptain ? "var(--blue)" : "var(--border)"}`, 
       borderRadius: "12px", 
-      padding: "0.6rem",
+      padding: compact ? "0.4rem" : "0.6rem",
       display: "flex",
       flexDirection: "column",
       alignItems: "center",
       textAlign: "center",
       position: "relative",
-      transition: "transform 0.2s"
+      width: "100%",
+      minWidth: 0
     }}>
-      {/* Badge container */}
-      <div style={{ position: "absolute", top: "0.5rem", left: "0.5rem", display: "flex", flexDirection: "column", gap: "0.25rem", zIndex: 2 }}>
-        {isCaptain && <span style={{ background: "var(--blue)", color: "#fff", fontSize: "0.6rem", fontWeight: 700, padding: "0.15rem 0.4rem", borderRadius: "4px" }}>C</span>}
-        {isSub && <span style={{ background: "#333", color: "#fff", fontSize: "0.6rem", fontWeight: 700, padding: "0.15rem 0.4rem", borderRadius: "4px" }}>SUB</span>}
+      <div style={{ position: "absolute", top: "0.4rem", left: "0.4rem", display: "flex", flexDirection: "column", gap: "0.2rem", zIndex: 2 }}>
+        {isCaptain && <span style={{ background: "var(--blue)", color: "#fff", fontSize: "0.55rem", fontWeight: 700, padding: "0.1rem 0.3rem", borderRadius: "3px" }}>C</span>}
+        {isSub && <span style={{ background: "#333", color: "#fff", fontSize: "0.55rem", fontWeight: 700, padding: "0.1rem 0.3rem", borderRadius: "3px" }}>SUB</span>}
       </div>
 
-      {/* Image */}
-      <div style={{ width: "100%", aspectRatio: "1/1", borderRadius: "8px", overflow: "hidden", background: "#222", marginBottom: "0.6rem" }}>
+      <div style={{ width: "100%", aspectRatio: "1/1", borderRadius: "8px", overflow: "hidden", background: "#222", marginBottom: "0.5rem" }}>
         {player.image ? (
           <img src={player.image} alt={player.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
         ) : (
-          <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.5rem", fontWeight: 700, color: "#444" }}>
+          <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.2rem", fontWeight: 700, color: "#444" }}>
             {player.name.slice(0, 2).toUpperCase()}
           </div>
         )}
       </div>
 
-      {/* Info */}
-      <div style={{ fontWeight: 700, fontSize: "0.9rem", marginBottom: "0.2rem", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", width: "100%" }}>
+      <div style={{ fontWeight: 700, fontSize: "0.8rem", marginBottom: "0.1rem", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", width: "100%" }}>
         {player.name}
       </div>
-      <div style={{ color: "var(--accent)", fontWeight: 700, fontSize: "0.85rem", marginBottom: "0.2rem" }}>
+      <div style={{ color: "var(--accent)", fontWeight: 700, fontSize: "0.75rem", marginBottom: "0.2rem" }}>
         {player.price}
       </div>
-      {showDesc && (
-        <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", marginBottom: "0.6rem" }}>
+      {!compact && (
+        <div style={{ fontSize: "0.65rem", color: "var(--text-muted)", marginBottom: "0.5rem", height: "1.6rem", overflow: "hidden" }}>
           {player.desc}
         </div>
       )}
 
-      {/* Actions */}
-      <div style={{ display: "flex", gap: "0.3rem", width: "100%", marginTop: "auto" }}>
+      <div style={{ display: "flex", gap: "0.25rem", width: "100%", marginTop: "auto" }}>
         {onCaptain && (
-          <button 
-            onClick={onCaptain}
-            style={{ flex: 1, background: isCaptain ? "var(--blue)" : "var(--surface)", color: isCaptain ? "#fff" : "var(--text-muted)", border: "1px solid var(--border)", borderRadius: "4px", padding: "0.25rem 0", fontSize: "0.65rem", fontWeight: 700, cursor: "pointer" }}
-          >C</button>
+          <button onClick={(e) => { e.stopPropagation(); onCaptain(); }} style={{ flex: 1, background: isCaptain ? "var(--blue)" : "var(--surface)", color: isCaptain ? "#fff" : "var(--text-muted)", border: "1px solid var(--border)", borderRadius: "4px", padding: "0.2rem 0", fontSize: "0.6rem", fontWeight: 700, cursor: "pointer" }}>C</button>
         )}
         {onSub && (
-          <button 
-            onClick={onSub}
-            style={{ flex: 1, background: "var(--surface)", color: "var(--text-muted)", border: "1px solid var(--border)", borderRadius: "4px", padding: "0.25rem 0", fontSize: "0.65rem", fontWeight: 700, cursor: "pointer" }}
-          >SUB</button>
+          <button onClick={(e) => { e.stopPropagation(); onSub(); }} style={{ flex: 1, background: "var(--surface)", color: "var(--text-muted)", border: "1px solid var(--border)", borderRadius: "4px", padding: "0.2rem 0", fontSize: "0.6rem", fontWeight: 700, cursor: "pointer" }}>SUB</button>
         )}
         {onRemove && (
-          <button 
-            onClick={onRemove}
-            style={{ flex: 0.5, background: "transparent", color: "var(--red)", border: "1px solid var(--border)", borderRadius: "4px", cursor: "pointer" }}
-          >✕</button>
+          <button onClick={(e) => { e.stopPropagation(); onRemove(); }} style={{ flex: 0.4, background: "transparent", color: "var(--red)", border: "1px solid var(--border)", borderRadius: "4px", cursor: "pointer", fontSize: "0.7rem" }}>✕</button>
         )}
       </div>
     </div>
@@ -111,6 +99,7 @@ export default function TransfersPage() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   useEffect(() => {
     if (!user?.email) return;
@@ -168,25 +157,17 @@ export default function TransfersPage() {
   const freeTransfers = userTeam?.freeTransfers ?? 1;
   const penalty = Math.max(0, transfersMade - freeTransfers) * 4;
 
-  const handlePlayerClick = (p: Player) => {
-    setError("");
-    if (squad.includes(p.id)) {
-      setSquad(squad.filter(id => id !== p.id));
-      if (captain === p.id) setCaptain("");
-      return;
-    }
-    if (sub === p.id) { setSub(""); return; }
-
-    const newCost = totalCost + p.price;
-    if (newCost > budget) { setError(`Not enough budget for ${p.name}.`); return; }
-
+  const handlePlayerSelect = (p: Player) => {
+    if (allSelected.includes(p.id)) return;
+    if (totalCost + p.price > budget) { setError(`Budget exceeded.`); return; }
+    
     if (squad.length < 4) {
-      setSquad(prev => [...prev, p.id]);
+      setSquad([...squad, p.id]);
     } else if (!sub) {
       setSub(p.id);
-    } else {
-      setError("Squad is full. Remove a player first.");
     }
+    setIsModalOpen(false);
+    setError("");
   };
 
   const removeFromSquad = (id: string) => {
@@ -202,144 +183,89 @@ export default function TransfersPage() {
     if (captain === pid) setCaptain("");
   };
 
-  const makeStarter = () => {
-    if (!sub) return;
-    if (squad.length < 4) {
-      setSquad(prev => [...prev, sub]);
-      setSub("");
-    } else {
-      setError("Squad is full. Swap a player to make them a starter.");
-    }
-  };
-
   const handleSave = async () => {
-    if (squad.length !== 4) { setError("You need exactly 4 players."); return; }
-    if (!captain || !squad.includes(captain)) { setError("Set a captain from your 4 players."); return; }
-    if (!sub) { setError("Set a substitute."); return; }
-    if (remaining < 0) { setError("You are over budget."); return; }
-
+    if (squad.length !== 4 || !sub || !captain) { setError("Complete your squad first."); return; }
     setSaving(true);
-    setError("");
-    const data = { 
-      player1: squad[0], player2: squad[1], player3: squad[2], player4: squad[3], 
-      captain, sub, gameweek: NEXT_GW, ownerEmail: user!.email, 
-      gwPoints: 0, transfersMade, transferPenalty: penalty 
-    };
-
+    const data = { player1: squad[0], player2: squad[1], player3: squad[2], player4: squad[3], captain, sub, gameweek: NEXT_GW, ownerEmail: user!.email, gwPoints: 0, transfersMade, transferPenalty: penalty };
     try {
-      if (nextGWTeam) {
-        await updateDoc(doc(db, "gameweekTeams", nextGWTeam.id), data);
-      } else {
+      if (nextGWTeam) await updateDoc(doc(db, "gameweekTeams", nextGWTeam.id), data);
+      else {
         const snap = await addDoc(collection(db, "gameweekTeams"), data);
         setNextGWTeam({ id: snap.id, ...data } as GWTeam);
       }
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
-    } catch {
-      setError("Failed to save. Please try again.");
-    }
+    } catch { setError("Failed to save."); }
     setSaving(false);
   };
 
-  if (loading) return (
-    <Shell>
-      <div style={{ maxWidth: "1000px", margin: "0 auto" }}>
-        <h1 style={{ fontSize: "2rem", fontWeight: 700, marginBottom: "2rem" }}>Transfers</h1>
-        <p style={{ color: "var(--text-muted)" }}>Loading...</p>
-      </div>
-    </Shell>
-  );
+  if (loading) return <Shell><p style={{ padding: "2rem" }}>Loading...</p></Shell>;
 
   return (
     <Shell>
-      <div style={{ maxWidth: "1100px", margin: "0 auto" }}>
-        <h1 style={{ fontSize: "2rem", fontWeight: 700, marginBottom: "0.5rem" }}>Transfers</h1>
-        <p style={{ color: "var(--text-muted)", marginBottom: "2rem", fontSize: "0.9rem" }}>Building your squad for Gameweek {NEXT_GW}</p>
-        
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "2rem" }}>
+      <div style={{ maxWidth: "1000px", margin: "0 auto" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: "2rem" }}>
           <div>
-            <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "10px", padding: "1rem", marginBottom: "1.5rem", display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "0.75rem" }}>
-              <div>
-                <div style={{ color: "var(--text-muted)", fontSize: "0.7rem", letterSpacing: "1px", textTransform: "uppercase" }}>Bank</div>
-                <div style={{ fontWeight: 700, fontSize: "1.1rem" }}>{remaining.toFixed(1)}</div>
-                <div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>of {budget.toFixed(1)}</div>
-              </div>
-              <div>
-                <div style={{ color: "var(--text-muted)", fontSize: "0.7rem", letterSpacing: "1px", textTransform: "uppercase" }}>Squad</div>
-                <div style={{ fontWeight: 700, fontSize: "1.1rem", color: squadCount === 5 ? "var(--accent)" : "var(--text)" }}>{squadCount}/5</div>
-              </div>
-              <div>
-                <div style={{ color: "var(--text-muted)", fontSize: "0.7rem", letterSpacing: "1px", textTransform: "uppercase" }}>Penalty</div>
-                <div style={{ fontWeight: 700, fontSize: "1.1rem", color: penalty > 0 ? "var(--red)" : "var(--text)" }}>{penalty > 0 ? `-${penalty} pts` : "None"}</div>
-              </div>
-            </div>
-
-            <div style={{ color: "var(--text-muted)", fontSize: "0.7rem", letterSpacing: "1px", textTransform: "uppercase", marginBottom: "0.75rem" }}>
-              Squad ({squad.length}/4)
-            </div>
-
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem", marginBottom: "1.25rem" }}>
-              {squad.map(pid => {
-                const p = getPlayer(pid);
-                if (!p) return null;
-                return (
-                  <PlayerCard 
-                    key={pid}
-                    player={p}
-                    isCaptain={captain === pid}
-                    onCaptain={() => setCaptain(pid === captain ? "" : pid)}
-                    onSub={() => swapWithSub(pid)}
-                    onRemove={() => removeFromSquad(pid)}
-                  />
-                );
-              })}
-              {squad.length < 4 && Array.from({ length: 4 - squad.length }).map((_, i) => (
-                <div key={i} style={{ aspectRatio: "2/3", border: "1px dashed var(--border)", borderRadius: "12px", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", fontSize: "0.8rem" }}>
-                  Add Player
-                </div>
-              ))}
-            </div>
-
-            <div style={{ color: "var(--text-muted)", fontSize: "0.7rem", letterSpacing: "1px", textTransform: "uppercase", marginBottom: "0.5rem" }}>Substitute</div>
-            <div style={{ marginBottom: "1.5rem" }}>
-              {sub && getPlayer(sub) ? (
-                <div style={{ width: "50%" }}>
-                  <PlayerCard 
-                    player={getPlayer(sub)!}
-                    isSub={true}
-                    onCaptain={makeStarter}
-                    onRemove={() => setSub("")}
-                  />
-                </div>
-              ) : (
-                <div style={{ background: "var(--surface)", border: "1px dashed var(--border)", borderRadius: "12px", padding: "1.5rem", textAlign: "center", color: "var(--text-muted)", fontSize: "0.85rem" }}>
-                  {squad.length === 4 ? "Select sub →" : "Fill squad first"}
-                </div>
-              )}
-            </div>
-
-            {error && <p style={{ color: "var(--red)", fontSize: "0.85rem", marginBottom: "1rem" }}>{error}</p>}
-            
-            <button onClick={handleSave} disabled={saving} style={{ width: "100%", background: saved ? "var(--green)" : "var(--blue)", color: "#fff", fontWeight: 700, padding: "0.75rem", borderRadius: "8px", border: "none", fontSize: "1rem", cursor: "pointer" }}>
-              {saving ? "Saving..." : saved ? "✓ Saved!" : `Save GW${NEXT_GW} Squad`}
-            </button>
+            <h1 style={{ fontSize: "2rem", fontWeight: 700 }}>Transfers</h1>
+            <p style={{ color: "var(--text-muted)" }}>Gameweek {NEXT_GW}</p>
           </div>
-
-          <div>
-            <h2 style={{ fontSize: "1.1rem", fontWeight: 700, marginBottom: "1rem" }}>All Players</h2>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem", maxHeight: "80vh", overflowY: "auto", paddingRight: "0.5rem" }}>
-              {allPlayers.map(p => {
-                const selected = squad.includes(p.id) || sub === p.id;
-                const canAfford = selected || remaining >= p.price;
-                return (
-                  <div key={p.id} onClick={() => canAfford && handlePlayerClick(p)} style={{ cursor: canAfford ? "pointer" : "not-allowed", opacity: canAfford ? 1 : 0.4 }}>
-                    <PlayerCard player={p} isCaptain={captain === p.id} isSub={sub === p.id} showDesc={false} />
-                  </div>
-                );
-              })}
-            </div>
+          <div style={{ display: "flex", gap: "1.5rem", background: "var(--surface)", padding: "0.75rem 1.5rem", borderRadius: "12px", border: "1px solid var(--border)" }}>
+            <div style={{ textAlign: "center" }}><div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>BANK</div><div style={{ fontWeight: 700 }}>{remaining.toFixed(1)}</div></div>
+            <div style={{ textAlign: "center" }}><div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>PENALTY</div><div style={{ fontWeight: 700, color: penalty > 0 ? "var(--red)" : "inherit" }}>{penalty > 0 ? `-${penalty}` : "0"}</div></div>
           </div>
         </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "1rem", marginBottom: "1.5rem" }}>
+          {[0, 1, 2, 3].map(i => {
+            const pid = squad[i];
+            const p = pid ? getPlayer(pid) : null;
+            return p ? (
+              <PlayerCard key={pid} player={p} isCaptain={captain === pid} onCaptain={() => setCaptain(pid === captain ? "" : pid)} onSub={() => swapWithSub(pid)} onRemove={() => removeFromSquad(pid)} />
+            ) : (
+              <div key={i} onClick={() => setIsModalOpen(true)} style={{ aspectRatio: "2/3", border: "1px dashed var(--border)", borderRadius: "12px", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "var(--text-muted)", fontSize: "0.8rem", textAlign: "center", flexDirection: "column", gap: "0.5rem" }}>
+                <span style={{ fontSize: "1.5rem" }}>+</span> Add Player
+              </div>
+            );
+          })}
+        </div>
+
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: "2rem" }}>
+          <div style={{ width: "23.5%" }}>
+            <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", textAlign: "center", marginBottom: "0.5rem", textTransform: "uppercase" }}>Substitute</div>
+            {sub && getPlayer(sub) ? (
+              <PlayerCard player={getPlayer(sub)!} isSub={true} onCaptain={() => { setSquad([...squad, sub]); setSub(""); }} onRemove={() => setSub("")} />
+            ) : (
+              <div onClick={() => setIsModalOpen(true)} style={{ aspectRatio: "2/3", border: "1px dashed var(--border)", borderRadius: "12px", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "var(--text-muted)", fontSize: "0.8rem" }}>+ Add Sub</div>
+            )}
+          </div>
+        </div>
+
+        {error && <p style={{ color: "var(--red)", textAlign: "center", marginBottom: "1rem" }}>{error}</p>}
+        <button onClick={handleSave} disabled={saving} style={{ width: "100%", background: saved ? "var(--green)" : "var(--blue)", color: "#fff", fontWeight: 700, padding: "1rem", borderRadius: "12px", border: "none", fontSize: "1rem", cursor: "pointer" }}>
+          {saving ? "Saving..." : saved ? "✓ Saved!" : `Save GW${NEXT_GW} Squad`}
+        </button>
+
+        {isModalOpen && (
+          <div style={{ position: "fixed", top: 0, left: 0, width: "100%", height: "100%", background: "rgba(0,0,0,0.85)", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", padding: "2rem" }}>
+            <div style={{ background: "var(--background)", border: "1px solid var(--border)", borderRadius: "20px", width: "100%", maxWidth: "800px", maxHeight: "85vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+              <div style={{ padding: "1.5rem", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <h2 style={{ fontSize: "1.25rem", fontWeight: 700 }}>Add Player</h2>
+                <button onClick={() => setIsModalOpen(false)} style={{ background: "none", border: "none", color: "var(--text)", fontSize: "1.5rem", cursor: "pointer" }}>✕</button>
+              </div>
+              <div style={{ padding: "1rem", overflowY: "auto", display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: "1rem" }}>
+                {allPlayers.map(p => {
+                  const isSelected = allSelected.includes(p.id);
+                  const canAfford = isSelected || remaining >= p.price;
+                  return (
+                    <div key={p.id} onClick={() => !isSelected && canAfford && handlePlayerSelect(p)} style={{ opacity: isSelected ? 0.4 : canAfford ? 1 : 0.3, cursor: isSelected || !canAfford ? "not-allowed" : "pointer" }}>
+                      <PlayerCard player={p} compact={true} />
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </Shell>
   );
