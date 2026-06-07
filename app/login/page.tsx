@@ -52,11 +52,7 @@ export default function LoginPage() {
       await resetPassword(email);
       setMessage("Password reset email sent! Check your inbox.");
     } catch (err: any) {
-      if (err.code === "auth/user-not-found") {
-        setError("No user found with this email.");
-      } else {
-        setError("Failed to send reset email. Please try again.");
-      }
+      setError("Failed to send reset email. Verify your email is correct.");
     }
     setLoading(false);
   };
