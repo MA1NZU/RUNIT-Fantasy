@@ -134,6 +134,7 @@ export default function TransfersPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [nextGW, setNextGW] = useState<number>(8);
   const [deadline, setDeadline] = useState<string>("");
+  const [isLocked, setIsLocked] = useState(false);
 
   useEffect(() => {
     if (!user?.email) return;
@@ -146,6 +147,11 @@ export default function TransfersPage() {
         activeNextGW = (s.currentGameweek || 7) + 1;
         setNextGW(activeNextGW);
         setDeadline(s.deadline || "");
+        if (s.lockTransfers) {
+          setIsLocked(true);
+          setLoading(false);
+          return;
+        }
       }
 
       const playersSnap = await getDocs(collection(db, "players"));
@@ -242,6 +248,16 @@ export default function TransfersPage() {
   };
 
   if (loading) return <Shell><p style={{ padding: "2rem" }}>Loading...</p></Shell>;
+
+  if (isLocked) return (
+    <Shell>
+      <div style={{ maxWidth: "800px", margin: "4rem auto", textAlign: "center" }}>
+        <div style={{ fontSize: "3rem", marginBottom: "1rem" }}>🔒</div>
+        <h1 style={{ fontSize: "1.5rem", fontWeight: 700, marginBottom: "0.5rem" }}>Squad Building is Locked</h1>
+        <p style={{ color: "var(--text-muted)" }}>Transfer market is currently closed by the admin.</p>
+      </div>
+    </Shell>
+  );
 
   return (
     <Shell>
