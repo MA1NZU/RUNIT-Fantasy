@@ -62,7 +62,7 @@ function PlayerCard({
         {player.name}
       </div>
       <div style={{ color: "var(--accent)", fontWeight: 700, fontSize: "0.75rem", marginBottom: "0.2rem" }}>
-        {player.price}
+        {player.price}m
       </div>
       {!compact && (
         <div style={{ fontSize: "0.65rem", color: "var(--text-muted)", marginBottom: "0.5rem", height: "1.6rem", overflow: "hidden" }}>
@@ -210,7 +210,8 @@ export default function TransfersPage() {
             <p style={{ color: "var(--text-muted)" }}>Gameweek {NEXT_GW}</p>
           </div>
           <div style={{ display: "flex", gap: "1.5rem", background: "var(--surface)", padding: "0.75rem 1.5rem", borderRadius: "12px", border: "1px solid var(--border)" }}>
-            <div style={{ textAlign: "center" }}><div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>BANK</div><div style={{ fontWeight: 700 }}>{remaining.toFixed(1)}</div></div>
+            <div style={{ textAlign: "center" }}><div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>BANK</div><div style={{ fontWeight: 700 }}>{remaining.toFixed(1)}m</div></div>
+            <div style={{ textAlign: "center" }}><div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>BUDGET</div><div style={{ fontWeight: 700 }}>{budget.toFixed(1)}m</div></div>
             <div style={{ textAlign: "center" }}><div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>PENALTY</div><div style={{ fontWeight: 700, color: penalty > 0 ? "var(--red)" : "inherit" }}>{penalty > 0 ? `-${penalty}` : "0"}</div></div>
           </div>
         </div>
