@@ -1,4 +1,5 @@
 "use client";
+
 import { useEffect, useState } from "react";
 import { db } from "@/lib/firebase";
 import { collection, getDocs, query, where, orderBy, doc, updateDoc, addDoc } from "firebase/firestore";
@@ -12,7 +13,7 @@ type UserTeam = { id: string; Bank: number; freeTransfers: number; namez: string
 const NEXT_GW = 8;
 
 function Avatar({ name, size = 48 }: { name: string; size?: number }) {
-  const initials = name.split(" ").map(function(w) { return w[0]; }).join("").slice(0, 2).toUpperCase();
+  const initials = name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
   const colors = ["#0347F4", "#7c3aed", "#0891b2", "#059669", "#d97706"];
   const color = colors[name.charCodeAt(0) % colors.length];
   return (
@@ -37,19 +38,19 @@ export default function TransfersPage() {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
 
-  useEffect(function() {
+  useEffect(() => {
     if (!user?.email) return;
-    const load = async function() {
+    const load = async () => {
       const playersSnap = await getDocs(collection(db, "players"));
       const map: Record<string, Player> = {};
       const list: Player[] = [];
-      playersSnap.docs.forEach(function(d) {
+      playersSnap.docs.forEach(d => {
         const p = { id: d.id, ...d.data() } as Player;
         map[d.id] = p;
         list.push(p);
       });
       setPlayerMap(map);
-      setAllPlayers(list.sort(function(a, b) { return (b.totalPoints ?? 0) - (a.totalPoints ?? 0); }));
+      setAllPlayers(list.sort((a, b) => (b.totalPoints ?? 0) - (a.totalPoints ?? 0)));
 
       const userTeamSnap = await getDocs(query(collection(db, "userTeams"), where("ownerEmail", "==", user.email)));
       if (!userTeamSnap.empty) {
@@ -57,9 +58,10 @@ export default function TransfersPage() {
       }
 
       const gwSnap = await getDocs(query(collection(db, "gameweekTeams"), where("ownerEmail", "==", user.email), orderBy("gameweek", "desc")));
-      const gwTeams = gwSnap.docs.map(function(d) { return { id: d.id, ...d.data() } as GWTeam; });
-      const current = gwTeams.find(function(t) { return t.gameweek === NEXT_GW - 1; });
-      const next = gwTeams.find(function(t) { return t.gameweek === NEXT_GW; });
+      const gwTeams = gwSnap.docs.map(d => ({ id: d.id, ...d.data() } as GWTeam));
+      const current = gwTeams.find(t => t.gameweek === NEXT_GW - 1);
+      const next = gwTeams.find(t => t.gameweek === NEXT_GW);
+
       setCurrentGWTeam(current ?? null);
       setNextGWTeam(next ?? null);
 
@@ -74,34 +76,36 @@ export default function TransfersPage() {
     load();
   }, [user]);
 
-  const getPlayer = function(id: string) { return playerMap[id]; };
+  const getPlayer = (id: string) => playerMap[id];
   const budget = userTeam?.Bank ?? 0;
   const allSelected = [...squad, ...(sub ? [sub] : [])];
-  const totalCost = allSelected.reduce(function(sum, id) { return sum + (getPlayer(id)?.price ?? 0); }, 0);
+  const totalCost = allSelected.reduce((sum, id) => sum + (getPlayer(id)?.price ?? 0), 0);
   const remaining = budget - totalCost;
   const squadCount = squad.length + (sub ? 1 : 0);
 
-  const transfersMade = function() {
+  const transfersMade = (() => {
     if (!currentGWTeam) return 0;
     const prev = [currentGWTeam.player1, currentGWTeam.player2, currentGWTeam.player3, currentGWTeam.player4, currentGWTeam.sub].filter(Boolean);
-    return allSelected.filter(function(id) { return !prev.includes(id); }).length;
-  }();
+    return allSelected.filter(id => !prev.includes(id)).length;
+  })();
 
   const freeTransfers = userTeam?.freeTransfers ?? 1;
   const penalty = Math.max(0, transfersMade - freeTransfers) * 4;
 
-  const handlePlayerClick = function(p: Player) {
+  const handlePlayerClick = (p: Player) => {
     setError("");
     if (squad.includes(p.id)) {
-      setSquad(squad.filter(function(id) { return id !== p.id; }));
+      setSquad(squad.filter(id => id !== p.id));
       if (captain === p.id) setCaptain("");
       return;
     }
     if (sub === p.id) { setSub(""); return; }
+
     const newCost = totalCost + p.price;
-    if (newCost > budget) { setError("Not enough budget for " + p.name + "."); return; }
+    if (newCost > budget) { setError(`Not enough budget for ${p.name}.`); return; }
+
     if (squad.length < 4) {
-      setSquad(function(prev) { return [...prev, p.id]; });
+      setSquad(prev => [...prev, p.id]);
     } else if (!sub) {
       setSub(p.id);
     } else {
@@ -109,19 +113,43 @@ export default function TransfersPage() {
     }
   };
 
-  const removeFromSquad = function(id: string) {
-    setSquad(squad.filter(function(p) { return p !== id; }));
+  const removeFromSquad = (id: string) => {
+    setSquad(squad.filter(p => p !== id));
     if (captain === id) setCaptain("");
   };
 
-  const handleSave = async function() {
+  const swapWithSub = (pid: string) => {
+    const currentSub = sub;
+    const newSquad = squad.map(id => id === pid ? currentSub : id).filter(Boolean);
+    setSquad(newSquad);
+    setSub(pid);
+    if (captain === pid) setCaptain("");
+  };
+
+  const makeStarter = () => {
+    if (!sub) return;
+    if (squad.length < 4) {
+      setSquad(prev => [...prev, sub]);
+      setSub("");
+    } else {
+      setError("Squad is full. Swap a player to make them a starter.");
+    }
+  };
+
+  const handleSave = async () => {
     if (squad.length !== 4) { setError("You need exactly 4 players."); return; }
     if (!captain || !squad.includes(captain)) { setError("Set a captain from your 4 players."); return; }
     if (!sub) { setError("Set a substitute."); return; }
     if (remaining < 0) { setError("You are over budget."); return; }
+
     setSaving(true);
     setError("");
-    const data = { player1: squad[0], player2: squad[1], player3: squad[2], player4: squad[3], captain, sub, gameweek: NEXT_GW, ownerEmail: user!.email, gwPoints: 0, transfersMade, transferPenalty: penalty };
+    const data = { 
+      player1: squad[0], player2: squad[1], player3: squad[2], player4: squad[3], 
+      captain, sub, gameweek: NEXT_GW, ownerEmail: user!.email, 
+      gwPoints: 0, transfersMade, transferPenalty: penalty 
+    };
+
     try {
       if (nextGWTeam) {
         await updateDoc(doc(db, "gameweekTeams", nextGWTeam.id), data);
@@ -130,7 +158,7 @@ export default function TransfersPage() {
         setNextGWTeam({ id: snap.id, ...data } as GWTeam);
       }
       setSaved(true);
-      setTimeout(function() { setSaved(false); }, 3000);
+      setTimeout(() => setSaved(false), 3000);
     } catch {
       setError("Failed to save. Please try again.");
     }
@@ -151,12 +179,9 @@ export default function TransfersPage() {
       <div style={{ maxWidth: "1100px", margin: "0 auto" }}>
         <h1 style={{ fontSize: "2rem", fontWeight: 700, marginBottom: "0.5rem" }}>Transfers</h1>
         <p style={{ color: "var(--text-muted)", marginBottom: "2rem", fontSize: "0.9rem" }}>Building your squad for Gameweek {NEXT_GW}</p>
-
+        
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "2rem" }}>
-
-          {/* LEFT — squad builder */}
           <div>
-            {/* Stats bar */}
             <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "10px", padding: "1rem", marginBottom: "1.5rem", display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "0.75rem" }}>
               <div>
                 <div style={{ color: "var(--text-muted)", fontSize: "0.7rem", letterSpacing: "1px", textTransform: "uppercase" }}>Bank</div>
@@ -169,27 +194,25 @@ export default function TransfersPage() {
               </div>
               <div>
                 <div style={{ color: "var(--text-muted)", fontSize: "0.7rem", letterSpacing: "1px", textTransform: "uppercase" }}>Penalty</div>
-                <div style={{ fontWeight: 700, fontSize: "1.1rem", color: penalty > 0 ? "var(--red)" : "var(--text)" }}>{penalty > 0 ? "-" + penalty + " pts" : "None"}</div>
+                <div style={{ fontWeight: 700, fontSize: "1.1rem", color: penalty > 0 ? "var(--red)" : "var(--text)" }}>{penalty > 0 ? `-${penalty} pts` : "None"}</div>
               </div>
             </div>
 
-            {/* Squad label */}
             <div style={{ color: "var(--text-muted)", fontSize: "0.7rem", letterSpacing: "1px", textTransform: "uppercase", marginBottom: "0.75rem" }}>
               Squad ({squad.length}/4)
             </div>
 
-            {/* Squad player cards */}
             <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem", marginBottom: "1.25rem" }}>
               {squad.length === 0 && (
                 <div style={{ background: "var(--surface)", border: "1px dashed var(--border)", borderRadius: "10px", padding: "1.5rem", color: "var(--text-muted)", fontSize: "0.9rem", textAlign: "center" }}>
                   Click players on the right to add them
                 </div>
               )}
-              {squad.map(function(pid) {
+              {squad.map(pid => {
                 const p = getPlayer(pid);
                 const name = p?.name ?? pid;
                 return (
-                  <div key={pid} style={{ background: "var(--surface)", border: "1px solid " + (captain === pid ? "var(--blue)" : "var(--border)"), borderRadius: "10px", padding: "0.75rem", display: "flex", alignItems: "center", gap: "0.75rem" }}>
+                  <div key={pid} style={{ background: "var(--surface)", border: `1px solid ${captain === pid ? "var(--blue)" : "var(--border)"}`, borderRadius: "10px", padding: "0.75rem", display: "flex", alignItems: "center", gap: "0.75rem" }}>
                     <Avatar name={name} size={44} />
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontWeight: 700, fontSize: "0.95rem", display: "flex", alignItems: "center", gap: "0.4rem" }}>
@@ -199,21 +222,35 @@ export default function TransfersPage() {
                       <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>{p?.game} · <span style={{ color: "var(--accent)" }}>{p?.price}</span></div>
                     </div>
                     <div style={{ display: "flex", gap: "0.35rem", flexShrink: 0 }}>
-                      <button onClick={function() { setCaptain(pid === captain ? "" : pid); }} style={{ background: captain === pid ? "var(--blue)" : "var(--surface)", color: captain === pid ? "#fff" : "var(--text-muted)", border: "1px solid var(--border)", borderRadius: "4px", padding: "0.2rem 0.5rem", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>C</button>
-                      <button onClick={function() { removeFromSquad(pid); }} style={{ background: "transparent", color: "var(--red)", border: "1px solid var(--border)", borderRadius: "4px", padding: "0.2rem 0.5rem", fontSize: "0.8rem", cursor: "pointer" }}>✕</button>
+                      <button 
+                        onClick={() => setCaptain(pid === captain ? "" : pid)} 
+                        title="Set Captain"
+                        style={{ background: captain === pid ? "var(--blue)" : "var(--surface)", color: captain === pid ? "#fff" : "var(--text-muted)", border: "1px solid var(--border)", borderRadius: "4px", padding: "0.2rem 0.5rem", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}
+                      >
+                        C
+                      </button>
+                      <button 
+                        onClick={() => swapWithSub(pid)} 
+                        title="Move to Substitute"
+                        style={{ background: "var(--surface)", color: "var(--text-muted)", border: "1px solid var(--border)", borderRadius: "4px", padding: "0.2rem 0.5rem", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}
+                      >
+                        SUB
+                      </button>
+                      <button 
+                        onClick={() => removeFromSquad(pid)} 
+                        title="Remove"
+                        style={{ background: "transparent", color: "var(--red)", border: "1px solid var(--border)", borderRadius: "4px", padding: "0.2rem 0.5rem", fontSize: "0.8rem", cursor: "pointer" }}
+                      >
+                        ✕
+                      </button>
                     </div>
                   </div>
                 );
               })}
             </div>
 
-            {/* Sub label */}
-            <div style={{ color: "var(--text-muted)", fontSize: "0.7rem", letterSpacing: "1px", textTransform: "uppercase", marginBottom: "0.5rem" }}>
-              Substitute
-            </div>
-
-            {/* Sub card */}
-            <div style={{ background: "var(--surface)", border: "1px solid " + (sub ? "var(--border)" : "var(--border)"), borderRadius: "10px", padding: "0.75rem", marginBottom: "1.5rem", minHeight: "68px", display: "flex", alignItems: "center" }}>
+            <div style={{ color: "var(--text-muted)", fontSize: "0.7rem", letterSpacing: "1px", textTransform: "uppercase", marginBottom: "0.5rem" }}>Substitute</div>
+            <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "10px", padding: "0.75rem", marginBottom: "1.5rem", minHeight: "68px", display: "flex", alignItems: "center" }}>
               {sub && getPlayer(sub) ? (
                 <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", width: "100%" }}>
                   <Avatar name={getPlayer(sub)!.name} size={44} />
@@ -224,7 +261,22 @@ export default function TransfersPage() {
                     </div>
                     <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>{getPlayer(sub)!.game} · <span style={{ color: "var(--accent)" }}>{getPlayer(sub)!.price}</span></div>
                   </div>
-                  <button onClick={function() { setSub(""); }} style={{ background: "transparent", color: "var(--red)", border: "1px solid var(--border)", borderRadius: "4px", padding: "0.2rem 0.5rem", fontSize: "0.8rem", cursor: "pointer", flexShrink: 0 }}>✕</button>
+                  <div style={{ display: "flex", gap: "0.35rem", flexShrink: 0 }}>
+                    <button 
+                      onClick={makeStarter} 
+                      title="Move to Starting Squad"
+                      style={{ background: "var(--surface)", color: "var(--text-muted)", border: "1px solid var(--border)", borderRadius: "4px", padding: "0.2rem 0.5rem", fontSize: "0.7rem", fontWeight: 700, cursor: squad.length < 4 ? "pointer" : "not-allowed", opacity: squad.length < 4 ? 1 : 0.5 }}
+                    >
+                      ↑
+                    </button>
+                    <button 
+                      onClick={() => setSub("")} 
+                      title="Remove"
+                      style={{ background: "transparent", color: "var(--red)", border: "1px solid var(--border)", borderRadius: "4px", padding: "0.2rem 0.5rem", fontSize: "0.8rem", cursor: "pointer" }}
+                    >
+                      ✕
+                    </button>
+                  </div>
                 </div>
               ) : (
                 <span style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>
@@ -234,23 +286,22 @@ export default function TransfersPage() {
             </div>
 
             {error && <p style={{ color: "var(--red)", fontSize: "0.85rem", marginBottom: "1rem" }}>{error}</p>}
-
+            
             <button onClick={handleSave} disabled={saving} style={{ width: "100%", background: saved ? "var(--green)" : "var(--blue)", color: "#fff", fontWeight: 700, padding: "0.75rem", borderRadius: "8px", border: "none", fontSize: "1rem", cursor: "pointer" }}>
-              {saving ? "Saving..." : saved ? "✓ Saved!" : "Save GW" + NEXT_GW + " Squad"}
+              {saving ? "Saving..." : saved ? "✓ Saved!" : `Save GW${NEXT_GW} Squad`}
             </button>
           </div>
 
-          {/* RIGHT — all players */}
           <div>
             <h2 style={{ fontSize: "1.1rem", fontWeight: 700, marginBottom: "1rem" }}>All Players</h2>
             <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", maxHeight: "75vh", overflowY: "auto" }}>
-              {allPlayers.map(function(p) {
+              {allPlayers.map(p => {
                 const inSquad = squad.includes(p.id);
                 const isSub = sub === p.id;
                 const selected = inSquad || isSub;
                 const canAfford = selected || remaining >= p.price;
                 return (
-                  <div key={p.id} onClick={function() { if (canAfford) handlePlayerClick(p); }} style={{ background: selected ? "rgba(3,71,244,0.08)" : "var(--surface)", border: "1px solid " + (inSquad ? "var(--blue)" : isSub ? "#555" : "var(--border)"), borderRadius: "8px", padding: "0.65rem 0.85rem", display: "flex", alignItems: "center", gap: "0.75rem", cursor: canAfford ? "pointer" : "not-allowed", opacity: canAfford ? 1 : 0.4 }}>
+                  <div key={p.id} onClick={() => canAfford && handlePlayerClick(p)} style={{ background: selected ? "rgba(3,71,244,0.08)" : "var(--surface)", border: `1px solid ${inSquad ? "var(--blue)" : isSub ? "#555" : "var(--border)"}`, borderRadius: "8px", padding: "0.65rem 0.85rem", display: "flex", alignItems: "center", gap: "0.75rem", cursor: canAfford ? "pointer" : "not-allowed", opacity: canAfford ? 1 : 0.4 }}>
                     <Avatar name={p.name} size={36} />
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontWeight: 600, fontSize: "0.875rem", display: "flex", alignItems: "center", gap: "0.35rem" }}>
