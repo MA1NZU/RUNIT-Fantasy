@@ -6,12 +6,12 @@ import { collection, getDocs, query, where, orderBy } from "firebase/firestore";
 import { useAuth } from "@/lib/AuthContext";
 import Shell from "@/app/shell";
 
-type Player = { id: string; name: string; game: string; price: number; points: number; desc: string; image?: string; };
+type Player = { id: string; name: string; game: string; price: number; points: number; desc: string; image?: string; ID?: string; };
 type GWTeam = { id: string; gameweek: number; player1: string; player2: string; player3: string; player4: string; captain: string; sub: string; gwPoints: number; transfersMade: number; transferPenalty: number; ownerEmail: string; };
 
 const CURRENT_GW = 7;
 
-function PlayerCard({ player, isCaptain, isSub }: { player: Player; isCaptain?: boolean; isSub?: boolean }) {
+function PlayerCard({ player, points, isCaptain, isSub }: { player: Player; points: number; isCaptain?: boolean; isSub?: boolean }) {
   const isUnfit = player.desc !== "Fit to play";
   
   return (
@@ -44,7 +44,7 @@ function PlayerCard({ player, isCaptain, isSub }: { player: Player; isCaptain?: 
 
       <div style={{ fontWeight: 700, fontSize: "0.85rem", marginBottom: "0.1rem", width: "100%", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{player.name}</div>
       <div style={{ fontSize: "0.8rem", color: "var(--accent)", fontWeight: 700, marginBottom: "0.2rem" }}>
-        {isCaptain ? player.points * 2 : player.points} pts {isCaptain && "(x2)"}
+        {isCaptain ? points * 2 : points} pts {isCaptain && "(x2)"}
       </div>
       <div style={{ 
         fontSize: "0.65rem", 
@@ -63,13 +63,14 @@ export default function TeamPage() {
   const { user } = useAuth();
   const [players, setPlayers] = useState<Record<string, Player>>({});
   const [gwTeams, setGwTeams] = useState<GWTeam[]>([]);
+  const [matchStats, setMatchStats] = useState<Record<string, number>>({});
   const [selectedGW, setSelectedGW] = useState<number>(CURRENT_GW);
   const [loading, setLoading] = useState(true);
 
+  // Load Players and Teams
   useEffect(() => {
-    async function loadData() {
+    async function loadBaseData() {
       if (!user?.email) return;
-      setLoading(true);
       try {
         const playersSnap = await getDocs(collection(db, "players"));
         const playersMap: Record<string, Player> = {};
@@ -89,18 +90,51 @@ export default function TeamPage() {
           const validTeams = teams.filter(t => t.gameweek <= CURRENT_GW);
           if (validTeams.length > 0) setSelectedGW(validTeams[0].gameweek);
         }
-      } catch (err) { console.error(err); } finally { setLoading(false); }
+      } catch (err) { console.error(err); }
     }
-    loadData();
+    loadBaseData();
   }, [user]);
+
+  // Load Match Stats when selectedGW changes
+  useEffect(() => {
+    async function loadStats() {
+      setLoading(true);
+      try {
+        const statsSnap = await getDocs(query(
+          collection(db, "playerMatchStats"), 
+          where("gameweek", "==", selectedGW)
+        ));
+        const statsMap: Record<string, number> = {};
+        statsSnap.docs.forEach(d => {
+          const data = d.data();
+          // Map by the various IDs players might be identified by
+          if (data.playerId) statsMap[data.playerId] = data.gwPoints ?? 0;
+          if (data.riotId) statsMap[data.riotId] = data.gwPoints ?? 0;
+          if (data.ID) statsMap[data.ID] = data.gwPoints ?? 0;
+        });
+        setMatchStats(statsMap);
+      } catch (err) { 
+        console.error("Error loading match stats:", err); 
+      } finally { 
+        setLoading(false); 
+      }
+    }
+    loadStats();
+  }, [selectedGW]);
 
   const currentTeam = gwTeams.find((t) => t.gameweek === selectedGW);
   const availableGWs = Array.from(new Set(gwTeams.map(t => t.gameweek))).filter(gw => gw <= CURRENT_GW).sort((a, b) => b - a);
   const playerIds = currentTeam ? [currentTeam.player1, currentTeam.player2, currentTeam.player3, currentTeam.player4].filter(Boolean) : [];
+  
   const getPlayer = (id: string) => players[id];
+  const getPoints = (id: string) => {
+    const p = players[id];
+    // Return stats for this GW, or 0 if not found
+    return matchStats[id] ?? (p?.ID ? matchStats[p.ID] : 0);
+  };
   const isCaptain = (id: string) => currentTeam?.captain === id;
 
-  if (loading) return <Shell><p style={{ padding: "2rem" }}>Loading...</p></Shell>;
+  if (loading && Object.keys(players).length === 0) return <Shell><p style={{ padding: "2rem" }}>Loading...</p></Shell>;
 
   return (
     <Shell>
@@ -137,7 +171,7 @@ export default function TeamPage() {
             {/* Squad Row (4 players) */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "1rem", marginBottom: "2rem" }}>
               {playerIds.map((pid, i) => (
-                <PlayerCard key={i} player={getPlayer(pid)!} isCaptain={isCaptain(pid)} />
+                <PlayerCard key={i} player={getPlayer(pid)!} points={getPoints(pid)} isCaptain={isCaptain(pid)} />
               ))}
             </div>
             
@@ -146,7 +180,7 @@ export default function TeamPage() {
               <div style={{ display: "flex", justifyContent: "center" }}>
                 <div style={{ width: "23.5%" }}>
                   <div style={{ textAlign: "center", marginBottom: "0.5rem", fontSize: "0.7rem", textTransform: "uppercase", color: "var(--text-muted)" }}>Substitute</div>
-                  <PlayerCard player={getPlayer(currentTeam.sub)!} isSub={true} />
+                  <PlayerCard player={getPlayer(currentTeam.sub)!} points={getPoints(currentTeam.sub)} isSub={true} />
                 </div>
               </div>
             )}
