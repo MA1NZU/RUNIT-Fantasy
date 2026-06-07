@@ -12,24 +12,87 @@ type UserTeam = { id: string; Bank: number; freeTransfers: number; namez: string
 
 const NEXT_GW = 8;
 
-function Avatar({ name, image, size = 48 }: { name: string; image?: string; size?: number }) {
-  if (image) {
-    return (
-      <img 
-        src={image} 
-        alt={name} 
-        style={{ width: size, height: size, borderRadius: "8px", objectFit: "cover", flexShrink: 0, background: "var(--surface)" }}
-        onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-      />
-    );
-  }
-
-  const initials = name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
-  const colors = ["#0347F4", "#7c3aed", "#0891b2", "#059669", "#d97706"];
-  const color = colors[name.charCodeAt(0) % colors.length];
+function PlayerCard({ 
+  player, 
+  isCaptain, 
+  isSub, 
+  onCaptain, 
+  onSub, 
+  onRemove,
+  showDesc = true 
+}: { 
+  player: Player; 
+  isCaptain?: boolean; 
+  isSub?: boolean; 
+  onCaptain?: () => void; 
+  onSub?: () => void; 
+  onRemove?: () => void;
+  showDesc?: boolean;
+}) {
   return (
-    <div style={{ width: size, height: size, borderRadius: "8px", background: color, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: size * 0.33, fontWeight: 700, color: "#fff" }}>
-      {initials}
+    <div style={{ 
+      background: "var(--surface)", 
+      border: `1px solid ${isCaptain ? "var(--blue)" : "var(--border)"}`, 
+      borderRadius: "12px", 
+      padding: "0.6rem",
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "center",
+      textAlign: "center",
+      position: "relative",
+      transition: "transform 0.2s"
+    }}>
+      {/* Badge container */}
+      <div style={{ position: "absolute", top: "0.5rem", left: "0.5rem", display: "flex", flexDirection: "column", gap: "0.25rem", zIndex: 2 }}>
+        {isCaptain && <span style={{ background: "var(--blue)", color: "#fff", fontSize: "0.6rem", fontWeight: 700, padding: "0.15rem 0.4rem", borderRadius: "4px" }}>C</span>}
+        {isSub && <span style={{ background: "#333", color: "#fff", fontSize: "0.6rem", fontWeight: 700, padding: "0.15rem 0.4rem", borderRadius: "4px" }}>SUB</span>}
+      </div>
+
+      {/* Image */}
+      <div style={{ width: "100%", aspectRatio: "1/1", borderRadius: "8px", overflow: "hidden", background: "#222", marginBottom: "0.6rem" }}>
+        {player.image ? (
+          <img src={player.image} alt={player.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+        ) : (
+          <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.5rem", fontWeight: 700, color: "#444" }}>
+            {player.name.slice(0, 2).toUpperCase()}
+          </div>
+        )}
+      </div>
+
+      {/* Info */}
+      <div style={{ fontWeight: 700, fontSize: "0.9rem", marginBottom: "0.2rem", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", width: "100%" }}>
+        {player.name}
+      </div>
+      <div style={{ color: "var(--accent)", fontWeight: 700, fontSize: "0.85rem", marginBottom: "0.2rem" }}>
+        {player.price}
+      </div>
+      {showDesc && (
+        <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", marginBottom: "0.6rem" }}>
+          {player.desc}
+        </div>
+      )}
+
+      {/* Actions */}
+      <div style={{ display: "flex", gap: "0.3rem", width: "100%", marginTop: "auto" }}>
+        {onCaptain && (
+          <button 
+            onClick={onCaptain}
+            style={{ flex: 1, background: isCaptain ? "var(--blue)" : "var(--surface)", color: isCaptain ? "#fff" : "var(--text-muted)", border: "1px solid var(--border)", borderRadius: "4px", padding: "0.25rem 0", fontSize: "0.65rem", fontWeight: 700, cursor: "pointer" }}
+          >C</button>
+        )}
+        {onSub && (
+          <button 
+            onClick={onSub}
+            style={{ flex: 1, background: "var(--surface)", color: "var(--text-muted)", border: "1px solid var(--border)", borderRadius: "4px", padding: "0.25rem 0", fontSize: "0.65rem", fontWeight: 700, cursor: "pointer" }}
+          >SUB</button>
+        )}
+        {onRemove && (
+          <button 
+            onClick={onRemove}
+            style={{ flex: 0.5, background: "transparent", color: "var(--red)", border: "1px solid var(--border)", borderRadius: "4px", cursor: "pointer" }}
+          >✕</button>
+        )}
+      </div>
     </div>
   );
 }
@@ -215,86 +278,43 @@ export default function TransfersPage() {
               Squad ({squad.length}/4)
             </div>
 
-            <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem", marginBottom: "1.25rem" }}>
-              {squad.length === 0 && (
-                <div style={{ background: "var(--surface)", border: "1px dashed var(--border)", borderRadius: "10px", padding: "1.5rem", color: "var(--text-muted)", fontSize: "0.9rem", textAlign: "center" }}>
-                  Click players on the right to add them
-                </div>
-              )}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem", marginBottom: "1.25rem" }}>
               {squad.map(pid => {
                 const p = getPlayer(pid);
-                const name = p?.name ?? pid;
+                if (!p) return null;
                 return (
-                  <div key={pid} style={{ background: "var(--surface)", border: `1px solid ${captain === pid ? "var(--blue)" : "var(--border)"}`, borderRadius: "10px", padding: "0.75rem", display: "flex", alignItems: "center", gap: "0.75rem" }}>
-                    <Avatar name={name} image={p?.image} size={44} />
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontWeight: 700, fontSize: "0.95rem", display: "flex", alignItems: "center", gap: "0.4rem" }}>
-                        {name}
-                        {captain === pid && <span style={{ background: "var(--blue)", color: "#fff", fontSize: "0.6rem", fontWeight: 700, padding: "0.15rem 0.4rem", borderRadius: "3px" }}>C</span>}
-                      </div>
-                      <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>{p?.game} · <span style={{ color: "var(--accent)" }}>{p?.price}</span></div>
-                    </div>
-                    <div style={{ display: "flex", gap: "0.35rem", flexShrink: 0 }}>
-                      <button 
-                        onClick={() => setCaptain(pid === captain ? "" : pid)} 
-                        title="Set Captain"
-                        style={{ background: captain === pid ? "var(--blue)" : "var(--surface)", color: captain === pid ? "#fff" : "var(--text-muted)", border: "1px solid var(--border)", borderRadius: "4px", padding: "0.2rem 0.5rem", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}
-                      >
-                        C
-                      </button>
-                      <button 
-                        onClick={() => swapWithSub(pid)} 
-                        title="Move to Substitute"
-                        style={{ background: "var(--surface)", color: "var(--text-muted)", border: "1px solid var(--border)", borderRadius: "4px", padding: "0.2rem 0.5rem", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}
-                      >
-                        SUB
-                      </button>
-                      <button 
-                        onClick={() => removeFromSquad(pid)} 
-                        title="Remove"
-                        style={{ background: "transparent", color: "var(--red)", border: "1px solid var(--border)", borderRadius: "4px", padding: "0.2rem 0.5rem", fontSize: "0.8rem", cursor: "pointer" }}
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  </div>
+                  <PlayerCard 
+                    key={pid}
+                    player={p}
+                    isCaptain={captain === pid}
+                    onCaptain={() => setCaptain(pid === captain ? "" : pid)}
+                    onSub={() => swapWithSub(pid)}
+                    onRemove={() => removeFromSquad(pid)}
+                  />
                 );
               })}
+              {squad.length < 4 && Array.from({ length: 4 - squad.length }).map((_, i) => (
+                <div key={i} style={{ aspectRatio: "2/3", border: "1px dashed var(--border)", borderRadius: "12px", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", fontSize: "0.8rem" }}>
+                  Add Player
+                </div>
+              ))}
             </div>
 
             <div style={{ color: "var(--text-muted)", fontSize: "0.7rem", letterSpacing: "1px", textTransform: "uppercase", marginBottom: "0.5rem" }}>Substitute</div>
-            <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "10px", padding: "0.75rem", marginBottom: "1.5rem", minHeight: "68px", display: "flex", alignItems: "center" }}>
+            <div style={{ marginBottom: "1.5rem" }}>
               {sub && getPlayer(sub) ? (
-                <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", width: "100%" }}>
-                  <Avatar name={getPlayer(sub)!.name} image={getPlayer(sub)!.image} size={44} />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 700, fontSize: "0.95rem", display: "flex", alignItems: "center", gap: "0.4rem" }}>
-                      {getPlayer(sub)!.name}
-                      <span style={{ background: "#333", color: "var(--text-muted)", fontSize: "0.6rem", fontWeight: 700, padding: "0.15rem 0.4rem", borderRadius: "3px" }}>SUB</span>
-                    </div>
-                    <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>{getPlayer(sub)!.game} · <span style={{ color: "var(--accent)" }}>{getPlayer(sub)!.price}</span></div>
-                  </div>
-                  <div style={{ display: "flex", gap: "0.35rem", flexShrink: 0 }}>
-                    <button 
-                      onClick={makeStarter} 
-                      title="Move to Starting Squad"
-                      style={{ background: "var(--surface)", color: "var(--text-muted)", border: "1px solid var(--border)", borderRadius: "4px", padding: "0.2rem 0.5rem", fontSize: "0.7rem", fontWeight: 700, cursor: squad.length < 4 ? "pointer" : "not-allowed", opacity: squad.length < 4 ? 1 : 0.5 }}
-                    >
-                      ↑
-                    </button>
-                    <button 
-                      onClick={() => setSub("")} 
-                      title="Remove"
-                      style={{ background: "transparent", color: "var(--red)", border: "1px solid var(--border)", borderRadius: "4px", padding: "0.2rem 0.5rem", fontSize: "0.8rem", cursor: "pointer" }}
-                    >
-                      ✕
-                    </button>
-                  </div>
+                <div style={{ width: "50%" }}>
+                  <PlayerCard 
+                    player={getPlayer(sub)!}
+                    isSub={true}
+                    onCaptain={makeStarter}
+                    onRemove={() => setSub("")}
+                  />
                 </div>
               ) : (
-                <span style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>
-                  {squad.length === 4 ? "Click a player on the right to add as sub →" : "Fill your 4 squad players first"}
-                </span>
+                <div style={{ background: "var(--surface)", border: "1px dashed var(--border)", borderRadius: "12px", padding: "1.5rem", textAlign: "center", color: "var(--text-muted)", fontSize: "0.85rem" }}>
+                  {squad.length === 4 ? "Select sub →" : "Fill squad first"}
+                </div>
               )}
             </div>
 
@@ -307,27 +327,13 @@ export default function TransfersPage() {
 
           <div>
             <h2 style={{ fontSize: "1.1rem", fontWeight: 700, marginBottom: "1rem" }}>All Players</h2>
-            <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", maxHeight: "75vh", overflowY: "auto" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem", maxHeight: "80vh", overflowY: "auto", paddingRight: "0.5rem" }}>
               {allPlayers.map(p => {
-                const inSquad = squad.includes(p.id);
-                const isSub = sub === p.id;
-                const selected = inSquad || isSub;
+                const selected = squad.includes(p.id) || sub === p.id;
                 const canAfford = selected || remaining >= p.price;
                 return (
-                  <div key={p.id} onClick={() => canAfford && handlePlayerClick(p)} style={{ background: selected ? "rgba(3,71,244,0.08)" : "var(--surface)", border: `1px solid ${inSquad ? "var(--blue)" : isSub ? "#555" : "var(--border)"}`, borderRadius: "8px", padding: "0.65rem 0.85rem", display: "flex", alignItems: "center", gap: "0.75rem", cursor: canAfford ? "pointer" : "not-allowed", opacity: canAfford ? 1 : 0.4 }}>
-                    <Avatar name={p.name} image={p.image} size={36} />
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontWeight: 600, fontSize: "0.875rem", display: "flex", alignItems: "center", gap: "0.35rem" }}>
-                        {p.name}
-                        {inSquad && captain === p.id && <span style={{ background: "var(--blue)", color: "#fff", fontSize: "0.6rem", fontWeight: 700, padding: "0.1rem 0.35rem", borderRadius: "3px" }}>C</span>}
-                        {isSub && <span style={{ background: "#444", color: "var(--text-muted)", fontSize: "0.6rem", fontWeight: 700, padding: "0.1rem 0.35rem", borderRadius: "3px" }}>SUB</span>}
-                      </div>
-                      <div style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>{p.game} · {p.desc}</div>
-                    </div>
-                    <div style={{ textAlign: "right", flexShrink: 0 }}>
-                      <div style={{ fontWeight: 700, color: "var(--accent)", fontSize: "0.875rem" }}>{p.price}</div>
-                      <div style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>{p.totalPoints} pts</div>
-                    </div>
+                  <div key={p.id} onClick={() => canAfford && handlePlayerClick(p)} style={{ cursor: canAfford ? "pointer" : "not-allowed", opacity: canAfford ? 1 : 0.4 }}>
+                    <PlayerCard player={p} isCaptain={captain === p.id} isSub={sub === p.id} showDesc={false} />
                   </div>
                 );
               })}
