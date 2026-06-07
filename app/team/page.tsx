@@ -13,6 +13,7 @@ type Player = {
   price: number;
   points: number;
   desc: string;
+  image?: string;
 };
 
 type GWTeam = {
@@ -32,6 +33,28 @@ type GWTeam = {
 
 const CURRENT_GW = 7;
 
+function Avatar({ name, image, size = 48 }: { name: string; image?: string; size?: number }) {
+  if (image) {
+    return (
+      <img 
+        src={image} 
+        alt={name} 
+        style={{ width: size, height: size, borderRadius: "8px", objectFit: "cover", flexShrink: 0, background: "var(--surface)" }}
+        onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+      />
+    );
+  }
+
+  const initials = name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
+  const colors = ["#0347F4", "#7c3aed", "#0891b2", "#059669", "#d97706"];
+  const color = colors[name.charCodeAt(0) % colors.length];
+  return (
+    <div style={{ width: size, height: size, borderRadius: "8px", background: color, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: size * 0.33, fontWeight: 700, color: "#fff" }}>
+      {initials}
+    </div>
+  );
+}
+
 export default function TeamPage() {
   const { user } = useAuth();
   const [players, setPlayers] = useState<Record<string, Player>>({});
@@ -45,20 +68,16 @@ export default function TeamPage() {
       setLoading(true);
 
       try {
-        // 1. Fetch all players and create a robust mapping
         const playersSnap = await getDocs(collection(db, "players"));
         const playersMap: Record<string, Player> = {};
         playersSnap.docs.forEach((d) => {
           const data = d.data();
           const p = { id: d.id, ...data } as Player;
-          // Map by Firestore Document ID
           playersMap[d.id] = p;
-          // Map by internal UUID (from the ID column in CSV)
           if (data.ID) playersMap[data.ID] = p;
         });
         setPlayers(playersMap);
 
-        // 2. Fetch all user gameweek teams
         const teamsSnap = await getDocs(
           query(
             collection(db, "gameweekTeams"),
@@ -69,7 +88,6 @@ export default function TeamPage() {
         const teams = teamsSnap.docs.map((d) => ({ id: d.id, ...d.data() } as GWTeam));
         setGwTeams(teams);
 
-        // Set initial GW to latest available if current isn't found
         if (teams.length > 0 && !teams.find(t => t.gameweek === CURRENT_GW)) {
           setSelectedGW(teams[0].gameweek);
         }
@@ -84,13 +102,8 @@ export default function TeamPage() {
   }, [user]);
 
   const currentTeam = gwTeams.find((t) => t.gameweek === selectedGW);
-  
-  const availableGWs = Array.from(new Set(gwTeams.map(t => t.gameweek)))
-    .sort((a, b) => b - a);
-
-  const playerIds = currentTeam
-    ? [currentTeam.player1, currentTeam.player2, currentTeam.player3, currentTeam.player4].filter(Boolean)
-    : [];
+  const availableGWs = Array.from(new Set(gwTeams.map(t => t.gameweek))).sort((a, b) => b - a);
+  const playerIds = currentTeam ? [currentTeam.player1, currentTeam.player2, currentTeam.player3, currentTeam.player4].filter(Boolean) : [];
 
   const getPlayer = (id: string) => players[id];
   const isCaptain = (id: string) => currentTeam?.captain === id;
@@ -170,13 +183,16 @@ export default function TeamPage() {
                 const p = getPlayer(pid);
                 return (
                   <div key={i} style={{ background: "var(--surface)", border: `1px solid ${isCaptain(pid) ? "var(--blue)" : "var(--border)"}`, borderRadius: "10px", padding: "1rem", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <div>
-                      <div style={{ fontWeight: 600 }}>{p?.name ?? "Unknown Player"}</div>
-                      <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: "0.2rem" }}>{p?.game ?? ""} · {p?.desc ?? ""}</div>
-                      <div style={{ fontSize: "0.85rem", color: "var(--accent)", marginTop: "0.2rem", fontWeight: 600 }}>
-                      {isCaptain(pid) ? (p?.points ?? 0) * 2 : (p?.points ?? 0)} pts {isCaptain(pid) && "(x2)"} this GW
+                    <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+                      <Avatar name={p?.name ?? "Unknown"} image={p?.image} size={48} />
+                      <div>
+                        <div style={{ fontWeight: 600 }}>{p?.name ?? "Unknown Player"}</div>
+                        <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: "0.2rem" }}>{p?.game ?? ""} · {p?.desc ?? ""}</div>
+                        <div style={{ fontSize: "0.85rem", color: "var(--accent)", marginTop: "0.2rem", fontWeight: 600 }}>
+                          {isCaptain(pid) ? (p?.points ?? 0) * 2 : (p?.points ?? 0)} pts {isCaptain(pid) && "(x2)"} this GW
+                        </div>
+                      </div>
                     </div>
-                  </div>
                     {isCaptain(pid) && (
                       <span style={{ background: "var(--blue)", color: "#fff", fontSize: "0.7rem", fontWeight: 700, padding: "0.25rem 0.6rem", borderRadius: "4px" }}>C</span>
                     )}
@@ -189,19 +205,22 @@ export default function TeamPage() {
               <div>
                 <div style={{ color: "var(--text-muted)", fontSize: "0.75rem", letterSpacing: "1px", textTransform: "uppercase", marginBottom: "0.5rem" }}>Substitute</div>
                 <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "10px", padding: "1rem", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  {getPlayer(currentTeam.sub) ? (
-                    <div>
-                      <div style={{ fontWeight: 600 }}>{getPlayer(currentTeam.sub)!.name}</div>
-                      <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: "0.2rem" }}>
-                        {getPlayer(currentTeam.sub)!.game} · {getPlayer(currentTeam.sub)!.desc}
+                  <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+                    <Avatar name={getPlayer(currentTeam.sub)?.name ?? "Unknown"} image={getPlayer(currentTeam.sub)?.image} size={48} />
+                    {getPlayer(currentTeam.sub) ? (
+                      <div>
+                        <div style={{ fontWeight: 600 }}>{getPlayer(currentTeam.sub)!.name}</div>
+                        <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: "0.2rem" }}>
+                          {getPlayer(currentTeam.sub)!.game} · {getPlayer(currentTeam.sub)!.desc}
+                        </div>
+                        <div style={{ fontSize: "0.85rem", color: "var(--accent)", marginTop: "0.2rem", fontWeight: 600 }}>
+                          {getPlayer(currentTeam.sub)!.points} pts this GW
+                        </div>
                       </div>
-                      <div style={{ fontSize: "0.85rem", color: "var(--accent)", marginTop: "0.2rem", fontWeight: 600 }}>
-                        {getPlayer(currentTeam.sub)!.points} pts
-                      </div>
-                    </div>
-                  ) : (
-                    <div style={{ color: "var(--text-muted)" }}>Unknown Player ({currentTeam.sub})</div>
-                  )}
+                    ) : (
+                      <div style={{ color: "var(--text-muted)" }}>Unknown Player ({currentTeam.sub})</div>
+                    )}
+                  </div>
                   <span style={{ background: "var(--border)", color: "var(--text-muted)", fontSize: "0.7rem", fontWeight: 700, padding: "0.25rem 0.6rem", borderRadius: "4px" }}>SUB</span>
                 </div>
               </div>
