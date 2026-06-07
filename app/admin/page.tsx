@@ -27,6 +27,8 @@ type ShopItem = {
   price: number;
   previewImage: string;
   rarity: string;
+  section: string;
+  isVisible: boolean;
 };
 type Tab = "players" | "stats" | "managers" | "shop" | "settings" | "locks";
 
@@ -39,7 +41,6 @@ export default function AdminPage() {
   const [shopItems, setShopItems] = useState<ShopItem[]>([]);
   const [settings, setSettings] = useState<Settings | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState<string | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
 
@@ -48,21 +49,16 @@ export default function AdminPage() {
   const [calcStats, setCalcStats] = useState<Record<string, string>>({});
 
   // New Shop Item State
-  const [newItem, setNewItem] = useState<Partial<ShopItem>>({ itemType: "avatar", rarity: "common", price: 0 });
+  const [newItem, setNewItem] = useState<Partial<ShopItem>>({ itemType: "avatar", rarity: "common", price: 0, section: "General", isVisible: true });
 
   useEffect(() => {
-    if (user && user.email !== ADMIN_EMAIL) {
-      console.log("Not admin, redirecting...");
-      router.replace("/");
-    }
+    if (user && user.email !== ADMIN_EMAIL) router.replace("/");
   }, [user, router]);
 
   useEffect(() => {
     if (!user || user.email !== ADMIN_EMAIL) return;
-
     const load = async () => {
       setLoading(true);
-      setError(null);
       try {
         const [pSnap, mSnap, sSnap, shopSnap] = await Promise.all([
           getDocs(collection(db, "players")),
@@ -70,22 +66,12 @@ export default function AdminPage() {
           getDocs(collection(db, "settings")),
           getDocs(collection(db, "shopItems")),
         ]);
-
         setPlayers(pSnap.docs.map(d => ({ id: d.id, ...d.data() } as Player)).sort((a, b) => a.name.localeCompare(b.name)));
         setManagers(mSnap.docs.map(d => ({ id: d.id, ...d.data() } as UserTeam)).sort((a, b) => (b.totalPoints ?? 0) - (a.totalPoints ?? 0)));
         setShopItems(shopSnap.docs.map(d => ({ id: d.id, ...d.data() } as ShopItem)));
-        
-        if (!sSnap.empty) {
-          setSettings({ id: sSnap.docs[0].id, ...sSnap.docs[0].data() } as Settings);
-        } else {
-          console.warn("Settings collection is empty.");
-        }
-      } catch (err: any) {
-        console.error("Fetch error:", err);
-        setError(err.message || "Failed to load data from Firebase.");
-      } finally {
-        setLoading(false);
-      }
+        if (!sSnap.empty) setSettings({ id: sSnap.docs[0].id, ...sSnap.docs[0].data() } as Settings);
+      } catch (err) { console.error("Load Error:", err); }
+      setLoading(false);
     };
     load();
   }, [user]);
@@ -181,19 +167,14 @@ export default function AdminPage() {
   };
 
   const handleAddShopItem = async () => {
-    if (!newItem.itemName || !newItem.previewImage) return alert("Fill all fields");
+    if (!newItem.itemName) return alert("Item name required");
     setSaving("newShopItem");
     try {
       const id = Math.random().toString(36).substr(2, 9);
-      const itemData = {
-        ...newItem,
-        ID: id,
-        "Created Date": new Date().toISOString(),
-        "Updated Date": new Date().toISOString()
-      };
+      const itemData = { ...newItem, ID: id, "Created Date": new Date().toISOString() };
       await setDoc(doc(db, "shopItems", id), itemData);
       setShopItems([...shopItems, { id, ...itemData } as ShopItem]);
-      setNewItem({ itemType: "avatar", rarity: "common", price: 0 });
+      setNewItem({ itemType: "avatar", rarity: "common", price: 0, section: "General", isVisible: true });
       markSaved("newShopItem");
     } catch (err) { console.error(err); }
     setSaving(null);
@@ -202,25 +183,10 @@ export default function AdminPage() {
   const handleUpdateShopItem = async (item: ShopItem) => {
     setSaving(item.id);
     try {
-      await updateDoc(doc(db, "shopItems", item.id), {
-        itemName: item.itemName,
-        itemType: item.itemType,
-        price: Number(item.price),
-        previewImage: item.previewImage,
-        rarity: item.rarity,
-        "Updated Date": new Date().toISOString()
-      });
+      await updateDoc(doc(db, "shopItems", item.id), { ...item, "Updated Date": new Date().toISOString() });
       markSaved(item.id);
     } catch (err) { console.error(err); }
     setSaving(null);
-  };
-
-  const handleDeleteShopItem = async (id: string) => {
-    if (!confirm("Delete this item?")) return;
-    try {
-      await deleteDoc(doc(db, "shopItems", id));
-      setShopItems(shopItems.filter(i => i.id !== id));
-    } catch (err) { console.error(err); }
   };
 
   const updateManagerField = (id: string, field: keyof UserTeam, value: any) => {
@@ -231,17 +197,14 @@ export default function AdminPage() {
     setShopItems(prev => prev.map(i => i.id === id ? { ...i, [field]: value } : i));
   };
 
-  if (!user || user.email !== ADMIN_EMAIL) return <Shell><p style={{ padding: "2rem" }}>Access Denied.</p></Shell>;
-  
+  if (!user || user.email !== ADMIN_EMAIL) return null;
   if (loading) return <Shell><p style={{ padding: "2rem" }}>Loading Admin Panel...</p></Shell>;
-
-  if (error) return <Shell><div style={{ padding: "2rem", color: "var(--red)" }}><h2>Error</h2><p>{error}</p><button onClick={() => window.location.reload()} style={{ marginTop: "1rem", padding: "0.5rem 1rem", cursor: "pointer" }}>Retry</button></div></Shell>;
 
   const activePlayer = players.find(p => p.id === selectedPlayerId);
 
   return (
     <Shell>
-      <div style={{ maxWidth: "1100px", margin: "0 auto" }}>
+      <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
         <h1 style={{ fontSize: "2rem", fontWeight: 700, marginBottom: "2rem" }}>Admin Panel</h1>
         
         <div style={{ display: "flex", gap: "0.5rem", marginBottom: "2rem", flexWrap: "wrap" }}>
@@ -255,21 +218,15 @@ export default function AdminPage() {
             <h2 style={{ fontSize: "1.2rem", fontWeight: 700, marginBottom: "1.5rem" }}>Page Access Locks</h2>
             <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "12px", padding: "1.5rem", display: "flex", flexDirection: "column", gap: "1.5rem" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <div>
-                  <div style={{ fontWeight: 600 }}>My Team & Leaderboard</div>
-                  <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Restrict access to these pages</div>
-                </div>
+                <div><div style={{ fontWeight: 600 }}>My Team & Leaderboard</div><div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Restrict access to these pages</div></div>
                 <input type="checkbox" checked={settings.lockTeamLeaderboard || false} onChange={(e) => setSettings({...settings, lockTeamLeaderboard: e.target.checked})} style={{ width: "24px", height: "24px", cursor: "pointer" }} />
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <div>
-                  <div style={{ fontWeight: 600 }}>Transfers Page</div>
-                  <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Lock squad building and transfers</div>
-                </div>
+                <div><div style={{ fontWeight: 600 }}>Transfers Page</div><div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Lock squad building and transfers</div></div>
                 <input type="checkbox" checked={settings.lockTransfers || false} onChange={(e) => setSettings({...settings, lockTransfers: e.target.checked})} style={{ width: "24px", height: "24px", cursor: "pointer" }} />
               </div>
               <button onClick={handleSaveSettings} disabled={saving === "settings"} style={{ background: saved === "settings" ? "var(--green)" : "var(--blue)", color: "#fff", border: "none", padding: "0.8rem", borderRadius: "8px", fontWeight: 700, cursor: "pointer", marginTop: "1rem" }}>
-                {saving === "settings" ? "Saving..." : saved === "settings" ? "✓ Status Saved" : "Save Lock Settings"}
+                {saving === "settings" ? "Saving..." : saved === "settings" ? "✓ Saved" : "Save Lock Settings"}
               </button>
             </div>
           </div>
@@ -288,18 +245,10 @@ export default function AdminPage() {
                 </div>
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
-                <div>
-                  <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "0.4rem" }}>Transfer Deadline</div>
-                  <input type="datetime-local" value={settings.deadline} onChange={(e) => setSettings({...settings, deadline: e.target.value})} style={{ width: "100%", background: "var(--bg)", border: "1px solid var(--border)", color: "#fff", padding: "0.6rem", borderRadius: "8px" }} />
-                </div>
-                <div>
-                  <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "0.4rem" }}>Shop Deadline</div>
-                  <input type="datetime-local" value={settings.shopDeadline} onChange={(e) => setSettings({...settings, shopDeadline: e.target.value})} style={{ width: "100%", background: "var(--bg)", border: "1px solid var(--border)", color: "#fff", padding: "0.6rem", borderRadius: "8px" }} />
-                </div>
+                <div><div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "0.4rem" }}>Transfer Deadline</div><input type="datetime-local" value={settings.deadline} onChange={(e) => setSettings({...settings, deadline: e.target.value})} style={inputStyle} /></div>
+                <div><div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "0.4rem" }}>Shop Deadline</div><input type="datetime-local" value={settings.shopDeadline} onChange={(e) => setSettings({...settings, shopDeadline: e.target.value})} style={inputStyle} /></div>
               </div>
-              <button onClick={handleSaveSettings} disabled={saving === "settings"} style={{ background: saved === "settings" ? "var(--green)" : "var(--blue)", color: "#fff", border: "none", padding: "0.8rem", borderRadius: "8px", fontWeight: 700, cursor: "pointer", marginTop: "1rem" }}>
-                {saving === "settings" ? "Saving..." : saved === "settings" ? "✓ Settings Saved" : "Save Settings"}
-              </button>
+              <button onClick={handleSaveSettings} disabled={saving === "settings"} style={{ background: saved === "settings" ? "var(--green)" : "var(--blue)", color: "#fff", border: "none", padding: "0.8rem", borderRadius: "8px", fontWeight: 700, cursor: "pointer" }}>Save Settings</button>
             </div>
           </div>
         )}
@@ -308,26 +257,29 @@ export default function AdminPage() {
           <div>
             <h2 style={{ fontSize: "1.2rem", fontWeight: 700, marginBottom: "1rem" }}>Shop Manager</h2>
             <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "12px", padding: "1.5rem", marginBottom: "2rem" }}>
-              <h3 style={{ fontSize: "1rem", marginBottom: "1rem" }}>Add New Item</h3>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr) auto", gap: "1rem", alignItems: "end" }}>
-                <div><div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>Name</div><input value={newItem.itemName || ""} onChange={e => setNewItem({...newItem, itemName: e.target.value})} style={{ width: "100%", background: "var(--bg)", border: "1px solid var(--border)", color: "#fff", padding: "0.5rem", borderRadius: "6px" }} /></div>
-                <div><div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>Type</div><select value={newItem.itemType} onChange={e => setNewItem({...newItem, itemType: e.target.value as any})} style={{ width: "100%", background: "var(--bg)", border: "1px solid var(--border)", color: "#fff", padding: "0.5rem", borderRadius: "6px" }}><option value="avatar">Avatar</option><option value="banner">Banner</option><option value="song">Song</option><option value="title">Title</option></select></div>
-                <div><div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>Price</div><input type="number" value={newItem.price || 0} onChange={e => setNewItem({...newItem, price: Number(e.target.value)})} style={{ width: "100%", background: "var(--bg)", border: "1px solid var(--border)", color: "#fff", padding: "0.5rem", borderRadius: "6px" }} /></div>
-                <div><div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>Image URL</div><input value={newItem.previewImage || ""} onChange={e => setNewItem({...newItem, previewImage: e.target.value})} style={{ width: "100%", background: "var(--bg)", border: "1px solid var(--border)", color: "#fff", padding: "0.5rem", borderRadius: "6px" }} /></div>
-                <div><div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>Rarity</div><input value={newItem.rarity || ""} onChange={e => setNewItem({...newItem, rarity: e.target.value})} style={{ width: "100%", background: "var(--bg)", border: "1px solid var(--border)", color: "#fff", padding: "0.5rem", borderRadius: "6px" }} /></div>
-                <button onClick={handleAddShopItem} style={{ background: "var(--blue)", color: "#fff", border: "none", padding: "0.6rem 1.5rem", borderRadius: "8px", fontWeight: 700, cursor: "pointer" }}>Add</button>
+              <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr 0.7fr 2fr 1fr 1fr 0.5fr auto", gap: "0.75rem", alignItems: "end" }}>
+                <div><div style={{ fontSize: "0.7rem" }}>Name</div><input value={newItem.itemName || ""} onChange={e => setNewItem({...newItem, itemName: e.target.value})} style={inputStyle} /></div>
+                <div><div style={{ fontSize: "0.7rem" }}>Type</div><select value={newItem.itemType} onChange={e => setNewItem({...newItem, itemType: e.target.value as any})} style={inputStyle}><option value="avatar">Avatar</option><option value="banner">Banner</option><option value="song">Song</option><option value="title">Title</option></select></div>
+                <div><div style={{ fontSize: "0.7rem" }}>Price</div><input type="number" value={newItem.price || 0} onChange={e => setNewItem({...newItem, price: Number(e.target.value)})} style={inputStyle} /></div>
+                <div><div style={{ fontSize: "0.7rem" }}>Image URL</div><input value={newItem.previewImage || ""} onChange={e => setNewItem({...newItem, previewImage: e.target.value})} style={inputStyle} /></div>
+                <div><div style={{ fontSize: "0.7rem" }}>Section</div><input value={newItem.section || ""} onChange={e => setNewItem({...newItem, section: e.target.value})} style={inputStyle} /></div>
+                <div><div style={{ fontSize: "0.7rem" }}>Rarity</div><input value={newItem.rarity || ""} onChange={e => setNewItem({...newItem, rarity: e.target.value})} style={inputStyle} /></div>
+                <div style={{ textAlign: "center" }}><div style={{ fontSize: "0.7rem" }}>Vis</div><input type="checkbox" checked={newItem.isVisible} onChange={e => setNewItem({...newItem, isVisible: e.target.checked})} /></div>
+                <button onClick={handleAddShopItem} style={{ background: "var(--blue)", color: "#fff", border: "none", padding: "0.6rem 1rem", borderRadius: "8px", fontWeight: 700 }}>Add</button>
               </div>
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
               {shopItems.map(item => (
-                <div key={item.id} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "8px", padding: "0.75rem 1rem", display: "grid", gridTemplateColumns: "1fr 0.8fr 0.6fr 2fr 0.8fr auto auto", gap: "0.75rem", alignItems: "center" }}>
-                  <input value={item.itemName} onChange={e => updateShopItemField(item.id, "itemName", e.target.value)} style={{ width: "100%", background: "var(--bg)", border: "1px solid var(--border)", color: "#fff", padding: "0.4rem", borderRadius: "4px" }} />
-                  <select value={item.itemType} onChange={e => updateShopItemField(item.id, "itemType", e.target.value)} style={{ width: "100%", background: "var(--bg)", border: "1px solid var(--border)", color: "#fff", padding: "0.4rem", borderRadius: "4px" }}><option value="avatar">Avatar</option><option value="banner">Banner</option><option value="song">Song</option><option value="title">Title</option></select>
-                  <input type="number" value={item.price} onChange={e => updateShopItemField(item.id, "price", e.target.value)} style={{ width: "100%", background: "var(--bg)", border: "1px solid var(--border)", color: "#fff", padding: "0.4rem", borderRadius: "4px" }} />
-                  <input value={item.previewImage} onChange={e => updateShopItemField(item.id, "previewImage", e.target.value)} style={{ width: "100%", background: "var(--bg)", border: "1px solid var(--border)", color: "#fff", padding: "0.4rem", borderRadius: "4px" }} />
-                  <input value={item.rarity} onChange={e => updateShopItemField(item.id, "rarity", e.target.value)} style={{ width: "100%", background: "var(--bg)", border: "1px solid var(--border)", color: "#fff", padding: "0.4rem", borderRadius: "4px" }} />
+                <div key={item.id} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "8px", padding: "0.75rem 1rem", display: "grid", gridTemplateColumns: "1.5fr 1fr 0.7fr 2fr 1fr 1fr 0.5fr auto auto", gap: "0.75rem", alignItems: "center" }}>
+                  <input value={item.itemName} onChange={e => updateShopItemField(item.id, "itemName", e.target.value)} style={inputStyle} />
+                  <select value={item.itemType} onChange={e => updateShopItemField(item.id, "itemType", e.target.value)} style={inputStyle}><option value="avatar">Avatar</option><option value="banner">Banner</option><option value="song">Song</option><option value="title">Title</option></select>
+                  <input type="number" value={item.price} onChange={e => updateShopItemField(item.id, "price", Number(e.target.value))} style={inputStyle} />
+                  <input value={item.previewImage} onChange={e => updateShopItemField(item.id, "previewImage", e.target.value)} style={inputStyle} />
+                  <input value={item.section} onChange={e => updateShopItemField(item.id, "section", e.target.value)} style={inputStyle} />
+                  <input value={item.rarity} onChange={e => updateShopItemField(item.id, "rarity", e.target.value)} style={inputStyle} />
+                  <input type="checkbox" checked={item.isVisible} onChange={e => updateShopItemField(item.id, "isVisible", e.target.checked)} />
                   <button onClick={() => handleUpdateShopItem(item)} style={{ background: saved === item.id ? "var(--green)" : "var(--accent)", color: "#000", border: "none", borderRadius: "4px", padding: "0.4rem 0.8rem", fontWeight: 700 }}>Save</button>
-                  <button onClick={() => handleDeleteShopItem(item.id)} style={{ background: "transparent", border: "1px solid var(--border)", color: "var(--red)", padding: "0.4rem" }}>✕</button>
+                  <button onClick={() => { if(confirm("Delete?")) deleteDoc(doc(db, "shopItems", item.id)).then(() => setShopItems(shopItems.filter(i => i.id !== item.id)))}} style={{ background: "transparent", border: "1px solid var(--border)", color: "var(--red)", borderRadius: "4px", padding: "0.4rem" }}>✕</button>
                 </div>
               ))}
             </div>
@@ -377,14 +329,12 @@ export default function AdminPage() {
               <div key={m.id} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "10px", padding: "1rem" }}>
                 <div style={{ fontWeight: 700, marginBottom: "1rem", fontSize: "1.1rem" }}>{m.manager || "Unknown Manager"}</div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr) 100px", gap: "0.75rem", alignItems: "end" }}>
-                   <div><div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>Total Points</div><input type="number" value={m.totalPoints ?? 0} onChange={(e) => updateManagerField(m.id, "totalPoints", Number(e.target.value))} style={{ background: "var(--bg)", border: "1px solid var(--border)", color: "#fff", padding: "0.5rem", borderRadius: "6px", width: "100%" }} /></div>
-                   <div><div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>GW Points</div><input type="number" value={m.gameweekPoints ?? 0} onChange={(e) => updateManagerField(m.id, "gameweekPoints", Number(e.target.value))} style={{ background: "var(--bg)", border: "1px solid var(--border)", color: "#fff", padding: "0.5rem", borderRadius: "6px", width: "100%" }} /></div>
-                   <div><div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>Coins</div><input type="number" value={m.coins ?? 0} onChange={(e) => updateManagerField(m.id, "coins", Number(e.target.value))} style={{ background: "var(--bg)", border: "1px solid var(--border)", color: "#fff", padding: "0.5rem", borderRadius: "6px", width: "100%" }} /></div>
-                   <div><div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>Bank</div><input type="number" step="0.1" value={m.Bank ?? 0} onChange={(e) => updateManagerField(m.id, "Bank", Number(e.target.value))} style={{ background: "var(--bg)", border: "1px solid var(--border)", color: "#fff", padding: "0.5rem", borderRadius: "6px", width: "100%" }} /></div>
-                   <div><div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>Free Trans</div><input type="number" value={m.freeTransfers ?? 0} onChange={(e) => updateManagerField(m.id, "freeTransfers", Number(e.target.value))} style={{ background: "var(--bg)", border: "1px solid var(--border)", color: "#fff", padding: "0.5rem", borderRadius: "6px", width: "100%" }} /></div>
-                   <button onClick={() => handleSaveManager(m)} style={{ background: saved === m.id ? "var(--green)" : "var(--accent)", color: "#000", border: "none", borderRadius: "6px", padding: "0.6rem", fontWeight: 700, cursor: "pointer", width: "100%" }}>
-                     {saving === m.id ? "..." : saved === m.id ? "✓" : "Save"}
-                   </button>
+                   <div><div style={{ fontSize: "0.7rem" }}>Total Points</div><input type="number" value={m.totalPoints ?? 0} onChange={(e) => updateManagerField(m.id, "totalPoints", Number(e.target.value))} style={inputStyle} /></div>
+                   <div><div style={{ fontSize: "0.7rem" }}>GW Points</div><input type="number" value={m.gameweekPoints ?? 0} onChange={(e) => updateManagerField(m.id, "gameweekPoints", Number(e.target.value))} style={inputStyle} /></div>
+                   <div><div style={{ fontSize: "0.7rem" }}>Coins</div><input type="number" value={m.coins ?? 0} onChange={(e) => updateManagerField(m.id, "coins", Number(e.target.value))} style={inputStyle} /></div>
+                   <div><div style={{ fontSize: "0.7rem" }}>Bank</div><input type="number" step="0.1" value={m.Bank ?? 0} onChange={(e) => updateManagerField(m.id, "Bank", Number(e.target.value))} style={inputStyle} /></div>
+                   <div><div style={{ fontSize: "0.7rem" }}>Free Trans</div><input type="number" value={m.freeTransfers ?? 0} onChange={(e) => updateManagerField(m.id, "freeTransfers", Number(e.target.value))} style={inputStyle} /></div>
+                   <button onClick={() => handleSaveManager(m)} style={{ background: saved === m.id ? "var(--green)" : "var(--accent)", color: "#000", border: "none", borderRadius: "6px", padding: "0.6rem", fontWeight: 700, cursor: "pointer", width: "100%" }}>Save</button>
                 </div>
               </div>
             ))}
@@ -396,9 +346,9 @@ export default function AdminPage() {
             {players.map(p => (
               <div key={p.id} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "8px", padding: "0.75rem 1rem", display: "grid", gridTemplateColumns: "1.5fr 0.7fr 2fr auto", gap: "0.75rem", alignItems: "center" }}>
                 <div><div style={{ fontWeight: 600 }}>{p.name}</div><div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>{p.game}</div></div>
-                <input type="number" step="0.1" value={p.price} onChange={(e) => setPlayers(prev => prev.map(x => x.id === p.id ? {...x, price: Number(e.target.value)} : x))} style={{ background: "var(--bg)", border: "1px solid var(--border)", color: "#fff", padding: "0.5rem", borderRadius: "6px" }} />
-                <input type="text" value={p.desc} onChange={(e) => setPlayers(prev => prev.map(x => x.id === p.id ? {...x, desc: e.target.value} : x))} style={{ background: "var(--bg)", border: "1px solid var(--border)", color: "#fff", padding: "0.5rem", borderRadius: "6px" }} />
-                <button onClick={async () => { setSaving(p.id); await updateDoc(doc(db, "players", p.id), { price: p.price, desc: p.desc }); setSaving(null); markSaved(p.id); }} style={{ background: saved === p.id ? "var(--green)" : "var(--accent)", color: "#000", border: "none", borderRadius: "6px", padding: "0.6rem 1.2rem", fontWeight: 700, cursor: "pointer" }}>{saving === p.id ? "..." : "Save"}</button>
+                <input type="number" step="0.1" value={p.price} onChange={(e) => setPlayers(prev => prev.map(x => x.id === p.id ? {...x, price: Number(e.target.value)} : x))} style={inputStyle} />
+                <input type="text" value={p.desc} onChange={(e) => setPlayers(prev => prev.map(x => x.id === p.id ? {...x, desc: e.target.value} : x))} style={inputStyle} />
+                <button onClick={async () => { setSaving(p.id); await updateDoc(doc(db, "players", p.id), { price: p.price, desc: p.desc }); setSaving(null); markSaved(p.id); }} style={{ background: saved === p.id ? "var(--green)" : "var(--accent)", color: "#000", border: "none", borderRadius: "6px", padding: "0.6rem 1.2rem", fontWeight: 700, cursor: "pointer" }}>Save</button>
               </div>
             ))}
           </div>
@@ -407,6 +357,8 @@ export default function AdminPage() {
     </Shell>
   );
 }
+
+const inputStyle = { width: "100%", background: "var(--bg)", border: "1px solid var(--border)", color: "#fff", padding: "0.5rem", borderRadius: "6px", fontSize: "0.85rem" };
 
 function StatInput({ label, id, val, set }: { label: string; id: string; val: any; set: any }) {
   return (
