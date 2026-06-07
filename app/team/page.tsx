@@ -6,51 +6,44 @@ import { collection, getDocs, query, where, orderBy } from "firebase/firestore";
 import { useAuth } from "@/lib/AuthContext";
 import Shell from "@/app/shell";
 
-type Player = {
-  id: string;
-  name: string;
-  game: string;
-  price: number;
-  points: number;
-  desc: string;
-  image?: string;
-};
-
-type GWTeam = {
-  id: string;
-  gameweek: number;
-  player1: string;
-  player2: string;
-  player3: string;
-  player4: string;
-  captain: string;
-  sub: string;
-  gwPoints: number;
-  transfersMade: number;
-  transferPenalty: number;
-  ownerEmail: string;
-};
+type Player = { id: string; name: string; game: string; price: number; points: number; desc: string; image?: string; };
+type GWTeam = { id: string; gameweek: number; player1: string; player2: string; player3: string; player4: string; captain: string; sub: string; gwPoints: number; transfersMade: number; transferPenalty: number; ownerEmail: string; };
 
 const CURRENT_GW = 7;
 
-function Avatar({ name, image, size = 48 }: { name: string; image?: string; size?: number }) {
-  if (image) {
-    return (
-      <img 
-        src={image} 
-        alt={name} 
-        style={{ width: size, height: size, borderRadius: "8px", objectFit: "cover", flexShrink: 0, background: "var(--surface)" }}
-        onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-      />
-    );
-  }
-
-  const initials = name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
-  const colors = ["#0347F4", "#7c3aed", "#0891b2", "#059669", "#d97706"];
-  const color = colors[name.charCodeAt(0) % colors.length];
+function PlayerCard({ player, isCaptain, isSub }: { player: Player; isCaptain?: boolean; isSub?: boolean }) {
   return (
-    <div style={{ width: size, height: size, borderRadius: "8px", background: color, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: size * 0.33, fontWeight: 700, color: "#fff" }}>
-      {initials}
+    <div style={{ 
+      background: "var(--surface)", 
+      border: `1px solid ${isCaptain ? "var(--blue)" : "var(--border)"}`, 
+      borderRadius: "12px", 
+      padding: "0.75rem",
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "center",
+      textAlign: "center",
+      position: "relative"
+    }}>
+      <div style={{ position: "absolute", top: "0.5rem", left: "0.5rem", display: "flex", flexDirection: "column", gap: "0.25rem", zIndex: 2 }}>
+        {isCaptain && <span style={{ background: "var(--blue)", color: "#fff", fontSize: "0.6rem", fontWeight: 700, padding: "0.15rem 0.4rem", borderRadius: "4px" }}>C</span>}
+        {isSub && <span style={{ background: "#333", color: "#fff", fontSize: "0.6rem", fontWeight: 700, padding: "0.15rem 0.4rem", borderRadius: "4px" }}>SUB</span>}
+      </div>
+
+      <div style={{ width: "100%", aspectRatio: "1/1", borderRadius: "8px", overflow: "hidden", background: "#222", marginBottom: "0.75rem" }}>
+        {player.image ? (
+          <img src={player.image} alt={player.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+        ) : (
+          <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.5rem", fontWeight: 700, color: "#444" }}>
+            {player.name.slice(0, 2).toUpperCase()}
+          </div>
+        )}
+      </div>
+
+      <div style={{ fontWeight: 700, fontSize: "1rem", marginBottom: "0.2rem", width: "100%", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{player.name}</div>
+      <div style={{ fontSize: "0.9rem", color: "var(--accent)", fontWeight: 700, marginBottom: "0.3rem" }}>
+        {isCaptain ? player.points * 2 : player.points} pts {isCaptain && "(x2)"}
+      </div>
+      <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>{player.desc}</div>
     </div>
   );
 }
@@ -66,7 +59,6 @@ export default function TeamPage() {
     async function loadData() {
       if (!user?.email) return;
       setLoading(true);
-
       try {
         const playersSnap = await getDocs(collection(db, "players"));
         const playersMap: Record<string, Player> = {};
@@ -78,26 +70,15 @@ export default function TeamPage() {
         });
         setPlayers(playersMap);
 
-        const teamsSnap = await getDocs(
-          query(
-            collection(db, "gameweekTeams"),
-            where("ownerEmail", "==", user.email),
-            orderBy("gameweek", "desc")
-          )
-        );
+        const teamsSnap = await getDocs(query(collection(db, "gameweekTeams"), where("ownerEmail", "==", user.email), orderBy("gameweek", "desc")));
         const teams = teamsSnap.docs.map((d) => ({ id: d.id, ...d.data() } as GWTeam));
         setGwTeams(teams);
 
         if (teams.length > 0 && !teams.find(t => t.gameweek === CURRENT_GW)) {
           setSelectedGW(teams[0].gameweek);
         }
-      } catch (err) {
-        console.error("Error loading team data:", err);
-      } finally {
-        setLoading(false);
-      }
+      } catch (err) { console.error(err); } finally { setLoading(false); }
     }
-
     loadData();
   }, [user]);
 
@@ -108,121 +89,31 @@ export default function TeamPage() {
   const getPlayer = (id: string) => players[id];
   const isCaptain = (id: string) => currentTeam?.captain === id;
 
-  if (loading) return (
-    <Shell>
-      <div style={{ maxWidth: "700px", margin: "0 auto" }}>
-        <h1 style={{ fontSize: "2rem", fontWeight: 700, marginBottom: "2rem" }}>My Team</h1>
-        <p style={{ color: "var(--text-muted)" }}>Loading your team...</p>
-      </div>
-    </Shell>
-  );
-
-  if (gwTeams.length === 0) return (
-    <Shell>
-      <div style={{ maxWidth: "700px", margin: "0 auto" }}>
-        <h1 style={{ fontSize: "2rem", fontWeight: 700, marginBottom: "2rem" }}>My Team</h1>
-        <p style={{ color: "var(--text-muted)" }}>No team found for your account.</p>
-      </div>
-    </Shell>
-  );
+  if (loading) return <Shell><div style={{ maxWidth: "700px", margin: "0 auto" }}><h1 style={{ fontSize: "2rem", fontWeight: 700, marginBottom: "2rem" }}>My Team</h1><p>Loading...</p></div></Shell>;
 
   return (
     <Shell>
       <div style={{ maxWidth: "700px", margin: "0 auto" }}>
         <h1 style={{ fontSize: "2rem", fontWeight: 700, marginBottom: "0.5rem" }}>My Team</h1>
-        <p style={{ color: "var(--text-muted)", marginBottom: "2rem", fontSize: "0.9rem" }}>
-          Viewing Gameweek {selectedGW} {selectedGW === CURRENT_GW ? "(Current)" : ""}
-        </p>
+        <p style={{ color: "var(--text-muted)", marginBottom: "2rem", fontSize: "0.9rem" }}>Viewing Gameweek {selectedGW}</p>
 
-        <div style={{ marginBottom: "1.5rem" }}>
-          <label style={{ color: "var(--text-muted)", fontSize: "0.75rem", letterSpacing: "1px", textTransform: "uppercase", display: "block", marginBottom: "0.5rem" }}>
-            Gameweek
-          </label>
-          <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-            {availableGWs.map((gw) => (
-              <button
-                key={gw}
-                onClick={() => setSelectedGW(gw)}
-                style={{
-                  padding: "0.4rem 0.9rem", borderRadius: "6px", cursor: "pointer",
-                  border: "1px solid var(--border)", fontWeight: 600,
-                  background: selectedGW === gw ? "var(--blue)" : "var(--surface)",
-                  color: selectedGW === gw ? "#fff" : "var(--text-muted)",
-                }}
-              >
-                GW{gw} {gw === CURRENT_GW ? "★" : ""}
-              </button>
-            ))}
-          </div>
+        <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1.5rem", flexWrap: "wrap" }}>
+          {availableGWs.map((gw) => (
+            <button key={gw} onClick={() => setSelectedGW(gw)} style={{ padding: "0.4rem 0.9rem", borderRadius: "6px", border: "1px solid var(--border)", background: selectedGW === gw ? "var(--blue)" : "var(--surface)", color: selectedGW === gw ? "#fff" : "var(--text-muted)" }}>GW{gw}</button>
+          ))}
         </div>
 
-        {!currentTeam ? (
-          <p style={{ color: "var(--text-muted)" }}>No data for GW{selectedGW}.</p>
-        ) : (
+        {currentTeam && (
           <div>
-            <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "10px", padding: "1rem 1.5rem", marginBottom: "1.5rem", display: "flex", gap: "2rem", flexWrap: "wrap" }}>
-              <div>
-                <div style={{ color: "var(--text-muted)", fontSize: "0.75rem" }}>GW Points</div>
-                <div style={{ fontWeight: 700, fontSize: "1.4rem", color: "var(--accent)" }}>{currentTeam.gwPoints ?? 0}</div>
-              </div>
-              <div>
-                <div style={{ color: "var(--text-muted)", fontSize: "0.75rem" }}>Transfers</div>
-                <div style={{ fontWeight: 700, fontSize: "1.4rem" }}>{currentTeam.transfersMade ?? 0}</div>
-              </div>
-              <div>
-                <div style={{ color: "var(--text-muted)", fontSize: "0.75rem" }}>Penalty</div>
-                <div style={{ fontWeight: 700, fontSize: "1.4rem", color: currentTeam.transferPenalty ? "var(--red)" : "var(--text)" }}>
-                  {currentTeam.transferPenalty ?? 0}
-                </div>
-              </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem", marginBottom: "1.5rem" }}>
+              {playerIds.map((pid, i) => (
+                <PlayerCard key={i} player={getPlayer(pid)!} isCaptain={isCaptain(pid)} />
+              ))}
             </div>
-
-            <h2 style={{ fontSize: "1.1rem", fontWeight: 700, marginBottom: "1rem" }}>Starting Squad</h2>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem", marginBottom: "1.5rem" }}>
-              {playerIds.map((pid, i) => {
-                const p = getPlayer(pid);
-                return (
-                  <div key={i} style={{ background: "var(--surface)", border: `1px solid ${isCaptain(pid) ? "var(--blue)" : "var(--border)"}`, borderRadius: "10px", padding: "1rem", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
-                      <Avatar name={p?.name ?? "Unknown"} image={p?.image} size={48} />
-                      <div>
-                        <div style={{ fontWeight: 600 }}>{p?.name ?? "Unknown Player"}</div>
-                        <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: "0.2rem" }}>{p?.game ?? ""} · {p?.desc ?? ""}</div>
-                        <div style={{ fontSize: "0.85rem", color: "var(--accent)", marginTop: "0.2rem", fontWeight: 600 }}>
-                          {isCaptain(pid) ? (p?.points ?? 0) * 2 : (p?.points ?? 0)} pts {isCaptain(pid) && "(x2)"} this GW
-                        </div>
-                      </div>
-                    </div>
-                    {isCaptain(pid) && (
-                      <span style={{ background: "var(--blue)", color: "#fff", fontSize: "0.7rem", fontWeight: 700, padding: "0.25rem 0.6rem", borderRadius: "4px" }}>C</span>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-
-            {currentTeam.sub && (
-              <div>
-                <div style={{ color: "var(--text-muted)", fontSize: "0.75rem", letterSpacing: "1px", textTransform: "uppercase", marginBottom: "0.5rem" }}>Substitute</div>
-                <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "10px", padding: "1rem", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
-                    <Avatar name={getPlayer(currentTeam.sub)?.name ?? "Unknown"} image={getPlayer(currentTeam.sub)?.image} size={48} />
-                    {getPlayer(currentTeam.sub) ? (
-                      <div>
-                        <div style={{ fontWeight: 600 }}>{getPlayer(currentTeam.sub)!.name}</div>
-                        <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: "0.2rem" }}>
-                          {getPlayer(currentTeam.sub)!.game} · {getPlayer(currentTeam.sub)!.desc}
-                        </div>
-                        <div style={{ fontSize: "0.85rem", color: "var(--accent)", marginTop: "0.2rem", fontWeight: 600 }}>
-                          {getPlayer(currentTeam.sub)!.points} pts this GW
-                        </div>
-                      </div>
-                    ) : (
-                      <div style={{ color: "var(--text-muted)" }}>Unknown Player ({currentTeam.sub})</div>
-                    )}
-                  </div>
-                  <span style={{ background: "var(--border)", color: "var(--text-muted)", fontSize: "0.7rem", fontWeight: 700, padding: "0.25rem 0.6rem", borderRadius: "4px" }}>SUB</span>
-                </div>
+            {currentTeam.sub && getPlayer(currentTeam.sub) && (
+              <div style={{ width: "50%", margin: "0 auto" }}>
+                <div style={{ textAlign: "center", marginBottom: "0.5rem", fontSize: "0.75rem", textTransform: "uppercase", color: "var(--text-muted)" }}>Substitute</div>
+                <PlayerCard player={getPlayer(currentTeam.sub)!} isSub={true} />
               </div>
             )}
           </div>
