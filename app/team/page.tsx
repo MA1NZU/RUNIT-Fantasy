@@ -27,11 +27,13 @@ function PlayerCard({ player, points, isCaptain, isSub }: { player: Player; poin
       position: "relative",
       width: "100%"
     }}>
+      {/* Badges */}
       <div style={{ position: "absolute", top: "0.4rem", left: "0.4rem", display: "flex", flexDirection: "column", gap: "0.2rem", zIndex: 2 }}>
         {isCaptain && <span style={{ background: "var(--blue)", color: "#fff", fontSize: "0.55rem", fontWeight: 700, padding: "0.1rem 0.3rem", borderRadius: "3px" }}>C</span>}
         {isSub && <span style={{ background: "#333", color: "#fff", fontSize: "0.55rem", fontWeight: 700, padding: "0.1rem 0.3rem", borderRadius: "3px" }}>SUB</span>}
       </div>
 
+      {/* Image */}
       <div style={{ width: "100%", aspectRatio: "1/1", borderRadius: "8px", overflow: "hidden", background: "#222", marginBottom: "0.5rem" }}>
         {player.image ? (
           <img src={player.image} alt={player.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
@@ -42,11 +44,20 @@ function PlayerCard({ player, points, isCaptain, isSub }: { player: Player; poin
         )}
       </div>
 
+      {/* Info */}
       <div style={{ fontWeight: 700, fontSize: "0.85rem", marginBottom: "0.1rem", width: "100%", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{player.name}</div>
       <div style={{ fontSize: "0.85rem", color: "var(--accent)", fontWeight: 700, marginBottom: "0.2rem" }}>
         {isCaptain ? (points * 2) : points} pts {isCaptain && "(x2)"}
       </div>
-      <div style={{ fontSize: "0.65rem", color: isUnfit ? "var(--red)" : "var(--text-muted)", height: "1.5rem", overflow: "hidden", fontWeight: isUnfit ? 600 : 400 }}>{player.desc}</div>
+      <div style={{ 
+        fontSize: "0.65rem", 
+        color: isUnfit ? "var(--red)" : "var(--text-muted)", 
+        height: "1.5rem", 
+        overflow: "hidden",
+        fontWeight: isUnfit ? 600 : 400 
+      }}>
+        {player.desc}
+      </div>
     </div>
   );
 }
@@ -59,6 +70,7 @@ export default function TeamPage() {
   const [selectedGW, setSelectedGW] = useState<number>(CURRENT_GW);
   const [loading, setLoading] = useState(true);
 
+  // 1. Load Players and Teams
   useEffect(() => {
     async function loadBaseData() {
       if (!user?.email) return;
@@ -81,33 +93,28 @@ export default function TeamPage() {
           const validTeams = teams.filter(t => t.gameweek <= CURRENT_GW);
           if (validTeams.length > 0) setSelectedGW(validTeams[0].gameweek);
         }
-      } catch (err) { console.error("Error loading players/teams:", err); }
+      } catch (err) { console.error(err); }
     }
     loadBaseData();
   }, [user]);
 
+  // 2. Load Match Stats (Linked by Title)
   useEffect(() => {
     async function loadStats() {
       setLoading(true);
       try {
         const statsSnap = await getDocs(query(
           collection(db, "playerMatchStats"), 
-          where("gameweek", "in", [selectedGW, String(selectedGW)])
+          where("gameweek", "==", selectedGW)
         ));
         
         const statsMap: Record<string, number> = {};
         statsSnap.docs.forEach(d => {
           const data = d.data();
-          // Support both camelCase and lowercase field names
-          const pts = Number(data.gwPoints ?? data.gwpoints ?? 0);
-          
-          // Map by every possible identifier to ensure a hit
-          if (data.playerId) statsMap[data.playerId] = pts;
-          if (data.playerID) statsMap[data.playerID] = pts;
-          if (data.playerName) statsMap[data.playerName] = pts;
-          if (data.riotId) statsMap[data.riotId] = pts;
-          if (data.ID) statsMap[data.ID] = pts;
-          if (data.id) statsMap[data.id] = pts;
+          // Using 'Title' as the linking field and 'gwPoints' for the score
+          if (data.Title) {
+            statsMap[data.Title] = Number(data.gwPoints || 0);
+          }
         });
         setMatchStats(statsMap);
       } catch (err) { 
@@ -126,8 +133,9 @@ export default function TeamPage() {
   const getPlayer = (id: string) => players[id];
   const getPoints = (id: string) => {
     const p = players[id];
-    // Check by document ID, internal UUID, or Player Name
-    return matchStats[id] ?? (p?.ID ? matchStats[p.ID] : 0) ?? (p?.name ? matchStats[p.name] : 0);
+    if (!p) return 0;
+    // Link using the player's name to the match stats 'Title'
+    return matchStats[p.name] ?? 0;
   };
   const isCaptain = (id: string) => currentTeam?.captain === id;
 
