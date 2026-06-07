@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { db } from "@/lib/firebase";
 import { collection, getDocs, orderBy, query, where } from "firebase/firestore";
 import Shell from "@/app/shell";
+import Link from "next/link";
 
 type Team = {
   id: string;
@@ -86,9 +87,9 @@ export default function Leaderboard() {
   if (isLocked) return (
     <Shell>
       <div style={{ maxWidth: "700px", margin: "4rem auto", textAlign: "center" }}>
-        <div style={{ fontSize: "3rem", marginBottom: "1rem" }}>⏱</div>
-        <h1 style={{ fontSize: "1.5rem", fontWeight: 700, marginBottom: "0.5rem" }}>DEADLINE TIMEOUT!</h1>
-        <p style={{ color: "var(--text-muted)" }}>Leaderboard is currently locked. Please wait for the next gameweek.</p>
+        <div style={{ fontSize: "3rem", marginBottom: "1rem" }}>🔒</div>
+        <h1 style={{ fontSize: "1.5rem", fontWeight: 700, marginBottom: "0.5rem" }}>Leaderboard is Locked</h1>
+        <p style={{ color: "var(--text-muted)" }}>Access to standings is currently restricted by the admin.</p>
       </div>
     </Shell>
   );
@@ -133,7 +134,9 @@ export default function Leaderboard() {
                 {i + 1}
               </div>
               <div style={{ fontSize: "0.875rem", fontWeight: 600, display: "flex", alignItems: "center", gap: "6px" }}>
-                {team.manager}
+                <Link href={`/profile?email=${team.ownerEmail}`} style={{ textDecoration: "none", color: "inherit", cursor: "pointer" }}>
+                    {team.manager}
+                </Link>
                 {i === 0 && (
                   <span style={{ background: "var(--accent-dim)", color: "var(--accent)", fontSize: "0.6rem", fontWeight: 700, padding: "2px 6px", borderRadius: "4px" }}>★ Leader</span>
                 )}
