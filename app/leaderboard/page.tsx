@@ -13,28 +13,35 @@ type Team = {
   totalPoints: number;
 };
 
-const CURRENT_GW = 7;
-
 export default function Leaderboard() {
   const [teams, setTeams] = useState<Team[]>([]);
   const [sortBy, setSortBy] = useState<"totalPoints" | "gameweekPoints">("totalPoints");
   const [loading, setLoading] = useState(true);
+  const [currentGW, setCurrentGW] = useState<number>(7);
 
   useEffect(() => {
     async function loadLeaderboard() {
       setLoading(true);
       try {
-        // 1. Fetch all user teams for names and totals
+        // 0. Fetch Settings for Current Gameweek
+        const settingsSnap = await getDocs(collection(db, "settings"));
+        let gw = 7;
+        if (!settingsSnap.empty) {
+          gw = settingsSnap.docs[0].data().currentGameweek || 7;
+          setCurrentGW(gw);
+        }
+
+        // 1. Fetch all user teams
         const userTeamsSnap = await getDocs(collection(db, "userTeams"));
         const userTeamsData = userTeamsSnap.docs.map(d => ({
           id: d.id,
           ...d.data()
         } as any));
 
-        // 2. Fetch gameweek teams for GW7 to get latest points
+        // 2. Fetch gameweek teams for the current GW to get latest points
         const gwTeamsSnap = await getDocs(query(
           collection(db, "gameweekTeams"),
-          where("gameweek", "==", CURRENT_GW)
+          where("gameweek", "==", gw)
         ));
 
         const gwPointsMap: Record<string, number> = {};
@@ -45,7 +52,7 @@ export default function Leaderboard() {
           }
         });
 
-        // 3. Merge both collections by ownerEmail
+        // 3. Merge data
         const mergedTeams: Team[] = userTeamsData.map(ut => ({
           id: ut.id,
           manager: ut.manager || "Unknown Manager",
@@ -65,7 +72,6 @@ export default function Leaderboard() {
     loadLeaderboard();
   }, []);
 
-  // Sort dynamically based on toggle
   const sorted = [...teams].sort((a, b) => (b[sortBy] ?? 0) - (a[sortBy] ?? 0));
 
   return (
@@ -79,7 +85,6 @@ export default function Leaderboard() {
           <h1 style={{ fontSize: "2rem", fontWeight: 700 }}>Leaderboard</h1>
         </div>
 
-        {/* Toggle Switch */}
         <div style={{ display: "inline-flex", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "8px", padding: "3px", gap: "2px", marginBottom: "1.5rem" }}>
           {(["totalPoints", "gameweekPoints"] as const).map((key) => (
             <button 
@@ -100,14 +105,12 @@ export default function Leaderboard() {
           <p style={{ color: "var(--text-muted)" }}>Loading leaderboard...</p>
         ) : (
           <div>
-            {/* Table Header */}
             <div style={{ display: "grid", gridTemplateColumns: "40px 1fr 90px 90px", gap: "8px", padding: "0 12px 10px", borderBottom: "1px solid var(--border)", marginBottom: "8px" }}>
               {["#", "Manager", "GW Pts", "Total"].map((h, i) => (
                 <div key={h} style={{ fontSize: "0.7rem", color: "var(--text-muted)", textAlign: i > 1 ? "right" : "left" }}>{h}</div>
               ))}
             </div>
 
-            {/* List */}
             {sorted.map((team, i) => (
               <div key={team.id} style={{ display: "grid", gridTemplateColumns: "40px 1fr 90px 90px", gap: "8px", alignItems: "center", padding: "0.75rem", borderRadius: "10px", marginBottom: "6px", background: i === 0 ? "var(--blue-dim)" : "var(--surface)", border: "1px solid " + (i === 0 ? "var(--blue-border)" : "var(--border)") }}>
                 <div style={{ fontSize: "0.9rem", fontWeight: 700, color: i === 0 ? "var(--accent)" : i === 1 ? "#aaa" : i === 2 ? "#cd7f32" : "var(--text-muted)" }}>
