@@ -93,7 +93,7 @@ export default function ShopPage() {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "3rem" }}>
           <h1 style={{ fontSize: "2rem", fontWeight: 800 }}>Store</h1>
           <div style={{ background: "var(--surface)", border: "1px solid var(--border)", padding: "0.6rem 1.2rem", borderRadius: "10px", fontWeight: 800 }}>
-            🪙 {userCoins}
+            {userCoins} Coins
           </div>
         </div>
 
