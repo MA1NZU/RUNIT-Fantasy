@@ -1159,7 +1159,7 @@ export default function TransfersPage() {
               marginBottom: "1rem",
             }}
           >
-            Substitute Bench
+            Bench
           </div>
 
           <div style={{ maxWidth: "220px" }}>
