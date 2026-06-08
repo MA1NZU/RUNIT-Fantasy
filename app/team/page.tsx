@@ -59,8 +59,8 @@ function PlayerCard({
         position: "relative",
         overflow: "hidden",
         background: isCaptain
-          ? "linear-gradient(145deg, rgba(3,71,244,0.22), rgba(255,193,7,0.08)), var(--surface)"
-          : "linear-gradient(145deg, rgba(255,255,255,0.045), rgba(255,255,255,0.015)), var(--surface)",
+          ? "linear-gradient(145deg, rgba(3,71,244,0.18), rgba(255,193,7,0.07)), var(--surface)"
+          : "linear-gradient(145deg, rgba(255,255,255,0.04), rgba(255,255,255,0.015)), var(--surface)",
         border: `1px solid ${
           isUnfit
             ? "var(--red)"
@@ -71,10 +71,7 @@ function PlayerCard({
         borderRadius: "20px",
         padding: "0.75rem",
         cursor: "pointer",
-        transition: "transform 0.15s ease, box-shadow 0.15s ease",
-        boxShadow: isCaptain
-          ? "0 18px 42px rgba(3,71,244,0.22)"
-          : "0 12px 28px rgba(0,0,0,0.18)",
+        transition: "transform 0.15s ease",
         minHeight: "245px",
       }}
       onMouseEnter={(e) => {
@@ -93,8 +90,8 @@ function PlayerCard({
           top: "-55px",
           borderRadius: "999px",
           background: isCaptain
-            ? "rgba(255,193,7,0.18)"
-            : "rgba(3,71,244,0.12)",
+            ? "rgba(255,193,7,0.12)"
+            : "rgba(3,71,244,0.08)",
           pointerEvents: "none",
         }}
       />
@@ -120,7 +117,6 @@ function PlayerCard({
               fontWeight: 800,
               padding: "0.2rem 0.45rem",
               borderRadius: "999px",
-              backdropFilter: "blur(8px)",
             }}
           >
             {slot}
@@ -136,7 +132,6 @@ function PlayerCard({
               fontWeight: 900,
               padding: "0.2rem 0.45rem",
               borderRadius: "999px",
-              boxShadow: "0 8px 22px rgba(3,71,244,0.3)",
             }}
           >
             CAPTAIN
@@ -221,7 +216,6 @@ function PlayerCard({
               whiteSpace: "nowrap",
               overflow: "hidden",
               textOverflow: "ellipsis",
-              textShadow: "0 2px 10px rgba(0,0,0,0.5)",
             }}
           >
             {player.name}
@@ -343,32 +337,167 @@ function StatsModal({
   const getBreakdown = () => {
     const rows: { label: string; val: any; pts: number }[] = [];
 
-    if (s("matchWin")) rows.push({ label: "Match Win", val: s("matchWin"), pts: s("matchWin") * 2 });
-    if (s("matchLose")) rows.push({ label: "Match Loss", val: s("matchLose"), pts: s("matchLose") * -2 });
-    if (s("mvp")) rows.push({ label: "MVP", val: s("mvp"), pts: s("mvp") * 8 });
-    if (s("svp")) rows.push({ label: "SVP", val: s("svp"), pts: s("svp") * 5 });
-    if (s("bonus")) rows.push({ label: "Bonus", val: s("bonus"), pts: s("bonus") * 1 });
+    if (s("matchWin"))
+      rows.push({
+        label: "Match Win",
+        val: s("matchWin"),
+        pts: s("matchWin") * 2,
+      });
+
+    if (s("matchLose"))
+      rows.push({
+        label: "Match Loss",
+        val: s("matchLose"),
+        pts: s("matchLose") * -2,
+      });
+
+    if (s("mvp"))
+      rows.push({
+        label: "MVP",
+        val: s("mvp"),
+        pts: s("mvp") * 8,
+      });
+
+    if (s("svp"))
+      rows.push({
+        label: "SVP",
+        val: s("svp"),
+        pts: s("svp") * 5,
+      });
+
+    if (s("bonus"))
+      rows.push({
+        label: "Bonus",
+        val: s("bonus"),
+        pts: s("bonus") * 1,
+      });
 
     if (player.game === "Valorant") {
-      if (s("kills")) rows.push({ label: "Kills", val: s("kills"), pts: Math.floor(s("kills") / 2) });
-      if (s("assists")) rows.push({ label: "Assists", val: s("assists"), pts: Math.floor(s("assists") / 2) });
-      if (s("deaths")) rows.push({ label: "Deaths", val: s("deaths"), pts: Math.floor(s("deaths") / 3) * -1 });
-      if (s("firstBlood")) rows.push({ label: "First Blood", val: s("firstBlood"), pts: s("firstBlood") });
-      if (s("firstDeath")) rows.push({ label: "First Death", val: s("firstDeath"), pts: s("firstDeath") * -1 });
-      if (s("tripleKill")) rows.push({ label: "Triple Kill", val: s("tripleKill"), pts: s("tripleKill") * 3 });
-      if (s("quadraKill")) rows.push({ label: "Quadra Kill", val: s("quadraKill"), pts: s("quadraKill") * 5 });
-      if (s("ace")) rows.push({ label: "Ace", val: s("ace"), pts: s("ace") * 8 });
-      if (s("clutch")) rows.push({ label: "Clutch", val: s("clutch"), pts: s("clutch") * 2 });
+      if (s("kills"))
+        rows.push({
+          label: "Kills",
+          val: s("kills"),
+          pts: Math.floor(s("kills") / 2),
+        });
+
+      if (s("assists"))
+        rows.push({
+          label: "Assists",
+          val: s("assists"),
+          pts: Math.floor(s("assists") / 2),
+        });
+
+      if (s("deaths"))
+        rows.push({
+          label: "Deaths",
+          val: s("deaths"),
+          pts: Math.floor(s("deaths") / 3) * -1,
+        });
+
+      if (s("firstBlood"))
+        rows.push({
+          label: "First Blood",
+          val: s("firstBlood"),
+          pts: s("firstBlood"),
+        });
+
+      if (s("firstDeath"))
+        rows.push({
+          label: "First Death",
+          val: s("firstDeath"),
+          pts: s("firstDeath") * -1,
+        });
+
+      if (s("tripleKill"))
+        rows.push({
+          label: "Triple Kill",
+          val: s("tripleKill"),
+          pts: s("tripleKill") * 3,
+        });
+
+      if (s("quadraKill"))
+        rows.push({
+          label: "Quadra Kill",
+          val: s("quadraKill"),
+          pts: s("quadraKill") * 5,
+        });
+
+      if (s("ace"))
+        rows.push({
+          label: "Ace",
+          val: s("ace"),
+          pts: s("ace") * 8,
+        });
+
+      if (s("clutch"))
+        rows.push({
+          label: "Clutch",
+          val: s("clutch"),
+          pts: s("clutch") * 2,
+        });
     } else {
-      if (s("kills")) rows.push({ label: "Kills", val: s("kills"), pts: Math.floor(s("kills") / 3) });
-      if (s("assists")) rows.push({ label: "Assists", val: s("assists"), pts: Math.floor(s("assists") / 4) });
-      if (s("deaths")) rows.push({ label: "Deaths", val: s("deaths"), pts: s("deaths") * -2 });
-      if (s("lastKills")) rows.push({ label: "Last Kills", val: s("lastKills"), pts: Math.floor(s("lastKills") / 2) });
-      if (s("headKill")) rows.push({ label: "Head Kill", val: s("headKill"), pts: s("headKill") * 3 });
-      if (s("healing")) rows.push({ label: "Healing", val: s("healing"), pts: Math.floor(s("healing") / 5050) });
-      if (s("damage")) rows.push({ label: "Damage", val: s("damage"), pts: Math.floor(s("damage") / 5050) });
-      if (s("blocked")) rows.push({ label: "Blocked", val: s("blocked"), pts: Math.floor(s("blocked") / 5050) });
-      if (s("soloKills")) rows.push({ label: "Solo Kills", val: s("soloKills"), pts: s("soloKills") });
+      if (s("kills"))
+        rows.push({
+          label: "Kills",
+          val: s("kills"),
+          pts: Math.floor(s("kills") / 3),
+        });
+
+      if (s("assists"))
+        rows.push({
+          label: "Assists",
+          val: s("assists"),
+          pts: Math.floor(s("assists") / 4),
+        });
+
+      if (s("deaths"))
+        rows.push({
+          label: "Deaths",
+          val: s("deaths"),
+          pts: s("deaths") * -2,
+        });
+
+      if (s("lastKills"))
+        rows.push({
+          label: "Last Kills",
+          val: s("lastKills"),
+          pts: Math.floor(s("lastKills") / 2),
+        });
+
+      if (s("headKill"))
+        rows.push({
+          label: "Head Kill",
+          val: s("headKill"),
+          pts: s("headKill") * 3,
+        });
+
+      if (s("healing"))
+        rows.push({
+          label: "Healing",
+          val: s("healing"),
+          pts: Math.floor(s("healing") / 5050),
+        });
+
+      if (s("damage"))
+        rows.push({
+          label: "Damage",
+          val: s("damage"),
+          pts: Math.floor(s("damage") / 5050),
+        });
+
+      if (s("blocked"))
+        rows.push({
+          label: "Blocked",
+          val: s("blocked"),
+          pts: Math.floor(s("blocked") / 5050),
+        });
+
+      if (s("soloKills"))
+        rows.push({
+          label: "Solo Kills",
+          val: s("soloKills"),
+          pts: s("soloKills"),
+        });
     }
 
     return rows;
@@ -389,7 +518,6 @@ function StatsModal({
         alignItems: "center",
         justifyContent: "center",
         padding: "1rem",
-        backdropFilter: "blur(10px)",
       }}
       onClick={onClose}
     >
@@ -398,13 +526,12 @@ function StatsModal({
           position: "relative",
           overflow: "hidden",
           background:
-            "radial-gradient(circle at 15% 0%, rgba(3,71,244,0.28), transparent 35%), var(--surface)",
+            "radial-gradient(circle at 15% 0%, rgba(3,71,244,0.22), transparent 35%), var(--surface)",
           border: "1px solid var(--border)",
           borderRadius: "26px",
           width: "100%",
           maxWidth: "500px",
           padding: "1.25rem",
-          boxShadow: "0 24px 80px rgba(0,0,0,0.45)",
         }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -485,7 +612,8 @@ function StatsModal({
                 marginTop: "0.25rem",
               }}
             >
-              {player.game.toUpperCase()} · {isCaptain ? "CAPTAIN X2" : "PLAYER STATS"}
+              {player.game.toUpperCase()} ·{" "}
+              {isCaptain ? "CAPTAIN X2" : "PLAYER STATS"}
             </div>
           </div>
         </div>
@@ -541,13 +669,20 @@ function StatsModal({
                     gridTemplateColumns: "1fr 70px 70px",
                     padding: "0.8rem 0.9rem",
                     borderBottom:
-                      i === rows.length - 1 ? "none" : "1px solid var(--border)",
+                      i === rows.length - 1
+                        ? "none"
+                        : "1px solid var(--border)",
                     fontSize: "0.9rem",
                   }}
                 >
                   <span style={{ fontWeight: 700 }}>{r.label}</span>
 
-                  <span style={{ textAlign: "right", color: "var(--text-muted)" }}>
+                  <span
+                    style={{
+                      textAlign: "right",
+                      color: "var(--text-muted)",
+                    }}
+                  >
                     {r.val.toLocaleString()}
                   </span>
 
@@ -621,9 +756,9 @@ function TeamContent() {
   const [selectedGW, setSelectedGW] = useState<number>(7);
   const [loading, setLoading] = useState(true);
 
-  const [selectedStatPlayerId, setSelectedStatPlayerId] = useState<string | null>(
-    null
-  );
+  const [selectedStatPlayerId, setSelectedStatPlayerId] = useState<
+    string | null
+  >(null);
 
   useEffect(() => {
     if (!targetEmail) return;
@@ -772,18 +907,10 @@ function TeamContent() {
   const storedGWPoints = Number(currentTeam?.gwPoints || 0);
   const displayGWPoints = calculatedGWPoints || storedGWPoints;
 
-  const captainPlayer =
-    currentTeam && currentTeam.captain ? players[currentTeam.captain] : null;
-
   const squadValue = playerIds.reduce((sum, pid) => {
     const p = players[pid];
     return sum + Number(p?.price || 0);
   }, 0);
-
-  const topScorerId = playerIds.reduce<string | null>((bestId, pid) => {
-    if (!bestId) return pid;
-    return getPoints(pid) > getPoints(bestId) ? pid : bestId;
-  }, null);
 
   if (loading && gwTeams.length === 0) {
     return (
@@ -811,8 +938,7 @@ function TeamContent() {
           padding: "2rem",
           marginBottom: "1rem",
           background:
-            "radial-gradient(circle at 20% 10%, rgba(3, 71, 244, 0.35), transparent 32%), radial-gradient(circle at 90% 20%, rgba(255, 193, 7, 0.18), transparent 30%), linear-gradient(135deg, rgba(255,255,255,0.075), rgba(255,255,255,0.02))",
-          boxShadow: "0 24px 80px rgba(0,0,0,0.32)",
+            "radial-gradient(circle at 20% 10%, rgba(3, 71, 244, 0.28), transparent 32%), radial-gradient(circle at 90% 20%, rgba(255, 193, 7, 0.14), transparent 30%), linear-gradient(135deg, rgba(255,255,255,0.075), rgba(255,255,255,0.02))",
         }}
       >
         <div
@@ -823,7 +949,7 @@ function TeamContent() {
             right: "-110px",
             bottom: "-110px",
             borderRadius: "999px",
-            background: "rgba(3, 71, 244, 0.28)",
+            background: "rgba(3, 71, 244, 0.18)",
             filter: "blur(20px)",
             pointerEvents: "none",
           }}
@@ -851,7 +977,6 @@ function TeamContent() {
                 height: "8px",
                 borderRadius: "999px",
                 background: "var(--accent)",
-                boxShadow: "0 0 0 6px rgba(255, 193, 7, 0.12)",
               }}
             />
             {isOwnTeam ? "My squad" : "Manager squad"} · GW{selectedGW}
@@ -868,14 +993,7 @@ function TeamContent() {
           >
             {isOwnTeam ? "My Team" : "Manager"}
             <br />
-            <span
-              style={{
-                color: "var(--blue)",
-                textShadow: "0 0 34px rgba(3, 71, 244, 0.45)",
-              }}
-            >
-              Gameweek Squad
-            </span>
+            <span style={{ color: "var(--blue)" }}>Gameweek Squad</span>
           </h1>
 
           <p
@@ -904,14 +1022,12 @@ function TeamContent() {
                       ? "1px solid rgba(107,159,255,0.65)"
                       : "1px solid var(--border)",
                   background:
-                    selectedGW === gw ? "var(--blue)" : "rgba(255,255,255,0.045)",
+                    selectedGW === gw
+                      ? "var(--blue)"
+                      : "rgba(255,255,255,0.045)",
                   color: selectedGW === gw ? "#fff" : "var(--text-muted)",
                   cursor: "pointer",
                   fontWeight: 900,
-                  boxShadow:
-                    selectedGW === gw
-                      ? "0 10px 28px rgba(3,71,244,0.28)"
-                      : "none",
                 }}
               >
                 GW{gw}
@@ -925,106 +1041,167 @@ function TeamContent() {
         <>
           <section
             style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-              gap: "0.75rem",
+              background: "var(--surface)",
+              border: "1px solid var(--border)",
+              borderRadius: "22px",
+              padding: "1rem",
               marginBottom: "1rem",
+              overflowX: "auto",
             }}
           >
-            {[
-              {
-                label: "GW Points",
-                value: displayGWPoints,
-                color: "var(--accent)",
-              },
-              {
-                label: "Captain",
-                value: captainPlayer?.name || "—",
-                color: "var(--blue)",
-              },
-              {
-                label: "Transfers",
-                value: currentTeam.transfersMade ?? 0,
-                color: "var(--text)",
-              },
-              {
-                label: "Penalty",
-                value: currentTeam.transferPenalty ?? 0,
-                color: currentTeam.transferPenalty ? "var(--red)" : "var(--text)",
-              },
-              {
-                label: "Squad Value",
-                value: squadValue.toFixed(1),
-                color: "var(--text)",
-              },
-              {
-                label: "Top Scorer",
-                value: topScorerId ? players[topScorerId]?.name || "—" : "—",
-                color: "var(--accent)",
-              },
-            ].map((stat) => (
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1.5fr 1fr 1fr 1fr",
+                gap: "0.75rem",
+                minWidth: "640px",
+                alignItems: "stretch",
+              }}
+            >
               <div
-                key={stat.label}
                 style={{
-                  position: "relative",
-                  overflow: "hidden",
-                  background: "var(--surface)",
-                  border: "1px solid var(--border)",
+                  background: "rgba(255,193,7,0.08)",
+                  border: "1px solid rgba(255,193,7,0.25)",
                   borderRadius: "18px",
-                  padding: "1rem",
-                  minHeight: "95px",
+                  padding: "1.2rem",
                 }}
               >
                 <div
                   style={{
-                    position: "absolute",
-                    width: "90px",
-                    height: "90px",
-                    right: "-45px",
-                    top: "-45px",
-                    background: "rgba(3, 71, 244, 0.18)",
-                    borderRadius: "999px",
-                  }}
-                />
-
-                <div
-                  style={{
-                    position: "relative",
-                    zIndex: 1,
-                    fontSize:
-                      typeof stat.value === "string" && stat.value.length > 12
-                        ? "1.05rem"
-                        : "1.65rem",
+                    fontSize: "2.4rem",
                     fontWeight: 900,
-                    letterSpacing: "-0.04em",
-                    color: stat.color,
-                    whiteSpace: "nowrap",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
+                    color: "var(--accent)",
+                    lineHeight: 1,
+                    letterSpacing: "-0.05em",
                   }}
                 >
-                  {stat.value}
+                  {displayGWPoints}
                 </div>
 
                 <div
                   style={{
-                    position: "relative",
-                    zIndex: 1,
                     color: "var(--text-muted)",
-                    fontSize: "0.75rem",
-                    marginTop: "0.3rem",
+                    fontSize: "0.8rem",
+                    marginTop: "0.45rem",
+                    fontWeight: 800,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.8px",
                   }}
                 >
-                  {stat.label}
+                  GW Points
                 </div>
               </div>
-            ))}
+
+              <div
+                style={{
+                  background: "rgba(255,255,255,0.035)",
+                  border: "1px solid var(--border)",
+                  borderRadius: "18px",
+                  padding: "1.2rem",
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: "1.9rem",
+                    fontWeight: 900,
+                    color: "var(--text)",
+                    lineHeight: 1,
+                    letterSpacing: "-0.04em",
+                  }}
+                >
+                  {currentTeam.transfersMade ?? 0}
+                </div>
+
+                <div
+                  style={{
+                    color: "var(--text-muted)",
+                    fontSize: "0.8rem",
+                    marginTop: "0.45rem",
+                    fontWeight: 800,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.8px",
+                  }}
+                >
+                  Transfers
+                </div>
+              </div>
+
+              <div
+                style={{
+                  background: "rgba(255,255,255,0.035)",
+                  border: "1px solid var(--border)",
+                  borderRadius: "18px",
+                  padding: "1.2rem",
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: "1.9rem",
+                    fontWeight: 900,
+                    color: currentTeam.transferPenalty
+                      ? "var(--red)"
+                      : "var(--text)",
+                    lineHeight: 1,
+                    letterSpacing: "-0.04em",
+                  }}
+                >
+                  {currentTeam.transferPenalty ?? 0}
+                </div>
+
+                <div
+                  style={{
+                    color: "var(--text-muted)",
+                    fontSize: "0.8rem",
+                    marginTop: "0.45rem",
+                    fontWeight: 800,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.8px",
+                  }}
+                >
+                  Penalty
+                </div>
+              </div>
+
+              <div
+                style={{
+                  background: "rgba(255,255,255,0.035)",
+                  border: "1px solid var(--border)",
+                  borderRadius: "18px",
+                  padding: "1.2rem",
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: "1.9rem",
+                    fontWeight: 900,
+                    color: "var(--text)",
+                    lineHeight: 1,
+                    letterSpacing: "-0.04em",
+                  }}
+                >
+                  {squadValue.toFixed(1)}
+                </div>
+
+                <div
+                  style={{
+                    color: "var(--text-muted)",
+                    fontSize: "0.8rem",
+                    marginTop: "0.45rem",
+                    fontWeight: 800,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.8px",
+                  }}
+                >
+                  Squad Value
+                </div>
+              </div>
+            </div>
           </section>
 
           <section
             style={{
               background:
-                "radial-gradient(circle at 50% 0%, rgba(3,71,244,0.14), transparent 35%), var(--surface)",
+                "radial-gradient(circle at 50% 0%, rgba(3,71,244,0.12), transparent 35%), var(--surface)",
               border: "1px solid var(--border)",
               borderRadius: "26px",
               padding: "1rem",
