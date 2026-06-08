@@ -928,7 +928,7 @@ export default function TransfersPage() {
                 gap: "8px",
                 background: "rgba(3, 71, 244, 0.15)",
                 border: "1px solid rgba(107, 159, 255, 0.45)",
-                color: "#0347F4",
+                color: "#8bb5ff",
                 fontSize: "0.75rem",
                 padding: "6px 12px",
                 borderRadius: "999px",
