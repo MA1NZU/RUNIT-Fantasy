@@ -11,6 +11,7 @@ import {
   where,
   setDoc,
   deleteDoc,
+  writeBatch,
 } from "firebase/firestore";
 import { useAuth } from "@/lib/AuthContext";
 import { useRouter } from "next/navigation";
@@ -40,6 +41,8 @@ type UserTeam = {
   ownerEmail: string;
   namez: string;
   lastAddedGwToTotalGameweek?: number;
+  lastGwCoinsEarned?: number;
+  lastGwCoinsGameweek?: number;
 };
 
 type Settings = {
@@ -65,6 +68,19 @@ type ShopItem = {
 };
 
 type Tab = "players" | "stats" | "managers" | "shop" | "settings" | "locks";
+
+const getRankPrizeCoins = (rank: number) => {
+  if (rank === 1) return 4000;
+  if (rank === 2) return 2500;
+  if (rank === 3) return 1500;
+  if (rank === 4) return 1000;
+  if (rank >= 5 && rank <= 10) return 500;
+  if (rank === 11) return 300;
+  if (rank === 12) return 300;
+  if (rank === 13) return 200;
+
+  return 0;
+};
 
 export default function AdminPage() {
   const { user } = useAuth();
@@ -123,7 +139,10 @@ export default function AdminPage() {
         }
 
         const gwTeamsSnap = await getDocs(
-          query(collection(db, "gameweekTeams"), where("gameweek", "==", activeGW))
+          query(
+            collection(db, "gameweekTeams"),
+            where("gameweek", "==", activeGW)
+          )
         );
 
         const currentGwPointsByEmail: Record<string, number> = {};
@@ -140,7 +159,7 @@ export default function AdminPage() {
         setPlayers(
           pSnap.docs
             .map((d) => ({ id: d.id, ...d.data() } as Player))
-            .sort((a, b) => a.name.localeCompare(b.name))
+            .sort((a, b) => (a.name || "").localeCompare(b.name || ""))
         );
 
         setManagers(
@@ -156,9 +175,14 @@ export default function AdminPage() {
                 coins: Number(manager.coins || 0),
                 Bank: Number(manager.Bank || 0),
                 freeTransfers: Number(manager.freeTransfers || 0),
+                lastAddedGwToTotalGameweek: Number(
+                  manager.lastAddedGwToTotalGameweek || 0
+                ),
+                lastGwCoinsEarned: Number(manager.lastGwCoinsEarned || 0),
+                lastGwCoinsGameweek: Number(manager.lastGwCoinsGameweek || 0),
               };
             })
-            .sort((a, b) => (b.totalPoints ?? 0) - (a.totalPoints ?? 0))
+            .sort((a, b) => Number(b.totalPoints || 0) - Number(a.totalPoints || 0))
         );
 
         setShopItems(
@@ -340,12 +364,80 @@ export default function AdminPage() {
                 }
               : manager
           )
-          .sort((a, b) => (b.totalPoints ?? 0) - (a.totalPoints ?? 0))
+          .sort((a, b) => Number(b.totalPoints || 0) - Number(a.totalPoints || 0))
       );
 
       markSaved(saveKey);
     } catch (err) {
       console.error("Failed to add GW points to total:", err);
+    }
+
+    setSaving(null);
+  };
+
+  const handleGrantRankingCoins = async () => {
+    const currentGameweek = settings?.currentGameweek;
+
+    if (!currentGameweek) {
+      alert("Current gameweek not found.");
+      return;
+    }
+
+    const rankedManagers = [...managers].sort(
+      (a, b) => Number(b.totalPoints || 0) - Number(a.totalPoints || 0)
+    );
+
+    const alreadyGrantedCount = rankedManagers.filter(
+      (m) => Number(m.lastGwCoinsGameweek || 0) === currentGameweek
+    ).length;
+
+    const confirmMessage =
+      alreadyGrantedCount > 0
+        ? `Coins were already granted to ${alreadyGrantedCount} manager(s) for GW${currentGameweek}.\n\nGrant coins again anyway?`
+        : `Grant ranking coins to all managers for GW${currentGameweek}?\n\n1st: 4,000¢\n2nd: 2,500¢\n3rd: 1,500¢\n4th: 1,000¢\n5th-10th: 500¢\n11th: 300¢\n12th: 300¢\n13th: 200¢`;
+
+    if (!confirm(confirmMessage)) return;
+
+    setSaving("grantRankingCoins");
+
+    try {
+      const batch = writeBatch(db);
+      const now = new Date().toISOString();
+
+      const updatedManagers = rankedManagers.map((manager, index) => {
+        const rank = index + 1;
+        const prizeCoins = getRankPrizeCoins(rank);
+        const currentCoins = Number(manager.coins || 0);
+        const newCoins = currentCoins + prizeCoins;
+
+        batch.update(doc(db, "userTeams", manager.id), {
+          coins: newCoins,
+          lastGwCoinsEarned: prizeCoins,
+          lastGwCoinsGameweek: currentGameweek,
+          "Updated Date": now,
+        });
+
+        return {
+          ...manager,
+          coins: newCoins,
+          lastGwCoinsEarned: prizeCoins,
+          lastGwCoinsGameweek: currentGameweek,
+        };
+      });
+
+      await batch.commit();
+
+      setManagers(
+        updatedManagers.sort(
+          (a, b) => Number(b.totalPoints || 0) - Number(a.totalPoints || 0)
+        )
+      );
+
+      markSaved("grantRankingCoins");
+      alert(`Coins granted successfully for GW${currentGameweek}.`);
+    } catch (err) {
+      console.error("Failed to grant ranking coins:", err);
+      alert("Failed to grant coins. Check console for details.");
     }
 
     setSaving(null);
@@ -1311,6 +1403,57 @@ export default function AdminPage() {
               .
             </div>
 
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                gap: "1rem",
+                flexWrap: "wrap",
+                background:
+                  "linear-gradient(135deg, rgba(3,71,244,0.12), rgba(255,193,7,0.08)), var(--surface)",
+                border: "1px solid var(--border)",
+                borderRadius: "10px",
+                padding: "1rem",
+              }}
+            >
+              <div>
+                <div style={{ fontWeight: 800, marginBottom: "0.25rem" }}>
+                  Grant Ranking Coins
+                </div>
+
+                <div style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>
+                  Rewards managers based on their current totalPoints rank:
+                  1st 4,000¢ · 2nd 2,500¢ · 3rd 1,500¢ · 4th 1,000¢ ·
+                  5th-10th 500¢ · 11th 300¢ · 12th 300¢ · 13th 200¢
+                </div>
+              </div>
+
+              <button
+                onClick={handleGrantRankingCoins}
+                disabled={saving === "grantRankingCoins"}
+                style={{
+                  background:
+                    saved === "grantRankingCoins"
+                      ? "var(--green)"
+                      : "var(--blue)",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: "8px",
+                  padding: "0.75rem 1rem",
+                  fontWeight: 900,
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {saving === "grantRankingCoins"
+                  ? "Granting..."
+                  : saved === "grantRankingCoins"
+                  ? "Granted"
+                  : "Grant Coins"}
+              </button>
+            </div>
+
             {managers.map((m) => (
               <div
                 key={m.id}
@@ -1332,7 +1475,26 @@ export default function AdminPage() {
                     flexWrap: "wrap",
                   }}
                 >
-                  <span>{m.manager || "Unknown Manager"}</span>
+                  <div>
+                    <span>{m.manager || "Unknown Manager"}</span>
+
+                    {m.lastGwCoinsEarned !== undefined &&
+                      Number(m.lastGwCoinsEarned || 0) > 0 && (
+                        <span
+                          style={{
+                            marginLeft: "0.5rem",
+                            fontSize: "0.75rem",
+                            color: "var(--accent)",
+                            fontWeight: 700,
+                          }}
+                        >
+                          Last Coins: {m.lastGwCoinsEarned}¢
+                          {m.lastGwCoinsGameweek
+                            ? ` · GW${m.lastGwCoinsGameweek}`
+                            : ""}
+                        </span>
+                      )}
+                  </div>
 
                   <span
                     style={{
@@ -1348,9 +1510,11 @@ export default function AdminPage() {
                 <div
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "repeat(5, 1fr) 100px 150px",
+                    gridTemplateColumns:
+                      "repeat(5, minmax(100px, 1fr)) 100px 150px",
                     gap: "0.75rem",
                     alignItems: "end",
+                    overflowX: "auto",
                   }}
                 >
                   <div>
