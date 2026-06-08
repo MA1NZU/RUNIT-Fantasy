@@ -137,22 +137,6 @@ function PlayerCard({
             CAPTAIN
           </span>
         )}
-
-        {isSub && (
-          <span
-            style={{
-              background: "rgba(255,255,255,0.08)",
-              color: "#fff",
-              border: "1px solid rgba(255,255,255,0.1)",
-              fontSize: "0.62rem",
-              fontWeight: 900,
-              padding: "0.2rem 0.45rem",
-              borderRadius: "999px",
-            }}
-          >
-            SUB
-          </span>
-        )}
       </div>
 
       <div
@@ -613,7 +597,7 @@ function StatsModal({
               }}
             >
               {player.game.toUpperCase()} ·{" "}
-              {isCaptain ? "CAPTAIN X2" : "PLAYER STATS"}
+              {isCaptain ? "CAPTAIN" : "PLAYER STATS"}
             </div>
           </div>
         </div>
@@ -715,13 +699,8 @@ function StatsModal({
             gap: "1rem",
           }}
         >
-          <div>
-            <div style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>
-              {isCaptain ? "Total GW Points · Doubled" : "Total GW Points"}
-            </div>
-
             <div style={{ fontSize: "0.9rem", fontWeight: 800 }}>
-              {isCaptain ? `${totalRaw} × 2` : "Raw total"}
+              {isCaptain ? `${totalRaw} × 2` : "TOTAL"}
             </div>
           </div>
 
