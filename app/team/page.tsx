@@ -681,7 +681,7 @@ function StatsModal({
             </div>
 
             <div style={{ fontSize: "0.9rem", fontWeight: 800 }}>
-              {isCaptain ? `${totalRaw} × 2` : "Raw total"}
+              {isCaptain ? "TOTAL" : "TOTAL"}
             </div>
           </div>
 
