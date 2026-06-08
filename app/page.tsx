@@ -353,8 +353,6 @@ export default function Home() {
                 {[
                   "Valorant",
                   "Marvel Rivals",
-                  `${TOTAL_MANAGERS} managers`,
-                  "1 winner",
                 ].map((pill) => (
                   <div
                     key={pill}
