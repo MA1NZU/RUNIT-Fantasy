@@ -951,23 +951,10 @@ function TeamContent() {
               margin: "0 0 1rem",
             }}
           >
-            {isOwnTeam ? "My Team" : "Manager"}
+            {isOwnTeam ? "My" : "Manager"}
             <br />
-            <span style={{ color: "var(--blue)" }}>Gameweek Squad</span>
+            <span style={{ color: "var(--blue)" }}>Gameweek Team</span>
           </h1>
-
-          <p
-            style={{
-              maxWidth: "620px",
-              color: "var(--text-muted)",
-              fontSize: "1rem",
-              lineHeight: 1.7,
-              marginBottom: "1.25rem",
-            }}
-          >
-            Viewing {targetEmail}. Check your starting four, captain multiplier,
-            substitute, and full player stat breakdowns.
-          </p>
 
           <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
             {availableGWs.map((gw) => (
