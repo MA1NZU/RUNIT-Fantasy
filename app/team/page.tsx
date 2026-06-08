@@ -573,7 +573,7 @@ function StatsModal({
               }}
             >
               {player.game.toUpperCase()} ·{" "}
-              {isCaptain ? "CAPTAIN X2" : "PLAYER STATS"}
+              {isCaptain ? "CAPTAIN STATS" : "PLAYER STATS"}
             </div>
           </div>
         </div>
