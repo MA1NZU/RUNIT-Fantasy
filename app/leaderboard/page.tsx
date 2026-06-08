@@ -328,7 +328,6 @@ export default function Leaderboard() {
               <span
                 style={{
                   color: "var(--blue)",
-                  textShadow: "0 0 34px rgba(3, 71, 244, 0.45)",
                 }}
               >
                 Standings
@@ -372,10 +371,6 @@ export default function Leaderboard() {
                     sortBy === "totalPoints" ? "var(--blue)" : "transparent",
                   color:
                     sortBy === "totalPoints" ? "#fff" : "var(--text-muted)",
-                  boxShadow:
-                    sortBy === "totalPoints"
-                      ? "0 10px 28px rgba(3,71,244,0.28)"
-                      : "none",
                 }}
               >
                 All Time Ranking
@@ -394,10 +389,6 @@ export default function Leaderboard() {
                     sortBy === "gameweekPoints" ? "var(--blue)" : "transparent",
                   color:
                     sortBy === "gameweekPoints" ? "#fff" : "var(--text-muted)",
-                  boxShadow:
-                    sortBy === "gameweekPoints"
-                      ? "0 10px 28px rgba(3,71,244,0.28)"
-                      : "none",
                 }}
               >
                 Gameweek Ranking
