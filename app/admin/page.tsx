@@ -1565,30 +1565,6 @@ export default function AdminPage() {
                       ? "Saved"
                       : "Save"}
                   </button>
-
-                  <button
-                    onClick={() => handleAddGwPointsToTotal(m)}
-                    disabled={saving === `${m.id}_addGwToTotal`}
-                    style={{
-                      background:
-                        saved === `${m.id}_addGwToTotal`
-                          ? "var(--green)"
-                          : "var(--blue)",
-                      color: "#fff",
-                      border: "none",
-                      borderRadius: "6px",
-                      padding: "0.6rem",
-                      fontWeight: 700,
-                      cursor: "pointer",
-                      width: "100%",
-                    }}
-                  >
-                    {saving === `${m.id}_addGwToTotal`
-                      ? "Adding..."
-                      : saved === `${m.id}_addGwToTotal`
-                      ? "Added"
-                      : "Add GW → Total"}
-                  </button>
                 </div>
               </div>
             ))}
