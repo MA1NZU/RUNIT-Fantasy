@@ -667,6 +667,7 @@ export default function TransfersPage() {
   })();
 
   const freeTransfers = Number(userTeam?.freeTransfers ?? 1);
+  const freeTransfersRemaining = Math.max(0, freeTransfers - transfersMade);
   const penalty = Math.max(0, transfersMade - freeTransfers) * 4;
 
   const uniqueGames = Array.from(
@@ -1035,9 +1036,9 @@ export default function TransfersPage() {
                 color: squadCount === 5 ? "var(--green)" : "var(--text)",
               },
               {
-                value: transfersMade,
+                value: freeTransfersRemaining,
                 label: "Transfers",
-                color: "var(--text)",
+                color: freeTransfersRemaining > 0 ? "var(--green)" : "var(--text)",
               },
               {
                 value: penalty > 0 ? `-${penalty}` : "0",
