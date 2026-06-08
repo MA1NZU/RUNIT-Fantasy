@@ -12,6 +12,7 @@ import {
   setDoc,
   deleteDoc,
   writeBatch,
+  increment,
 } from "firebase/firestore";
 import { useAuth } from "@/lib/AuthContext";
 import { useRouter } from "next/navigation";
@@ -40,7 +41,6 @@ type UserTeam = {
   freeTransfers: number;
   ownerEmail: string;
   namez: string;
-  lastAddedGwToTotalGameweek?: number;
   lastGwCoinsEarned?: number;
   lastGwCoinsGameweek?: number;
 };
@@ -175,14 +175,13 @@ export default function AdminPage() {
                 coins: Number(manager.coins || 0),
                 Bank: Number(manager.Bank || 0),
                 freeTransfers: Number(manager.freeTransfers || 0),
-                lastAddedGwToTotalGameweek: Number(
-                  manager.lastAddedGwToTotalGameweek || 0
-                ),
                 lastGwCoinsEarned: Number(manager.lastGwCoinsEarned || 0),
                 lastGwCoinsGameweek: Number(manager.lastGwCoinsGameweek || 0),
               };
             })
-            .sort((a, b) => Number(b.totalPoints || 0) - Number(a.totalPoints || 0))
+            .sort(
+              (a, b) => Number(b.totalPoints || 0) - Number(a.totalPoints || 0)
+            )
         );
 
         setShopItems(
@@ -238,6 +237,243 @@ export default function AdminPage() {
     return total;
   };
 
+  const syncCurrentGameweekScores = async () => {
+    if (!settings?.currentGameweek) return;
+
+    const currentGameweek = Number(settings.currentGameweek);
+    const now = new Date().toISOString();
+
+    try {
+      const [playersSnap, statsSnap, gwTeamsSnap, userTeamsSnap] =
+        await Promise.all([
+          getDocs(collection(db, "players")),
+          getDocs(
+            query(
+              collection(db, "playerMatchStats"),
+              where("gameweek", "==", currentGameweek)
+            )
+          ),
+          getDocs(
+            query(
+              collection(db, "gameweekTeams"),
+              where("gameweek", "==", currentGameweek)
+            )
+          ),
+          getDocs(collection(db, "userTeams")),
+        ]);
+
+      const aliasToCanonical = new Map<string, string>();
+      const playerAliasGroups: string[][] = [];
+
+      playersSnap.docs.forEach((playerDoc) => {
+        const data = playerDoc.data();
+
+        const aliases = [playerDoc.id, data.ID, data.name, data.Title]
+          .map((v) => String(v || ""))
+          .filter(Boolean);
+
+        if (aliases.length === 0) return;
+
+        const canonical = playerDoc.id;
+
+        aliases.forEach((alias) => {
+          aliasToCanonical.set(alias, canonical);
+        });
+
+        playerAliasGroups.push(aliases);
+      });
+
+      const pointsByAlias = new Map<string, number>();
+
+      statsSnap.docs.forEach((statDoc) => {
+        const data = statDoc.data();
+        const points = Number(data.gwPoints || 0);
+
+        const directAliases = [data.player, data.Title, data.name, statDoc.id]
+          .map((v) => String(v || ""))
+          .filter(Boolean);
+
+        const directCanonicalSet = new Set(
+          directAliases.map((alias) => aliasToCanonical.get(alias) || alias)
+        );
+
+        const aliasesForThisStat = new Set<string>();
+
+        directAliases.forEach((alias) => aliasesForThisStat.add(alias));
+
+        playerAliasGroups.forEach((group) => {
+          const groupMatchesStat = group.some((alias) => {
+            const canonical = aliasToCanonical.get(alias) || alias;
+
+            return (
+              directAliases.includes(alias) || directCanonicalSet.has(canonical)
+            );
+          });
+
+          if (groupMatchesStat) {
+            group.forEach((alias) => aliasesForThisStat.add(alias));
+          }
+        });
+
+        aliasesForThisStat.forEach((alias) => {
+          pointsByAlias.set(alias, points);
+
+          const canonical = aliasToCanonical.get(alias);
+
+          if (canonical) {
+            pointsByAlias.set(canonical, points);
+          }
+        });
+      });
+
+      const getPlayerPoints = (playerId: any) => {
+        const key = String(playerId || "");
+
+        if (!key) return 0;
+
+        if (pointsByAlias.has(key)) {
+          return Number(pointsByAlias.get(key) || 0);
+        }
+
+        const canonical = aliasToCanonical.get(key);
+
+        if (canonical && pointsByAlias.has(canonical)) {
+          return Number(pointsByAlias.get(canonical) || 0);
+        }
+
+        return 0;
+      };
+
+      const samePlayer = (a: any, b: any) => {
+        const aKey = String(a || "");
+        const bKey = String(b || "");
+
+        if (!aKey || !bKey) return false;
+        if (aKey === bKey) return true;
+
+        const aCanonical = aliasToCanonical.get(aKey) || aKey;
+        const bCanonical = aliasToCanonical.get(bKey) || bKey;
+
+        return aCanonical === bCanonical;
+      };
+
+      const userTeamsByEmail: Record<string, any[]> = {};
+
+      userTeamsSnap.docs.forEach((userTeamDoc) => {
+        const data = userTeamDoc.data();
+        const email = String(data.ownerEmail || "").toLowerCase();
+
+        if (!email) return;
+
+        if (!userTeamsByEmail[email]) {
+          userTeamsByEmail[email] = [];
+        }
+
+        userTeamsByEmail[email].push(userTeamDoc);
+      });
+
+      const batch = writeBatch(db);
+      let operationCount = 0;
+
+      const managerUpdatesByEmail: Record<
+        string,
+        {
+          newGwPoints: number;
+          difference: number;
+        }
+      > = {};
+
+      gwTeamsSnap.docs.forEach((teamDoc) => {
+        const team = teamDoc.data();
+
+        const mainPlayerIds = [
+          team.player1,
+          team.player2,
+          team.player3,
+          team.player4,
+        ].filter(Boolean);
+
+        const newGwPoints = mainPlayerIds.reduce((total, playerId) => {
+          const playerPoints = getPlayerPoints(playerId);
+
+          if (samePlayer(playerId, team.captain)) {
+            return total + playerPoints * 2;
+          }
+
+          return total + playerPoints;
+        }, 0);
+
+        const oldGwPoints = Number(team.gwPoints || 0);
+        const difference = newGwPoints - oldGwPoints;
+
+        if (difference === 0) return;
+
+        batch.update(teamDoc.ref, {
+          gwPoints: newGwPoints,
+          "Updated Date": now,
+        });
+
+        operationCount += 1;
+
+        const ownerEmail = String(team.ownerEmail || "").toLowerCase();
+
+        if (!ownerEmail) return;
+
+        const matchingUserTeams = userTeamsByEmail[ownerEmail] || [];
+
+        matchingUserTeams.forEach((userTeamDoc) => {
+          batch.update(userTeamDoc.ref, {
+            gameweekPoints: newGwPoints,
+            totalPoints: increment(difference),
+            "Updated Date": now,
+          });
+
+          operationCount += 1;
+        });
+
+        managerUpdatesByEmail[ownerEmail] = {
+          newGwPoints,
+          difference:
+            (managerUpdatesByEmail[ownerEmail]?.difference || 0) + difference,
+        };
+      });
+
+      if (operationCount === 0) {
+        console.log("No GW score changes found.");
+        return;
+      }
+
+      await batch.commit();
+
+      setManagers((prev) =>
+        prev
+          .map((manager) => {
+            const email = String(manager.ownerEmail || "").toLowerCase();
+            const update = managerUpdatesByEmail[email];
+
+            if (!update) return manager;
+
+            return {
+              ...manager,
+              gameweekPoints: update.newGwPoints,
+              totalPoints:
+                Number(manager.totalPoints || 0) + Number(update.difference),
+            };
+          })
+          .sort(
+            (a, b) => Number(b.totalPoints || 0) - Number(a.totalPoints || 0)
+          )
+      );
+
+      console.log(`Synced ${operationCount} update(s) for GW${currentGameweek}.`);
+    } catch (err) {
+      console.error("Failed to sync current gameweek scores:", err);
+      alert(
+        "Saved, but failed to auto-update manager totals. Check console for details."
+      );
+    }
+  };
+
   const handleSaveStats = async () => {
     const p = players.find((x) => x.id === selectedPlayerId);
     if (!p || !settings) return;
@@ -264,6 +500,8 @@ export default function AdminPage() {
       );
 
       await updateDoc(doc(db, "players", p.id), { points: pts });
+
+      await syncCurrentGameweekScores();
 
       markSaved("matchstats");
     } catch (err) {
@@ -1452,7 +1690,7 @@ export default function AdminPage() {
                   style={{
                     display: "grid",
                     gridTemplateColumns:
-                      "repeat(5, minmax(100px, 1fr)) 100px 150px",
+                      "repeat(5, minmax(100px, 1fr)) 100px",
                     gap: "0.75rem",
                     alignItems: "end",
                     overflowX: "auto",
@@ -1632,13 +1870,20 @@ export default function AdminPage() {
                   onClick={async () => {
                     setSaving(p.id);
 
-                    await updateDoc(doc(db, "players", p.id), {
-                      price: p.price,
-                      desc: p.desc,
-                    });
+                    try {
+                      await updateDoc(doc(db, "players", p.id), {
+                        price: p.price,
+                        desc: p.desc,
+                      });
+
+                      await syncCurrentGameweekScores();
+
+                      markSaved(p.id);
+                    } catch (err) {
+                      console.error(err);
+                    }
 
                     setSaving(null);
-                    markSaved(p.id);
                   }}
                   disabled={saving === p.id}
                   style={{
