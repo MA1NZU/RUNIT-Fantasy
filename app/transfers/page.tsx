@@ -928,7 +928,7 @@ export default function TransfersPage() {
                 gap: "8px",
                 background: "rgba(3, 71, 244, 0.15)",
                 border: "1px solid rgba(107, 159, 255, 0.45)",
-                color: "#8bb5ff",
+                color: "#0347F4",
                 fontSize: "0.75rem",
                 padding: "6px 12px",
                 borderRadius: "999px",
@@ -944,7 +944,7 @@ export default function TransfersPage() {
                   background: "var(--accent)",
                 }}
               />
-              Squad Builder · GW{nextGW}
+              Team Builder · GW{nextGW}
             </div>
 
             <h1
@@ -958,21 +958,7 @@ export default function TransfersPage() {
             >
               Transfers
               <br />
-              <span style={{ color: "var(--blue)" }}>Gameweek Squad</span>
             </h1>
-
-            <p
-              style={{
-                maxWidth: "620px",
-                color: "var(--text-muted)",
-                fontSize: "1rem",
-                lineHeight: 1.7,
-                marginBottom: "1.25rem",
-              }}
-            >
-              Build your next squad, choose your captain, set your bench, and
-              stay inside your budget before the deadline.
-            </p>
 
             {deadline && <CountdownTimer deadline={deadline} />}
           </div>
