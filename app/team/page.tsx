@@ -2,16 +2,7 @@
 
 import { useEffect, useState, Suspense } from "react";
 import { db } from "@/lib/firebase";
-import {
-  collection,
-  getDocs,
-  query,
-  where,
-  orderBy,
-  doc,
-  runTransaction,
-  increment,
-} from "firebase/firestore";
+import { collection, getDocs, query, where, orderBy } from "firebase/firestore";
 import { useAuth } from "@/lib/AuthContext";
 import Shell from "@/app/shell";
 import { useSearchParams } from "next/navigation";
@@ -47,78 +38,121 @@ function PlayerCard({
   points,
   isCaptain,
   isSub,
+  slot,
   onClick,
 }: {
   player: Player;
   points: number;
   isCaptain?: boolean;
   isSub?: boolean;
+  slot?: string;
   onClick?: () => void;
 }) {
   const description = player.desc || "Fit to play";
   const isUnfit = description !== "Fit to play";
+  const shownPoints = isCaptain ? points * 2 : points;
 
   return (
     <div
       onClick={onClick}
       style={{
-        background: "var(--surface)",
-        border: `1px solid ${
-          isUnfit ? "var(--red)" : isCaptain ? "var(--blue)" : "var(--border)"
-        }`,
-        borderRadius: "12px",
-        padding: "0.6rem",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        textAlign: "center",
         position: "relative",
-        width: "100%",
+        overflow: "hidden",
+        background: isCaptain
+          ? "linear-gradient(145deg, rgba(3,71,244,0.22), rgba(255,193,7,0.08)), var(--surface)"
+          : "linear-gradient(145deg, rgba(255,255,255,0.045), rgba(255,255,255,0.015)), var(--surface)",
+        border: `1px solid ${
+          isUnfit
+            ? "var(--red)"
+            : isCaptain
+            ? "rgba(107,159,255,0.75)"
+            : "var(--border)"
+        }`,
+        borderRadius: "20px",
+        padding: "0.75rem",
         cursor: "pointer",
-        transition: "transform 0.1s",
+        transition: "transform 0.15s ease, box-shadow 0.15s ease",
+        boxShadow: isCaptain
+          ? "0 18px 42px rgba(3,71,244,0.22)"
+          : "0 12px 28px rgba(0,0,0,0.18)",
+        minHeight: "245px",
       }}
       onMouseEnter={(e) => {
-        e.currentTarget.style.transform = "scale(1.02)";
+        e.currentTarget.style.transform = "translateY(-4px) scale(1.01)";
       }}
       onMouseLeave={(e) => {
-        e.currentTarget.style.transform = "scale(1)";
+        e.currentTarget.style.transform = "translateY(0) scale(1)";
       }}
     >
       <div
         style={{
           position: "absolute",
-          top: "0.4rem",
-          left: "0.4rem",
+          width: "120px",
+          height: "120px",
+          right: "-55px",
+          top: "-55px",
+          borderRadius: "999px",
+          background: isCaptain
+            ? "rgba(255,193,7,0.18)"
+            : "rgba(3,71,244,0.12)",
+          pointerEvents: "none",
+        }}
+      />
+
+      <div
+        style={{
+          position: "absolute",
+          top: "0.75rem",
+          left: "0.75rem",
           display: "flex",
-          flexDirection: "column",
-          gap: "0.2rem",
-          zIndex: 2,
+          gap: "0.35rem",
+          zIndex: 3,
+          flexWrap: "wrap",
         }}
       >
+        {slot && (
+          <span
+            style={{
+              background: "rgba(0,0,0,0.45)",
+              color: "#fff",
+              border: "1px solid rgba(255,255,255,0.12)",
+              fontSize: "0.62rem",
+              fontWeight: 800,
+              padding: "0.2rem 0.45rem",
+              borderRadius: "999px",
+              backdropFilter: "blur(8px)",
+            }}
+          >
+            {slot}
+          </span>
+        )}
+
         {isCaptain && (
           <span
             style={{
               background: "var(--blue)",
               color: "#fff",
-              fontSize: "0.55rem",
-              fontWeight: 700,
-              padding: "0.1rem 0.3rem",
-              borderRadius: "3px",
+              fontSize: "0.62rem",
+              fontWeight: 900,
+              padding: "0.2rem 0.45rem",
+              borderRadius: "999px",
+              boxShadow: "0 8px 22px rgba(3,71,244,0.3)",
             }}
           >
-            C
+            CAPTAIN
           </span>
         )}
 
         {isSub && (
           <span
             style={{
-              background: "#333",
+              background: "rgba(255,255,255,0.08)",
               color: "#fff",
-              fontSize: "0.55rem",
-              fontWeight: 700,
-              padding: "0.1rem 0.3rem",
-              borderRadius: "3px",
+              border: "1px solid rgba(255,255,255,0.1)",
+              fontSize: "0.62rem",
+              fontWeight: 900,
+              padding: "0.2rem 0.45rem",
+              borderRadius: "999px",
             }}
           >
             SUB
@@ -128,19 +162,28 @@ function PlayerCard({
 
       <div
         style={{
+          position: "relative",
+          zIndex: 2,
           width: "100%",
           aspectRatio: "1/1",
-          borderRadius: "8px",
+          borderRadius: "16px",
           overflow: "hidden",
-          background: "#222",
-          marginBottom: "0.5rem",
+          background:
+            "radial-gradient(circle at 30% 20%, rgba(255,255,255,0.08), transparent 35%), #161616",
+          marginBottom: "0.8rem",
+          border: "1px solid rgba(255,255,255,0.08)",
         }}
       >
         {player.image ? (
           <img
             src={player.image}
-            style={{ width: "100%", height: "100%", objectFit: "cover" }}
-            alt=""
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
+              display: "block",
+            }}
+            alt={player.name}
           />
         ) : (
           <div
@@ -150,48 +193,135 @@ function PlayerCard({
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              fontSize: "1.2rem",
-              color: "#444",
+              fontSize: "2.4rem",
+              fontWeight: 900,
+              color: "rgba(255,255,255,0.18)",
             }}
           >
             {player.name.slice(0, 1)}
           </div>
         )}
+
+        <div
+          style={{
+            position: "absolute",
+            left: 0,
+            right: 0,
+            bottom: 0,
+            padding: "1.5rem 0.6rem 0.55rem",
+            background:
+              "linear-gradient(to top, rgba(0,0,0,0.78), transparent)",
+          }}
+        >
+          <div
+            style={{
+              color: "#fff",
+              fontWeight: 900,
+              fontSize: "0.95rem",
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              textShadow: "0 2px 10px rgba(0,0,0,0.5)",
+            }}
+          >
+            {player.name}
+          </div>
+        </div>
       </div>
 
       <div
         style={{
-          fontWeight: 700,
-          fontSize: "0.85rem",
-          marginBottom: "0.1rem",
-          whiteSpace: "nowrap",
+          position: "relative",
+          zIndex: 2,
+          display: "grid",
+          gridTemplateColumns: "1fr auto",
+          gap: "0.75rem",
+          alignItems: "center",
+          marginBottom: "0.55rem",
+        }}
+      >
+        <div>
+          <div
+            style={{
+              fontSize: "0.7rem",
+              color: "var(--text-muted)",
+              marginBottom: "0.2rem",
+            }}
+          >
+            {player.game}
+          </div>
+
+          <div
+            style={{
+              fontSize: "0.72rem",
+              color: isUnfit ? "var(--red)" : "var(--text-muted)",
+              lineHeight: 1.35,
+              height: "2rem",
+              overflow: "hidden",
+            }}
+          >
+            {description}
+          </div>
+        </div>
+
+        <div
+          style={{
+            textAlign: "right",
+            background: isCaptain
+              ? "rgba(255,193,7,0.12)"
+              : "rgba(255,255,255,0.045)",
+            border: isCaptain
+              ? "1px solid rgba(255,193,7,0.25)"
+              : "1px solid rgba(255,255,255,0.08)",
+            borderRadius: "14px",
+            padding: "0.5rem 0.65rem",
+            minWidth: "70px",
+          }}
+        >
+          <div
+            style={{
+              fontSize: "1.25rem",
+              fontWeight: 900,
+              color: isCaptain ? "var(--accent)" : "var(--text)",
+              lineHeight: 1,
+            }}
+          >
+            {shownPoints}
+          </div>
+
+          <div
+            style={{
+              fontSize: "0.62rem",
+              color: "var(--text-muted)",
+              marginTop: "0.2rem",
+              whiteSpace: "nowrap",
+            }}
+          >
+            pts {isCaptain ? "x2" : ""}
+          </div>
+        </div>
+      </div>
+
+      <div
+        style={{
+          position: "relative",
+          zIndex: 2,
+          height: "5px",
+          borderRadius: "999px",
           overflow: "hidden",
-          textOverflow: "ellipsis",
+          background: "rgba(255,255,255,0.06)",
         }}
       >
-        {player.name}
-      </div>
-
-      <div
-        style={{
-          fontSize: "0.8rem",
-          color: "var(--accent)",
-          fontWeight: 700,
-          marginBottom: "0.2rem",
-        }}
-      >
-        {isCaptain ? points * 2 : points} pts {isCaptain && "(x2)"}
-      </div>
-
-      <div
-        style={{
-          fontSize: "0.65rem",
-          color: isUnfit ? "var(--red)" : "var(--text-muted)",
-          height: "1.5rem",
-          overflow: "hidden",
-        }}
-      >
-        {description}
+        <div
+          style={{
+            height: "100%",
+            width: `${Math.min(Math.max(Math.abs(shownPoints), 8), 100)}%`,
+            background: isCaptain
+              ? "linear-gradient(90deg, var(--blue), var(--accent))"
+              : "linear-gradient(90deg, var(--blue), rgba(107,159,255,0.7))",
+            borderRadius: "999px",
+          }}
+        />
       </div>
     </div>
   );
@@ -213,190 +343,32 @@ function StatsModal({
   const getBreakdown = () => {
     const rows: { label: string; val: any; pts: number }[] = [];
 
-    if (s("matchWin")) {
-      rows.push({
-        label: "Match Win",
-        val: s("matchWin"),
-        pts: s("matchWin") * 2,
-      });
-    }
-
-    if (s("matchLose")) {
-      rows.push({
-        label: "Match Loss",
-        val: s("matchLose"),
-        pts: s("matchLose") * -2,
-      });
-    }
-
-    if (s("mvp")) {
-      rows.push({
-        label: "MVP",
-        val: s("mvp"),
-        pts: s("mvp") * 8,
-      });
-    }
-
-    if (s("svp")) {
-      rows.push({
-        label: "SVP",
-        val: s("svp"),
-        pts: s("svp") * 5,
-      });
-    }
-
-    if (s("bonus")) {
-      rows.push({
-        label: "Bonus",
-        val: s("bonus"),
-        pts: s("bonus") * 1,
-      });
-    }
+    if (s("matchWin")) rows.push({ label: "Match Win", val: s("matchWin"), pts: s("matchWin") * 2 });
+    if (s("matchLose")) rows.push({ label: "Match Loss", val: s("matchLose"), pts: s("matchLose") * -2 });
+    if (s("mvp")) rows.push({ label: "MVP", val: s("mvp"), pts: s("mvp") * 8 });
+    if (s("svp")) rows.push({ label: "SVP", val: s("svp"), pts: s("svp") * 5 });
+    if (s("bonus")) rows.push({ label: "Bonus", val: s("bonus"), pts: s("bonus") * 1 });
 
     if (player.game === "Valorant") {
-      if (s("kills")) {
-        rows.push({
-          label: "Kills",
-          val: s("kills"),
-          pts: Math.floor(s("kills") / 2),
-        });
-      }
-
-      if (s("assists")) {
-        rows.push({
-          label: "Assists",
-          val: s("assists"),
-          pts: Math.floor(s("assists") / 2),
-        });
-      }
-
-      if (s("deaths")) {
-        rows.push({
-          label: "Deaths",
-          val: s("deaths"),
-          pts: Math.floor(s("deaths") / 3) * -1,
-        });
-      }
-
-      if (s("firstBlood")) {
-        rows.push({
-          label: "First Blood",
-          val: s("firstBlood"),
-          pts: s("firstBlood"),
-        });
-      }
-
-      if (s("firstDeath")) {
-        rows.push({
-          label: "First Death",
-          val: s("firstDeath"),
-          pts: s("firstDeath") * -1,
-        });
-      }
-
-      if (s("tripleKill")) {
-        rows.push({
-          label: "Triple Kill",
-          val: s("tripleKill"),
-          pts: s("tripleKill") * 3,
-        });
-      }
-
-      if (s("quadraKill")) {
-        rows.push({
-          label: "Quadra Kill",
-          val: s("quadraKill"),
-          pts: s("quadraKill") * 5,
-        });
-      }
-
-      if (s("ace")) {
-        rows.push({
-          label: "Ace",
-          val: s("ace"),
-          pts: s("ace") * 8,
-        });
-      }
-
-      if (s("clutch")) {
-        rows.push({
-          label: "Clutch",
-          val: s("clutch"),
-          pts: s("clutch") * 2,
-        });
-      }
+      if (s("kills")) rows.push({ label: "Kills", val: s("kills"), pts: Math.floor(s("kills") / 2) });
+      if (s("assists")) rows.push({ label: "Assists", val: s("assists"), pts: Math.floor(s("assists") / 2) });
+      if (s("deaths")) rows.push({ label: "Deaths", val: s("deaths"), pts: Math.floor(s("deaths") / 3) * -1 });
+      if (s("firstBlood")) rows.push({ label: "First Blood", val: s("firstBlood"), pts: s("firstBlood") });
+      if (s("firstDeath")) rows.push({ label: "First Death", val: s("firstDeath"), pts: s("firstDeath") * -1 });
+      if (s("tripleKill")) rows.push({ label: "Triple Kill", val: s("tripleKill"), pts: s("tripleKill") * 3 });
+      if (s("quadraKill")) rows.push({ label: "Quadra Kill", val: s("quadraKill"), pts: s("quadraKill") * 5 });
+      if (s("ace")) rows.push({ label: "Ace", val: s("ace"), pts: s("ace") * 8 });
+      if (s("clutch")) rows.push({ label: "Clutch", val: s("clutch"), pts: s("clutch") * 2 });
     } else {
-      if (s("kills")) {
-        rows.push({
-          label: "Kills",
-          val: s("kills"),
-          pts: Math.floor(s("kills") / 3),
-        });
-      }
-
-      if (s("assists")) {
-        rows.push({
-          label: "Assists",
-          val: s("assists"),
-          pts: Math.floor(s("assists") / 4),
-        });
-      }
-
-      if (s("deaths")) {
-        rows.push({
-          label: "Deaths",
-          val: s("deaths"),
-          pts: s("deaths") * -2,
-        });
-      }
-
-      if (s("lastKills")) {
-        rows.push({
-          label: "Last Kills",
-          val: s("lastKills"),
-          pts: Math.floor(s("lastKills") / 2),
-        });
-      }
-
-      if (s("headKill")) {
-        rows.push({
-          label: "Head Kill",
-          val: s("headKill"),
-          pts: s("headKill") * 3,
-        });
-      }
-
-      if (s("healing")) {
-        rows.push({
-          label: "Healing",
-          val: s("healing"),
-          pts: Math.floor(s("healing") / 5050),
-        });
-      }
-
-      if (s("damage")) {
-        rows.push({
-          label: "Damage",
-          val: s("damage"),
-          pts: Math.floor(s("damage") / 5050),
-        });
-      }
-
-      if (s("blocked")) {
-        rows.push({
-          label: "Blocked",
-          val: s("blocked"),
-          pts: Math.floor(s("blocked") / 5050),
-        });
-      }
-
-      if (s("soloKills")) {
-        rows.push({
-          label: "Solo Kills",
-          val: s("soloKills"),
-          pts: s("soloKills"),
-        });
-      }
+      if (s("kills")) rows.push({ label: "Kills", val: s("kills"), pts: Math.floor(s("kills") / 3) });
+      if (s("assists")) rows.push({ label: "Assists", val: s("assists"), pts: Math.floor(s("assists") / 4) });
+      if (s("deaths")) rows.push({ label: "Deaths", val: s("deaths"), pts: s("deaths") * -2 });
+      if (s("lastKills")) rows.push({ label: "Last Kills", val: s("lastKills"), pts: Math.floor(s("lastKills") / 2) });
+      if (s("headKill")) rows.push({ label: "Head Kill", val: s("headKill"), pts: s("headKill") * 3 });
+      if (s("healing")) rows.push({ label: "Healing", val: s("healing"), pts: Math.floor(s("healing") / 5050) });
+      if (s("damage")) rows.push({ label: "Damage", val: s("damage"), pts: Math.floor(s("damage") / 5050) });
+      if (s("blocked")) rows.push({ label: "Blocked", val: s("blocked"), pts: Math.floor(s("blocked") / 5050) });
+      if (s("soloKills")) rows.push({ label: "Solo Kills", val: s("soloKills"), pts: s("soloKills") });
     }
 
     return rows;
@@ -404,33 +376,35 @@ function StatsModal({
 
   const rows = getBreakdown();
   const totalRaw = rows.reduce((acc, r) => acc + r.pts, 0);
+  const totalShown = isCaptain ? totalRaw * 2 : totalRaw;
 
   return (
     <div
       style={{
         position: "fixed",
-        top: 0,
-        left: 0,
-        width: "100%",
-        height: "100%",
+        inset: 0,
         background: "rgba(0,0,0,0.85)",
         zIndex: 1000,
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
         padding: "1rem",
+        backdropFilter: "blur(10px)",
       }}
       onClick={onClose}
     >
       <div
         style={{
-          background: "var(--surface)",
-          border: "1px solid var(--border)",
-          borderRadius: "20px",
-          width: "100%",
-          maxWidth: "450px",
-          padding: "2rem",
           position: "relative",
+          overflow: "hidden",
+          background:
+            "radial-gradient(circle at 15% 0%, rgba(3,71,244,0.28), transparent 35%), var(--surface)",
+          border: "1px solid var(--border)",
+          borderRadius: "26px",
+          width: "100%",
+          maxWidth: "500px",
+          padding: "1.25rem",
+          boxShadow: "0 24px 80px rgba(0,0,0,0.45)",
         }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -440,11 +414,15 @@ function StatsModal({
             position: "absolute",
             top: "1rem",
             right: "1rem",
-            background: "none",
-            border: "none",
+            background: "rgba(255,255,255,0.06)",
+            border: "1px solid rgba(255,255,255,0.1)",
             color: "#fff",
-            fontSize: "1.2rem",
+            width: "34px",
+            height: "34px",
+            borderRadius: "12px",
+            fontSize: "1rem",
             cursor: "pointer",
+            zIndex: 2,
           }}
         >
           ✕
@@ -455,29 +433,47 @@ function StatsModal({
             display: "flex",
             alignItems: "center",
             gap: "1rem",
-            marginBottom: "1.5rem",
+            marginBottom: "1.25rem",
+            paddingRight: "2.5rem",
           }}
         >
           <div
             style={{
-              width: "60px",
-              height: "60px",
-              borderRadius: "10px",
+              width: "72px",
+              height: "72px",
+              borderRadius: "18px",
               overflow: "hidden",
               background: "#222",
+              border: "1px solid rgba(255,255,255,0.1)",
+              flexShrink: 0,
             }}
           >
             {player.image ? (
               <img
                 src={player.image}
                 style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                alt=""
+                alt={player.name}
               />
-            ) : null}
+            ) : (
+              <div
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: "1.8rem",
+                  fontWeight: 900,
+                  color: "rgba(255,255,255,0.18)",
+                }}
+              >
+                {player.name.slice(0, 1)}
+              </div>
+            )}
           </div>
 
           <div>
-            <h2 style={{ fontSize: "1.2rem", fontWeight: 800 }}>
+            <h2 style={{ fontSize: "1.25rem", fontWeight: 900, margin: 0 }}>
               {player.name}
             </h2>
 
@@ -485,24 +481,33 @@ function StatsModal({
               style={{
                 fontSize: "0.75rem",
                 color: "var(--accent)",
-                fontWeight: 700,
+                fontWeight: 800,
+                marginTop: "0.25rem",
               }}
             >
-              {player.game.toUpperCase()} STATISTICS
+              {player.game.toUpperCase()} · {isCaptain ? "CAPTAIN X2" : "PLAYER STATS"}
             </div>
           </div>
         </div>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+        <div
+          style={{
+            background: "rgba(255,255,255,0.035)",
+            border: "1px solid rgba(255,255,255,0.08)",
+            borderRadius: "18px",
+            overflow: "hidden",
+          }}
+        >
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "1fr 60px 60px",
-              fontSize: "0.7rem",
+              gridTemplateColumns: "1fr 70px 70px",
+              fontSize: "0.68rem",
               color: "var(--text-muted)",
-              fontWeight: 700,
+              fontWeight: 900,
               textTransform: "uppercase",
-              padding: "0 0.5rem",
+              padding: "0.8rem 0.9rem",
+              borderBottom: "1px solid var(--border)",
             }}
           >
             <span>Statistic</span>
@@ -512,66 +517,87 @@ function StatsModal({
 
           <div
             style={{
-              maxHeight: "300px",
+              maxHeight: "310px",
               overflowY: "auto",
-              display: "flex",
-              flexDirection: "column",
             }}
           >
-            {rows.map((r, i) => (
+            {rows.length === 0 ? (
               <div
-                key={i}
                 style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 60px 60px",
-                  padding: "0.75rem 0.5rem",
-                  borderBottom: "1px solid var(--border)",
+                  padding: "1.5rem",
+                  color: "var(--text-muted)",
+                  textAlign: "center",
                   fontSize: "0.9rem",
                 }}
               >
-                <span style={{ fontWeight: 600 }}>{r.label}</span>
-
-                <span style={{ textAlign: "right", color: "var(--text-muted)" }}>
-                  {r.val.toLocaleString()}
-                </span>
-
-                <span
+                No stats recorded for this player yet.
+              </div>
+            ) : (
+              rows.map((r, i) => (
+                <div
+                  key={i}
                   style={{
-                    textAlign: "right",
-                    fontWeight: 700,
-                    color: r.pts >= 0 ? "var(--green)" : "var(--red)",
+                    display: "grid",
+                    gridTemplateColumns: "1fr 70px 70px",
+                    padding: "0.8rem 0.9rem",
+                    borderBottom:
+                      i === rows.length - 1 ? "none" : "1px solid var(--border)",
+                    fontSize: "0.9rem",
                   }}
                 >
-                  {r.pts > 0 ? `+${r.pts}` : r.pts}
-                </span>
-              </div>
-            ))}
+                  <span style={{ fontWeight: 700 }}>{r.label}</span>
+
+                  <span style={{ textAlign: "right", color: "var(--text-muted)" }}>
+                    {r.val.toLocaleString()}
+                  </span>
+
+                  <span
+                    style={{
+                      textAlign: "right",
+                      fontWeight: 900,
+                      color: r.pts >= 0 ? "var(--green)" : "var(--red)",
+                    }}
+                  >
+                    {r.pts > 0 ? `+${r.pts}` : r.pts}
+                  </span>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        <div
+          style={{
+            marginTop: "1rem",
+            padding: "1rem",
+            background:
+              "linear-gradient(135deg, rgba(255,193,7,0.12), rgba(3,71,244,0.12))",
+            border: "1px solid rgba(255,255,255,0.1)",
+            borderRadius: "18px",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: "1rem",
+          }}
+        >
+          <div>
+            <div style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>
+              {isCaptain ? "Total GW Points · Doubled" : "Total GW Points"}
+            </div>
+
+            <div style={{ fontSize: "0.9rem", fontWeight: 800 }}>
+              {isCaptain ? `${totalRaw} × 2` : "Raw total"}
+            </div>
           </div>
 
           <div
             style={{
-              marginTop: "1rem",
-              padding: "1rem",
-              background: "rgba(255,255,255,0.03)",
-              borderRadius: "12px",
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
+              fontSize: "1.7rem",
+              fontWeight: 900,
+              color: "var(--accent)",
             }}
           >
-            <div style={{ fontSize: "0.8rem", fontWeight: 700 }}>
-              {isCaptain ? "Total GW Points (Doubled)" : "Total GW Points"}
-            </div>
-
-            <div
-              style={{
-                fontSize: "1.2rem",
-                fontWeight: 800,
-                color: "var(--accent)",
-              }}
-            >
-              {isCaptain ? totalRaw * 2 : totalRaw} pts
-            </div>
+            {totalShown}
           </div>
         </div>
       </div>
@@ -585,7 +611,7 @@ function TeamContent() {
 
   const queryEmail = searchParams.get("email");
   const targetEmail = queryEmail || user?.email;
-  const isOwnTeam = !!user?.email && (!queryEmail || queryEmail === user.email);
+  const isOwnTeam = !queryEmail || queryEmail === user?.email;
 
   const [players, setPlayers] = useState<Record<string, Player>>({});
   const [gwTeams, setGwTeams] = useState<GWTeam[]>([]);
@@ -593,12 +619,11 @@ function TeamContent() {
 
   const [currentGW, setCurrentGW] = useState<number>(7);
   const [selectedGW, setSelectedGW] = useState<number>(7);
-  const [statsLoadedGW, setStatsLoadedGW] = useState<number | null>(null);
-
   const [loading, setLoading] = useState(true);
-  const [selectedStatPlayerId, setSelectedStatPlayerId] = useState<
-    string | null
-  >(null);
+
+  const [selectedStatPlayerId, setSelectedStatPlayerId] = useState<string | null>(
+    null
+  );
 
   useEffect(() => {
     if (!targetEmail) return;
@@ -614,13 +639,11 @@ function TeamContent() {
 
         if (!settingsSnap.empty) {
           activeGW = Number(settingsSnap.docs[0].data().currentGameweek || 7);
-
           setCurrentGW(activeGW);
           setSelectedGW(activeGW);
         }
 
         const pSnap = await getDocs(collection(db, "players"));
-
         const pMap: Record<string, Player> = {};
 
         pSnap.docs.forEach((d) => {
@@ -660,11 +683,7 @@ function TeamContent() {
   }, [targetEmail]);
 
   useEffect(() => {
-    let cancelled = false;
-
     const loadStats = async () => {
-      setStatsLoadedGW(null);
-
       try {
         const statsSnap = await getDocs(
           query(
@@ -685,27 +704,17 @@ function TeamContent() {
           if (data.player) {
             sMap[data.player] = data;
           }
+
+          sMap[d.id] = data;
         });
 
-        if (!cancelled) {
-          setMatchStats(sMap);
-          setStatsLoadedGW(selectedGW);
-        }
+        setMatchStats(sMap);
       } catch (err) {
         console.error(err);
-
-        if (!cancelled) {
-          setMatchStats({});
-          setStatsLoadedGW(selectedGW);
-        }
       }
     };
 
     loadStats();
-
-    return () => {
-      cancelled = true;
-    };
   }, [selectedGW]);
 
   const currentTeam = gwTeams.find((t) => t.gameweek === selectedGW);
@@ -733,7 +742,11 @@ function TeamContent() {
       (p.ID ? matchStats[p.ID] : undefined) ||
       matchStats[p.id];
 
-    return Number(stats?.gwPoints ?? 0);
+    if (stats?.gwPoints !== undefined) {
+      return Number(stats.gwPoints || 0);
+    }
+
+    return selectedGW === currentGW ? Number(p.points || 0) : 0;
   };
 
   const calculateTeamGWPoints = (team: GWTeam) => {
@@ -756,267 +769,385 @@ function TeamContent() {
   };
 
   const calculatedGWPoints = currentTeam ? calculateTeamGWPoints(currentTeam) : 0;
+  const storedGWPoints = Number(currentTeam?.gwPoints || 0);
+  const displayGWPoints = calculatedGWPoints || storedGWPoints;
 
-  useEffect(() => {
-    if (!currentTeam) return;
+  const captainPlayer =
+    currentTeam && currentTeam.captain ? players[currentTeam.captain] : null;
 
-    // Only auto-sync your own team.
-    // This prevents normal users from changing another manager's totals
-    // by opening /team?email=someone@example.com
-    if (!isOwnTeam) return;
+  const squadValue = playerIds.reduce((sum, pid) => {
+    const p = players[pid];
+    return sum + Number(p?.price || 0);
+  }, 0);
 
-    // Wait until stats for the selected GW are fully loaded.
-    // This prevents saving wrong values before playerMatchStats finishes loading.
-    if (statsLoadedGW !== selectedGW) return;
-
-    const mainPlayerIds = [
-      currentTeam.player1,
-      currentTeam.player2,
-      currentTeam.player3,
-      currentTeam.player4,
-    ].filter(Boolean);
-
-    if (mainPlayerIds.length === 0) return;
-
-    const allPlayersLoaded = mainPlayerIds.every((pid) => players[pid]);
-
-    if (!allPlayersLoaded) return;
-
-    const newGWPoints = calculateTeamGWPoints(currentTeam);
-
-    const syncGwPointsAndTotal = async () => {
-      try {
-        const teamRef = doc(db, "gameweekTeams", currentTeam.id);
-
-        const userTeamsSnap = await getDocs(
-          query(
-            collection(db, "userTeams"),
-            where("ownerEmail", "==", currentTeam.ownerEmail)
-          )
-        );
-
-        await runTransaction(db, async (transaction) => {
-          const teamSnap = await transaction.get(teamRef);
-
-          if (!teamSnap.exists()) return;
-
-          const oldGWPoints = Number(teamSnap.data().gwPoints ?? 0);
-          const difference = newGWPoints - oldGWPoints;
-
-          if (difference === 0) return;
-
-          const now = new Date().toISOString();
-
-          // 1. Save the new GW points to gameweekTeams
-          transaction.update(teamRef, {
-            gwPoints: newGWPoints,
-            "Updated Date": now,
-          });
-
-          // 2. Update userTeams.totalPoints by the difference
-          // Example:
-          // old GW = 70, new GW = 90, difference = +20
-          // totalPoints += 20
-          userTeamsSnap.docs.forEach((userTeamDoc) => {
-            transaction.update(doc(db, "userTeams", userTeamDoc.id), {
-              gameweekPoints: newGWPoints,
-              totalPoints: increment(difference),
-              "Updated Date": now,
-            });
-          });
-        });
-
-        setGwTeams((prev) =>
-          prev.map((team) =>
-            team.id === currentTeam.id
-              ? {
-                  ...team,
-                  gwPoints: newGWPoints,
-                }
-              : team
-          )
-        );
-      } catch (err) {
-        console.error("Failed to sync GW points and total points:", err);
-      }
-    };
-
-    syncGwPointsAndTotal();
-  }, [currentTeam, players, matchStats, isOwnTeam, selectedGW, statsLoadedGW]);
+  const topScorerId = playerIds.reduce<string | null>((bestId, pid) => {
+    if (!bestId) return pid;
+    return getPoints(pid) > getPoints(bestId) ? pid : bestId;
+  }, null);
 
   if (loading && gwTeams.length === 0) {
-    return <p style={{ padding: "2rem" }}>Loading Squad...</p>;
+    return (
+      <div
+        style={{
+          maxWidth: "900px",
+          margin: "4rem auto",
+          textAlign: "center",
+          color: "var(--text-muted)",
+        }}
+      >
+        Loading Squad...
+      </div>
+    );
   }
 
   return (
-    <div style={{ maxWidth: "800px", margin: "0 auto" }}>
-      <h1
+    <main style={{ maxWidth: "1120px", margin: "0 auto", paddingBottom: "3rem" }}>
+      <section
         style={{
-          fontSize: "2rem",
-          fontWeight: 700,
-          marginBottom: "0.5rem",
+          position: "relative",
+          overflow: "hidden",
+          border: "1px solid var(--border)",
+          borderRadius: "28px",
+          padding: "2rem",
+          marginBottom: "1rem",
+          background:
+            "radial-gradient(circle at 20% 10%, rgba(3, 71, 244, 0.35), transparent 32%), radial-gradient(circle at 90% 20%, rgba(255, 193, 7, 0.18), transparent 30%), linear-gradient(135deg, rgba(255,255,255,0.075), rgba(255,255,255,0.02))",
+          boxShadow: "0 24px 80px rgba(0,0,0,0.32)",
         }}
       >
-        {isOwnTeam ? "My Team" : "Manager Squad"}
-      </h1>
+        <div
+          style={{
+            position: "absolute",
+            width: "280px",
+            height: "280px",
+            right: "-110px",
+            bottom: "-110px",
+            borderRadius: "999px",
+            background: "rgba(3, 71, 244, 0.28)",
+            filter: "blur(20px)",
+            pointerEvents: "none",
+          }}
+        />
 
-      <p style={{ color: "var(--text-muted)", marginBottom: "2rem" }}>
-        Viewing {targetEmail}
-      </p>
-
-      <div
-        style={{
-          display: "flex",
-          gap: "0.5rem",
-          marginBottom: "2rem",
-          flexWrap: "wrap",
-        }}
-      >
-        {availableGWs.map((gw) => (
-          <button
-            key={gw}
-            onClick={() => setSelectedGW(gw)}
+        <div style={{ position: "relative", zIndex: 1 }}>
+          <div
             style={{
-              padding: "0.4rem 0.9rem",
-              borderRadius: "8px",
-              border: "1px solid var(--border)",
-              background: selectedGW === gw ? "var(--blue)" : "var(--surface)",
-              color: "#fff",
-              cursor: "pointer",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "8px",
+              background: "rgba(3, 71, 244, 0.15)",
+              border: "1px solid rgba(107, 159, 255, 0.45)",
+              color: "#8bb5ff",
+              fontSize: "0.75rem",
+              padding: "6px 12px",
+              borderRadius: "999px",
+              marginBottom: "1rem",
+              fontWeight: 700,
             }}
           >
-            GW{gw}
-          </button>
-        ))}
-      </div>
+            <span
+              style={{
+                width: "8px",
+                height: "8px",
+                borderRadius: "999px",
+                background: "var(--accent)",
+                boxShadow: "0 0 0 6px rgba(255, 193, 7, 0.12)",
+              }}
+            />
+            {isOwnTeam ? "My squad" : "Manager squad"} · GW{selectedGW}
+          </div>
+
+          <h1
+            style={{
+              fontSize: "clamp(2.5rem, 7vw, 4.75rem)",
+              lineHeight: 0.95,
+              letterSpacing: "-0.06em",
+              fontWeight: 900,
+              margin: "0 0 1rem",
+            }}
+          >
+            {isOwnTeam ? "My Team" : "Manager"}
+            <br />
+            <span
+              style={{
+                color: "var(--blue)",
+                textShadow: "0 0 34px rgba(3, 71, 244, 0.45)",
+              }}
+            >
+              Gameweek Squad
+            </span>
+          </h1>
+
+          <p
+            style={{
+              maxWidth: "620px",
+              color: "var(--text-muted)",
+              fontSize: "1rem",
+              lineHeight: 1.7,
+              marginBottom: "1.25rem",
+            }}
+          >
+            Viewing {targetEmail}. Check your starting four, captain multiplier,
+            substitute, and full player stat breakdowns.
+          </p>
+
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
+            {availableGWs.map((gw) => (
+              <button
+                key={gw}
+                onClick={() => setSelectedGW(gw)}
+                style={{
+                  padding: "0.65rem 0.95rem",
+                  borderRadius: "12px",
+                  border:
+                    selectedGW === gw
+                      ? "1px solid rgba(107,159,255,0.65)"
+                      : "1px solid var(--border)",
+                  background:
+                    selectedGW === gw ? "var(--blue)" : "rgba(255,255,255,0.045)",
+                  color: selectedGW === gw ? "#fff" : "var(--text-muted)",
+                  cursor: "pointer",
+                  fontWeight: 900,
+                  boxShadow:
+                    selectedGW === gw
+                      ? "0 10px 28px rgba(3,71,244,0.28)"
+                      : "none",
+                }}
+              >
+                GW{gw}
+              </button>
+            ))}
+          </div>
+        </div>
+      </section>
 
       {currentTeam ? (
-        <div>
-          <div
-            style={{
-              background: "var(--surface)",
-              border: "1px solid var(--border)",
-              borderRadius: "10px",
-              padding: "1rem 1.5rem",
-              marginBottom: "2rem",
-              display: "flex",
-              gap: "2rem",
-              flexWrap: "wrap",
-            }}
-          >
-            <div>
-              <div
-                style={{
-                  color: "var(--text-muted)",
-                  fontSize: "0.75rem",
-                }}
-              >
-                GW Points
-              </div>
-
-              <div
-                style={{
-                  fontWeight: 700,
-                  fontSize: "1.4rem",
-                  color: "var(--accent)",
-                }}
-              >
-                {calculatedGWPoints}
-              </div>
-            </div>
-
-            <div>
-              <div
-                style={{
-                  color: "var(--text-muted)",
-                  fontSize: "0.75rem",
-                }}
-              >
-                Transfers
-              </div>
-
-              <div style={{ fontWeight: 700, fontSize: "1.4rem" }}>
-                {currentTeam.transfersMade ?? 0}
-              </div>
-            </div>
-
-            <div>
-              <div
-                style={{
-                  color: "var(--text-muted)",
-                  fontSize: "0.75rem",
-                }}
-              >
-                Penalty
-              </div>
-
-              <div
-                style={{
-                  fontWeight: 700,
-                  fontSize: "1.4rem",
-                  color: currentTeam.transferPenalty
-                    ? "var(--red)"
-                    : "var(--text)",
-                }}
-              >
-                {currentTeam.transferPenalty ?? 0}
-              </div>
-            </div>
-          </div>
-
-          <div
+        <>
+          <section
             style={{
               display: "grid",
-              gridTemplateColumns: "repeat(4, 1fr)",
-              gap: "1rem",
-              marginBottom: "2rem",
+              gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+              gap: "0.75rem",
+              marginBottom: "1rem",
             }}
           >
-            {playerIds.map((pid, i) => {
-              const player = players[pid];
-
-              if (!player) return null;
-
-              return (
-                <PlayerCard
-                  key={i}
-                  player={player}
-                  points={getPoints(pid)}
-                  isCaptain={currentTeam.captain === pid}
-                  onClick={() => setSelectedStatPlayerId(pid)}
-                />
-              );
-            })}
-          </div>
-
-          {currentTeam.sub && players[currentTeam.sub] && (
-            <div style={{ display: "flex", justifyContent: "center" }}>
-              <div style={{ width: "23.5%" }}>
+            {[
+              {
+                label: "GW Points",
+                value: displayGWPoints,
+                color: "var(--accent)",
+              },
+              {
+                label: "Captain",
+                value: captainPlayer?.name || "—",
+                color: "var(--blue)",
+              },
+              {
+                label: "Transfers",
+                value: currentTeam.transfersMade ?? 0,
+                color: "var(--text)",
+              },
+              {
+                label: "Penalty",
+                value: currentTeam.transferPenalty ?? 0,
+                color: currentTeam.transferPenalty ? "var(--red)" : "var(--text)",
+              },
+              {
+                label: "Squad Value",
+                value: squadValue.toFixed(1),
+                color: "var(--text)",
+              },
+              {
+                label: "Top Scorer",
+                value: topScorerId ? players[topScorerId]?.name || "—" : "—",
+                color: "var(--accent)",
+              },
+            ].map((stat) => (
+              <div
+                key={stat.label}
+                style={{
+                  position: "relative",
+                  overflow: "hidden",
+                  background: "var(--surface)",
+                  border: "1px solid var(--border)",
+                  borderRadius: "18px",
+                  padding: "1rem",
+                  minHeight: "95px",
+                }}
+              >
                 <div
                   style={{
-                    textAlign: "center",
-                    marginBottom: "0.5rem",
-                    fontSize: "0.7rem",
-                    color: "var(--text-muted)",
+                    position: "absolute",
+                    width: "90px",
+                    height: "90px",
+                    right: "-45px",
+                    top: "-45px",
+                    background: "rgba(3, 71, 244, 0.18)",
+                    borderRadius: "999px",
+                  }}
+                />
+
+                <div
+                  style={{
+                    position: "relative",
+                    zIndex: 1,
+                    fontSize:
+                      typeof stat.value === "string" && stat.value.length > 12
+                        ? "1.05rem"
+                        : "1.65rem",
+                    fontWeight: 900,
+                    letterSpacing: "-0.04em",
+                    color: stat.color,
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
                   }}
                 >
-                  SUBSTITUTE
+                  {stat.value}
                 </div>
 
+                <div
+                  style={{
+                    position: "relative",
+                    zIndex: 1,
+                    color: "var(--text-muted)",
+                    fontSize: "0.75rem",
+                    marginTop: "0.3rem",
+                  }}
+                >
+                  {stat.label}
+                </div>
+              </div>
+            ))}
+          </section>
+
+          <section
+            style={{
+              background:
+                "radial-gradient(circle at 50% 0%, rgba(3,71,244,0.14), transparent 35%), var(--surface)",
+              border: "1px solid var(--border)",
+              borderRadius: "26px",
+              padding: "1rem",
+              marginBottom: "1rem",
+              overflow: "hidden",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                gap: "1rem",
+                marginBottom: "1rem",
+                flexWrap: "wrap",
+              }}
+            >
+              <div>
+                <div
+                  style={{
+                    fontSize: "0.75rem",
+                    color: "var(--text-muted)",
+                    textTransform: "uppercase",
+                    letterSpacing: "1px",
+                    fontWeight: 900,
+                    marginBottom: "0.25rem",
+                  }}
+                >
+                  Starting Four
+                </div>
+
+                <div style={{ fontSize: "1.25rem", fontWeight: 900 }}>
+                  Main Squad
+                </div>
+              </div>
+
+              <div
+                style={{
+                  color: "var(--text-muted)",
+                  fontSize: "0.8rem",
+                  background: "rgba(255,255,255,0.045)",
+                  border: "1px solid rgba(255,255,255,0.08)",
+                  borderRadius: "999px",
+                  padding: "0.45rem 0.7rem",
+                }}
+              >
+                Click a player to view stats
+              </div>
+            </div>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(155px, 1fr))",
+                gap: "1rem",
+              }}
+            >
+              {playerIds.map((pid, i) => {
+                const player = players[pid];
+
+                if (!player) return null;
+
+                return (
+                  <PlayerCard
+                    key={pid || i}
+                    player={player}
+                    points={getPoints(pid)}
+                    isCaptain={currentTeam.captain === pid}
+                    slot={`P${i + 1}`}
+                    onClick={() => setSelectedStatPlayerId(pid)}
+                  />
+                );
+              })}
+            </div>
+          </section>
+
+          {currentTeam.sub && players[currentTeam.sub] && (
+            <section
+              style={{
+                background: "var(--surface)",
+                border: "1px solid var(--border)",
+                borderRadius: "24px",
+                padding: "1rem",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: "0.75rem",
+                  color: "var(--text-muted)",
+                  textTransform: "uppercase",
+                  letterSpacing: "1px",
+                  fontWeight: 900,
+                  marginBottom: "1rem",
+                }}
+              >
+                Substitute Bench
+              </div>
+
+              <div style={{ maxWidth: "220px" }}>
                 <PlayerCard
                   player={players[currentTeam.sub]}
                   points={getPoints(currentTeam.sub)}
                   isSub={true}
+                  slot="BENCH"
                   onClick={() => setSelectedStatPlayerId(currentTeam.sub)}
                 />
               </div>
-            </div>
+            </section>
           )}
-        </div>
+        </>
       ) : (
-        <p style={{ color: "var(--text-muted)" }}>
+        <div
+          style={{
+            background: "var(--surface)",
+            border: "1px solid var(--border)",
+            borderRadius: "20px",
+            padding: "2rem",
+            color: "var(--text-muted)",
+            textAlign: "center",
+          }}
+        >
           No squad data found for GW{selectedGW}.
-        </p>
+        </div>
       )}
 
       {selectedStatPlayerId && players[selectedStatPlayerId] && (
@@ -1034,7 +1165,7 @@ function TeamContent() {
           onClose={() => setSelectedStatPlayerId(null)}
         />
       )}
-    </div>
+    </main>
   );
 }
 
