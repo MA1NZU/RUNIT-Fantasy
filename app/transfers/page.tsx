@@ -1020,7 +1020,7 @@ export default function TransfersPage() {
                   letterSpacing: "0.7px",
                 }}
               >
-                Bank Left
+                Bank
               </div>
             </div>
 
