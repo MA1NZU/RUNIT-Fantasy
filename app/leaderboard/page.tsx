@@ -609,7 +609,7 @@ export default function Leaderboard() {
             {sorted.map((team, i) => {
               const isTop = i === 0;
               const medal =
-                i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : null;
+                i === 0 ? "1" : i === 1 ? "2" : i === 2 ? "3" : null;
 
               return (
                 <div
