@@ -677,7 +677,7 @@ function StatsModal({
         >
           <div>
             <div style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>
-              {isCaptain ? "Total GW Points · Doubled" : "Total GW Points"}
+              {isCaptain ? "Doubled Points" : "Points"}
             </div>
 
             <div style={{ fontSize: "0.9rem", fontWeight: 800 }}>
