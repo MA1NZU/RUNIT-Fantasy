@@ -258,7 +258,7 @@ export default function Home() {
                 <span
                   style={{
                     color: "var(--blue)",
-                    textShadow: "0 0 34px rgba(3, 71, 244, 0.45)",
+                    textShadow: "0 0 17px rgba(3, 71, 244, 0.45)",
                   }}
                 >
                   Fantasy League
