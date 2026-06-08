@@ -1,17 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
-
 import { db } from "@/lib/firebase";
 import {
   collection,
   getDocs,
   doc,
   updateDoc,
+  query,
+  where,
   setDoc,
   deleteDoc,
 } from "firebase/firestore";
-
 import { useAuth } from "@/lib/AuthContext";
 import { useRouter } from "next/navigation";
 import Shell from "@/app/shell";
@@ -39,6 +39,7 @@ type UserTeam = {
   freeTransfers: number;
   ownerEmail: string;
   namez: string;
+  lastAddedGwToTotalGameweek?: number;
 };
 
 type Settings = {
@@ -70,7 +71,6 @@ export default function AdminPage() {
   const router = useRouter();
 
   const [tab, setTab] = useState<Tab>("players");
-
   const [players, setPlayers] = useState<Player[]>([]);
   const [managers, setManagers] = useState<UserTeam[]>([]);
   const [shopItems, setShopItems] = useState<ShopItem[]>([]);
@@ -80,11 +80,9 @@ export default function AdminPage() {
   const [saving, setSaving] = useState<string | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
 
-  // Stats Calculator State
   const [selectedPlayerId, setSelectedPlayerId] = useState("");
   const [calcStats, setCalcStats] = useState<Record<string, string>>({});
 
-  // New Shop Item State
   const [newItem, setNewItem] = useState<Partial<ShopItem>>({
     itemType: "avatar",
     rarity: "common",
@@ -112,6 +110,33 @@ export default function AdminPage() {
           getDocs(collection(db, "shopItems")),
         ]);
 
+        let activeGW = 7;
+
+        if (!sSnap.empty) {
+          const settingsData = {
+            id: sSnap.docs[0].id,
+            ...sSnap.docs[0].data(),
+          } as Settings;
+
+          setSettings(settingsData);
+          activeGW = Number(settingsData.currentGameweek || 7);
+        }
+
+        const gwTeamsSnap = await getDocs(
+          query(collection(db, "gameweekTeams"), where("gameweek", "==", activeGW))
+        );
+
+        const currentGwPointsByEmail: Record<string, number> = {};
+
+        gwTeamsSnap.docs.forEach((d) => {
+          const data = d.data();
+          const email = String(data.ownerEmail || "").toLowerCase();
+
+          if (email) {
+            currentGwPointsByEmail[email] = Number(data.gwPoints ?? 0);
+          }
+        });
+
         setPlayers(
           pSnap.docs
             .map((d) => ({ id: d.id, ...d.data() } as Player))
@@ -120,20 +145,25 @@ export default function AdminPage() {
 
         setManagers(
           mSnap.docs
-            .map((d) => ({ id: d.id, ...d.data() } as UserTeam))
+            .map((d) => {
+              const manager = { id: d.id, ...d.data() } as UserTeam;
+              const emailKey = String(manager.ownerEmail || "").toLowerCase();
+
+              return {
+                ...manager,
+                totalPoints: Number(manager.totalPoints || 0),
+                gameweekPoints: currentGwPointsByEmail[emailKey] ?? 0,
+                coins: Number(manager.coins || 0),
+                Bank: Number(manager.Bank || 0),
+                freeTransfers: Number(manager.freeTransfers || 0),
+              };
+            })
             .sort((a, b) => (b.totalPoints ?? 0) - (a.totalPoints ?? 0))
         );
 
         setShopItems(
           shopSnap.docs.map((d) => ({ id: d.id, ...d.data() } as ShopItem))
         );
-
-        if (!sSnap.empty) {
-          setSettings({
-            id: sSnap.docs[0].id,
-            ...sSnap.docs[0].data(),
-          } as Settings);
-        }
       } catch (err) {
         console.error("Load Error:", err);
       }
@@ -151,7 +181,6 @@ export default function AdminPage() {
 
   const calculatePoints = (p: Player) => {
     let total = 0;
-
     const s = (key: string) => Number(calcStats[key] || 0);
 
     total += s("matchWin") * 2;
@@ -187,7 +216,6 @@ export default function AdminPage() {
 
   const handleSaveStats = async () => {
     const p = players.find((x) => x.id === selectedPlayerId);
-
     if (!p || !settings) return;
 
     setSaving("matchstats");
@@ -253,11 +281,71 @@ export default function AdminPage() {
         coins: Number(m.coins || 0),
         Bank: Number(m.Bank || 0),
         freeTransfers: Number(m.freeTransfers || 0),
+        "Updated Date": new Date().toISOString(),
       });
 
       markSaved(m.id);
     } catch (err) {
       console.error(err);
+    }
+
+    setSaving(null);
+  };
+
+  const handleAddGwPointsToTotal = async (m: UserTeam) => {
+    const gwPoints = Number(m.gameweekPoints || 0);
+    const currentTotal = Number(m.totalPoints || 0);
+    const newTotal = currentTotal + gwPoints;
+    const currentGameweek = settings?.currentGameweek;
+    const saveKey = `${m.id}_addGwToTotal`;
+
+    if (currentGameweek && m.lastAddedGwToTotalGameweek === currentGameweek) {
+      const addAgain = confirm(
+        `GW${currentGameweek} points may already have been added for ${m.manager}.\n\nAdd them again anyway?\n\n${currentTotal} + ${gwPoints} = ${newTotal}`
+      );
+
+      if (!addAgain) return;
+    } else {
+      const confirmAdd = confirm(
+        `Add ${gwPoints} GW points to ${m.manager}'s total?\n\n${currentTotal} + ${gwPoints} = ${newTotal}`
+      );
+
+      if (!confirmAdd) return;
+    }
+
+    setSaving(saveKey);
+
+    try {
+      const updateData: any = {
+        totalPoints: newTotal,
+        gameweekPoints: gwPoints,
+        "Updated Date": new Date().toISOString(),
+      };
+
+      if (currentGameweek) {
+        updateData.lastAddedGwToTotalGameweek = currentGameweek;
+      }
+
+      await updateDoc(doc(db, "userTeams", m.id), updateData);
+
+      setManagers((prev) =>
+        prev
+          .map((manager) =>
+            manager.id === m.id
+              ? {
+                  ...manager,
+                  totalPoints: newTotal,
+                  gameweekPoints: gwPoints,
+                  lastAddedGwToTotalGameweek: currentGameweek,
+                }
+              : manager
+          )
+          .sort((a, b) => (b.totalPoints ?? 0) - (a.totalPoints ?? 0))
+      );
+
+      markSaved(saveKey);
+    } catch (err) {
+      console.error("Failed to add GW points to total:", err);
     }
 
     setSaving(null);
@@ -348,9 +436,7 @@ export default function AdminPage() {
   return (
     <Shell>
       <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
-        <h1
-          style={{ fontSize: "2rem", fontWeight: 700, marginBottom: "2rem" }}
-        >
+        <h1 style={{ fontSize: "2rem", fontWeight: 700, marginBottom: "2rem" }}>
           Admin Panel
         </h1>
 
@@ -414,9 +500,7 @@ export default function AdminPage() {
                 }}
               >
                 <div>
-                  <div style={{ fontWeight: 600 }}>
-                    My Team & Leaderboard
-                  </div>
+                  <div style={{ fontWeight: 600 }}>My Team & Leaderboard</div>
                   <div
                     style={{
                       fontSize: "0.75rem",
@@ -606,6 +690,7 @@ export default function AdminPage() {
                   >
                     Transfer Deadline
                   </div>
+
                   <input
                     type="datetime-local"
                     value={settings.deadline}
@@ -626,6 +711,7 @@ export default function AdminPage() {
                   >
                     Shop Deadline
                   </div>
+
                   <input
                     type="datetime-local"
                     value={settings.shopDeadline}
@@ -654,7 +740,11 @@ export default function AdminPage() {
                   cursor: "pointer",
                 }}
               >
-                Save Settings
+                {saving === "settings"
+                  ? "Saving..."
+                  : saved === "settings"
+                  ? "✓ Saved"
+                  : "Save Settings"}
               </button>
             </div>
           </div>
@@ -756,10 +846,7 @@ export default function AdminPage() {
                   <input
                     value={newItem.songUrl || ""}
                     onChange={(e) =>
-                      setNewItem({
-                        ...newItem,
-                        songUrl: e.target.value,
-                      })
+                      setNewItem({ ...newItem, songUrl: e.target.value })
                     }
                     style={inputStyle}
                   />
@@ -791,7 +878,7 @@ export default function AdminPage() {
                   <div style={{ fontSize: "0.7rem" }}>Vis</div>
                   <input
                     type="checkbox"
-                    checked={newItem.isVisible}
+                    checked={!!newItem.isVisible}
                     onChange={(e) =>
                       setNewItem({
                         ...newItem,
@@ -925,7 +1012,7 @@ export default function AdminPage() {
 
                   <input
                     type="checkbox"
-                    checked={item.isVisible}
+                    checked={!!item.isVisible}
                     onChange={(e) =>
                       updateShopItemField(
                         item.id,
@@ -1200,6 +1287,30 @@ export default function AdminPage() {
 
         {tab === "managers" && (
           <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+            <div
+              style={{
+                background: "rgba(255,255,255,0.04)",
+                border: "1px solid var(--border)",
+                borderRadius: "10px",
+                padding: "1rem",
+                color: "var(--text-muted)",
+                fontSize: "0.85rem",
+              }}
+            >
+              Showing current GW points from{" "}
+              <strong style={{ color: "#fff" }}>gameweekTeams.gwPoints</strong>
+              {settings?.currentGameweek ? (
+                <>
+                  {" "}
+                  for{" "}
+                  <strong style={{ color: "#fff" }}>
+                    GW{settings.currentGameweek}
+                  </strong>
+                </>
+              ) : null}
+              .
+            </div>
+
             {managers.map((m) => (
               <div
                 key={m.id}
@@ -1215,15 +1326,29 @@ export default function AdminPage() {
                     fontWeight: 700,
                     marginBottom: "1rem",
                     fontSize: "1.1rem",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: "1rem",
+                    flexWrap: "wrap",
                   }}
                 >
-                  {m.manager || "Unknown Manager"}
+                  <span>{m.manager || "Unknown Manager"}</span>
+
+                  <span
+                    style={{
+                      fontSize: "0.75rem",
+                      color: "var(--text-muted)",
+                      fontWeight: 500,
+                    }}
+                  >
+                    {m.ownerEmail}
+                  </span>
                 </div>
 
                 <div
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "repeat(5, 1fr) 100px",
+                    gridTemplateColumns: "repeat(5, 1fr) 100px 150px",
                     gap: "0.75rem",
                     alignItems: "end",
                   }}
@@ -1245,7 +1370,12 @@ export default function AdminPage() {
                   </div>
 
                   <div>
-                    <div style={{ fontSize: "0.7rem" }}>GW Points</div>
+                    <div style={{ fontSize: "0.7rem" }}>
+                      GW Points
+                      {settings?.currentGameweek
+                        ? ` - GW${settings.currentGameweek}`
+                        : ""}
+                    </div>
                     <input
                       type="number"
                       value={m.gameweekPoints ?? 0}
@@ -1324,7 +1454,35 @@ export default function AdminPage() {
                       width: "100%",
                     }}
                   >
-                    {saving === m.id ? "Saving..." : "Save"}
+                    {saving === m.id
+                      ? "Saving..."
+                      : saved === m.id
+                      ? "Saved"
+                      : "Save"}
+                  </button>
+
+                  <button
+                    onClick={() => handleAddGwPointsToTotal(m)}
+                    disabled={saving === `${m.id}_addGwToTotal`}
+                    style={{
+                      background:
+                        saved === `${m.id}_addGwToTotal`
+                          ? "var(--green)"
+                          : "var(--blue)",
+                      color: "#fff",
+                      border: "none",
+                      borderRadius: "6px",
+                      padding: "0.6rem",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      width: "100%",
+                    }}
+                  >
+                    {saving === `${m.id}_addGwToTotal`
+                      ? "Adding..."
+                      : saved === `${m.id}_addGwToTotal`
+                      ? "Added"
+                      : "Add GW → Total"}
                   </button>
                 </div>
               </div>
@@ -1392,10 +1550,12 @@ export default function AdminPage() {
                 <button
                   onClick={async () => {
                     setSaving(p.id);
+
                     await updateDoc(doc(db, "players", p.id), {
                       price: p.price,
                       desc: p.desc,
                     });
+
                     setSaving(null);
                     markSaved(p.id);
                   }}
@@ -1411,7 +1571,11 @@ export default function AdminPage() {
                     cursor: "pointer",
                   }}
                 >
-                  {saving === p.id ? "Saving..." : "Save"}
+                  {saving === p.id
+                    ? "Saving..."
+                    : saved === p.id
+                    ? "Saved"
+                    : "Save"}
                 </button>
               </div>
             ))}
