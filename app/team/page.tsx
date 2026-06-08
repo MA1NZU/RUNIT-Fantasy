@@ -939,7 +939,7 @@ function TeamContent() {
                 background: "var(--accent)",
               }}
             />
-            {isOwnTeam ? "My squad" : "Manager squad"} · GW{selectedGW}
+            {isOwnTeam ? "My Team" : "Manager Team"} · GW{selectedGW}
           </div>
 
           <h1
@@ -1219,7 +1219,7 @@ function TeamContent() {
                   marginBottom: "1rem",
                 }}
               >
-                Substitute Bench
+                Bench
               </div>
 
               <div style={{ maxWidth: "220px" }}>
