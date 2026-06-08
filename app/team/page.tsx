@@ -953,7 +953,7 @@ function TeamContent() {
           >
             {isOwnTeam ? "My" : "Manager"}
             <br />
-            <span style={{ color: "var(--blue)" }}>Gameweek Team</span>
+            <span style={{ color: "var(--blue)" }}>Team</span>
           </h1>
 
           <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
