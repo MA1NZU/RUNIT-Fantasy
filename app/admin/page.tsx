@@ -316,65 +316,6 @@ export default function AdminPage() {
     setSaving(null);
   };
 
-  const handleAddGwPointsToTotal = async (m: UserTeam) => {
-    const gwPoints = Number(m.gameweekPoints || 0);
-    const currentTotal = Number(m.totalPoints || 0);
-    const newTotal = currentTotal + gwPoints;
-    const currentGameweek = settings?.currentGameweek;
-    const saveKey = `${m.id}_addGwToTotal`;
-
-    if (currentGameweek && m.lastAddedGwToTotalGameweek === currentGameweek) {
-      const addAgain = confirm(
-        `GW${currentGameweek} points may already have been added for ${m.manager}.\n\nAdd them again anyway?\n\n${currentTotal} + ${gwPoints} = ${newTotal}`
-      );
-
-      if (!addAgain) return;
-    } else {
-      const confirmAdd = confirm(
-        `Add ${gwPoints} GW points to ${m.manager}'s total?\n\n${currentTotal} + ${gwPoints} = ${newTotal}`
-      );
-
-      if (!confirmAdd) return;
-    }
-
-    setSaving(saveKey);
-
-    try {
-      const updateData: any = {
-        totalPoints: newTotal,
-        gameweekPoints: gwPoints,
-        "Updated Date": new Date().toISOString(),
-      };
-
-      if (currentGameweek) {
-        updateData.lastAddedGwToTotalGameweek = currentGameweek;
-      }
-
-      await updateDoc(doc(db, "userTeams", m.id), updateData);
-
-      setManagers((prev) =>
-        prev
-          .map((manager) =>
-            manager.id === m.id
-              ? {
-                  ...manager,
-                  totalPoints: newTotal,
-                  gameweekPoints: gwPoints,
-                  lastAddedGwToTotalGameweek: currentGameweek,
-                }
-              : manager
-          )
-          .sort((a, b) => Number(b.totalPoints || 0) - Number(a.totalPoints || 0))
-      );
-
-      markSaved(saveKey);
-    } catch (err) {
-      console.error("Failed to add GW points to total:", err);
-    }
-
-    setSaving(null);
-  };
-
   const handleGrantRankingCoins = async () => {
     const currentGameweek = settings?.currentGameweek;
 
