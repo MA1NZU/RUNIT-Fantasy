@@ -743,12 +743,7 @@ export default function Leaderboard() {
       </main>
     </Shell>
   );
-}        setLoading(false);
-      }
-    }
-
-    loadLeaderboard();
-  }, []);
+}
 
   const sorted = [...teams].sort(
     (a, b) => Number(b.totalPoints || 0) - Number(a.totalPoints || 0)
