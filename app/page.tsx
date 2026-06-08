@@ -188,7 +188,7 @@ export default function Home() {
             padding: "2rem",
             marginBottom: "1rem",
             background:
-              "radial-gradient(circle at 20% 10%, rgba(3, 71, 244, 0.35), transparent 32%), radial-gradient(circle at 90% 20%, rgba(255, 193, 7, 0.18), transparent 30%), linear-gradient(135deg, rgba(255,255,255,0.075), rgba(255,255,255,0.02))",
+              "radial-gradient(circle at 20% 10%, rgba(3, 71, 244, 0.35), transparent 16%), radial-gradient(circle at 90% 20%, rgba(255, 193, 7, 0.18), transparent 15%), linear-gradient(135deg, rgba(255,255,255,0.075), rgba(255,255,255,0.02))",
             boxShadow: "0 24px 80px rgba(0,0,0,0.32)",
           }}
         >
