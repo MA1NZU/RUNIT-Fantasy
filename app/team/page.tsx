@@ -37,7 +37,6 @@ function PlayerCard({
   player,
   points,
   isCaptain,
-  isSub,
   slot,
   onClick,
 }: {
@@ -72,7 +71,7 @@ function PlayerCard({
         padding: "0.75rem",
         cursor: "pointer",
         transition: "transform 0.15s ease",
-        minHeight: "245px",
+        minHeight: "235px",
       }}
       onMouseEnter={(e) => {
         e.currentTarget.style.transform = "translateY(-4px) scale(1.01)";
@@ -215,7 +214,6 @@ function PlayerCard({
           gridTemplateColumns: "1fr auto",
           gap: "0.75rem",
           alignItems: "center",
-          marginBottom: "0.55rem",
         }}
       >
         <div>
@@ -278,28 +276,6 @@ function PlayerCard({
             pts {isCaptain ? "x2" : ""}
           </div>
         </div>
-      </div>
-
-      <div
-        style={{
-          position: "relative",
-          zIndex: 2,
-          height: "5px",
-          borderRadius: "999px",
-          overflow: "hidden",
-          background: "rgba(255,255,255,0.06)",
-        }}
-      >
-        <div
-          style={{
-            height: "100%",
-            width: `${Math.min(Math.max(Math.abs(shownPoints), 8), 100)}%`,
-            background: isCaptain
-              ? "linear-gradient(90deg, var(--blue), var(--accent))"
-              : "linear-gradient(90deg, var(--blue), rgba(107,159,255,0.7))",
-            borderRadius: "999px",
-          }}
-        />
       </div>
     </div>
   );
@@ -597,7 +573,7 @@ function StatsModal({
               }}
             >
               {player.game.toUpperCase()} ·{" "}
-              {isCaptain ? "CAPTAIN" : "PLAYER STATS"}
+              {isCaptain ? "CAPTAIN X2" : "PLAYER STATS"}
             </div>
           </div>
         </div>
@@ -699,8 +675,13 @@ function StatsModal({
             gap: "1rem",
           }}
         >
+          <div>
+            <div style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>
+              {isCaptain ? "Total GW Points · Doubled" : "Total GW Points"}
+            </div>
+
             <div style={{ fontSize: "0.9rem", fontWeight: 800 }}>
-              {isCaptain ? `${totalRaw} × 2` : "TOTAL"}
+              {isCaptain ? `${totalRaw} × 2` : "Raw total"}
             </div>
           </div>
 
@@ -961,7 +942,7 @@ function TeamContent() {
             {isOwnTeam ? "My squad" : "Manager squad"} · GW{selectedGW}
           </div>
 
-          <h3
+          <h1
             style={{
               fontSize: "clamp(2.5rem, 7vw, 4.75rem)",
               lineHeight: 0.95,
@@ -973,7 +954,20 @@ function TeamContent() {
             {isOwnTeam ? "My Team" : "Manager"}
             <br />
             <span style={{ color: "var(--blue)" }}>Gameweek Squad</span>
-          </h3>
+          </h1>
+
+          <p
+            style={{
+              maxWidth: "620px",
+              color: "var(--text-muted)",
+              fontSize: "1rem",
+              lineHeight: 1.7,
+              marginBottom: "1.25rem",
+            }}
+          >
+            Viewing {targetEmail}. Check your starting four, captain multiplier,
+            substitute, and full player stat breakdowns.
+          </p>
 
           <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
             {availableGWs.map((gw) => (
@@ -1009,8 +1003,8 @@ function TeamContent() {
             style={{
               background: "var(--surface)",
               border: "1px solid var(--border)",
-              borderRadius: "22px",
-              padding: "1rem",
+              borderRadius: "18px",
+              padding: "0.65rem",
               marginBottom: "1rem",
               overflowX: "auto",
             }}
@@ -1018,9 +1012,9 @@ function TeamContent() {
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "1.5fr 1fr 1fr 1fr",
-                gap: "0.75rem",
-                minWidth: "640px",
+                gridTemplateColumns: "1.35fr 1fr 1fr 1fr",
+                gap: "0.5rem",
+                minWidth: "520px",
                 alignItems: "stretch",
               }}
             >
@@ -1028,13 +1022,13 @@ function TeamContent() {
                 style={{
                   background: "rgba(255,193,7,0.08)",
                   border: "1px solid rgba(255,193,7,0.25)",
-                  borderRadius: "18px",
-                  padding: "1.2rem",
+                  borderRadius: "14px",
+                  padding: "0.85rem",
                 }}
               >
                 <div
                   style={{
-                    fontSize: "2.4rem",
+                    fontSize: "2rem",
                     fontWeight: 900,
                     color: "var(--accent)",
                     lineHeight: 1,
@@ -1047,11 +1041,11 @@ function TeamContent() {
                 <div
                   style={{
                     color: "var(--text-muted)",
-                    fontSize: "0.8rem",
-                    marginTop: "0.45rem",
+                    fontSize: "0.68rem",
+                    marginTop: "0.35rem",
                     fontWeight: 800,
                     textTransform: "uppercase",
-                    letterSpacing: "0.8px",
+                    letterSpacing: "0.7px",
                   }}
                 >
                   GW Points
@@ -1062,13 +1056,13 @@ function TeamContent() {
                 style={{
                   background: "rgba(255,255,255,0.035)",
                   border: "1px solid var(--border)",
-                  borderRadius: "18px",
-                  padding: "1.2rem",
+                  borderRadius: "14px",
+                  padding: "0.85rem",
                 }}
               >
                 <div
                   style={{
-                    fontSize: "1.9rem",
+                    fontSize: "1.45rem",
                     fontWeight: 900,
                     color: "var(--text)",
                     lineHeight: 1,
@@ -1081,11 +1075,11 @@ function TeamContent() {
                 <div
                   style={{
                     color: "var(--text-muted)",
-                    fontSize: "0.8rem",
-                    marginTop: "0.45rem",
+                    fontSize: "0.68rem",
+                    marginTop: "0.35rem",
                     fontWeight: 800,
                     textTransform: "uppercase",
-                    letterSpacing: "0.8px",
+                    letterSpacing: "0.7px",
                   }}
                 >
                   Transfers
@@ -1096,13 +1090,13 @@ function TeamContent() {
                 style={{
                   background: "rgba(255,255,255,0.035)",
                   border: "1px solid var(--border)",
-                  borderRadius: "18px",
-                  padding: "1.2rem",
+                  borderRadius: "14px",
+                  padding: "0.85rem",
                 }}
               >
                 <div
                   style={{
-                    fontSize: "1.9rem",
+                    fontSize: "1.45rem",
                     fontWeight: 900,
                     color: currentTeam.transferPenalty
                       ? "var(--red)"
@@ -1117,11 +1111,11 @@ function TeamContent() {
                 <div
                   style={{
                     color: "var(--text-muted)",
-                    fontSize: "0.8rem",
-                    marginTop: "0.45rem",
+                    fontSize: "0.68rem",
+                    marginTop: "0.35rem",
                     fontWeight: 800,
                     textTransform: "uppercase",
-                    letterSpacing: "0.8px",
+                    letterSpacing: "0.7px",
                   }}
                 >
                   Penalty
@@ -1132,13 +1126,13 @@ function TeamContent() {
                 style={{
                   background: "rgba(255,255,255,0.035)",
                   border: "1px solid var(--border)",
-                  borderRadius: "18px",
-                  padding: "1.2rem",
+                  borderRadius: "14px",
+                  padding: "0.85rem",
                 }}
               >
                 <div
                   style={{
-                    fontSize: "1.9rem",
+                    fontSize: "1.45rem",
                     fontWeight: 900,
                     color: "var(--text)",
                     lineHeight: 1,
@@ -1151,11 +1145,11 @@ function TeamContent() {
                 <div
                   style={{
                     color: "var(--text-muted)",
-                    fontSize: "0.8rem",
-                    marginTop: "0.45rem",
+                    fontSize: "0.68rem",
+                    marginTop: "0.35rem",
                     fontWeight: 800,
                     textTransform: "uppercase",
-                    letterSpacing: "0.8px",
+                    letterSpacing: "0.7px",
                   }}
                 >
                   Squad Value
@@ -1177,44 +1171,19 @@ function TeamContent() {
           >
             <div
               style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                gap: "1rem",
                 marginBottom: "1rem",
-                flexWrap: "wrap",
               }}
             >
-              <div>
-                <div
-                  style={{
-                    fontSize: "0.75rem",
-                    color: "var(--text-muted)",
-                    textTransform: "uppercase",
-                    letterSpacing: "1px",
-                    fontWeight: 900,
-                    marginBottom: "0.25rem",
-                  }}
-                >
-                  Starting Four
-                </div>
-
-                <div style={{ fontSize: "1.25rem", fontWeight: 900 }}>
-                  Main Squad
-                </div>
-              </div>
-
               <div
                 style={{
+                  fontSize: "0.75rem",
                   color: "var(--text-muted)",
-                  fontSize: "0.8rem",
-                  background: "rgba(255,255,255,0.045)",
-                  border: "1px solid rgba(255,255,255,0.08)",
-                  borderRadius: "999px",
-                  padding: "0.45rem 0.7rem",
+                  textTransform: "uppercase",
+                  letterSpacing: "1px",
+                  fontWeight: 900,
                 }}
               >
-                Click a player to view stats
+                Starting IV
               </div>
             </div>
 
@@ -1270,7 +1239,6 @@ function TeamContent() {
                 <PlayerCard
                   player={players[currentTeam.sub]}
                   points={getPoints(currentTeam.sub)}
-                  isSub={true}
                   slot="BENCH"
                   onClick={() => setSelectedStatPlayerId(currentTeam.sub)}
                 />
