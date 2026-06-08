@@ -356,7 +356,7 @@ export default function Home() {
                   "Valorant",
                   "Marvel Rivals",
                   `${TOTAL_MANAGERS} managers`,
-                  "Captain x2 points",
+                  "1 winner",
                 ].map((pill) => (
                   <div
                     key={pill}
@@ -835,7 +835,7 @@ export default function Home() {
                   marginBottom: "1rem",
                 }}
               >
-                <div>Podium Race</div>
+                <div>Table Race</div>
                 <span
                   style={{
                     color: "var(--text-muted)",
@@ -882,7 +882,7 @@ export default function Home() {
                           fontSize: "1.15rem",
                         }}
                       >
-                        {i === 0 ? "🥇" : i === 1 ? "🥈" : "🥉"}
+                        {i === 0 ? "1" : i === 1 ? "2" : "3"}
                       </div>
 
                       <div style={{ flex: 1, minWidth: 0 }}>
