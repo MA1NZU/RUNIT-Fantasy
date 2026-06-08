@@ -299,7 +299,6 @@ export default function Home() {
                     fontWeight: 800,
                     fontSize: "0.9rem",
                     textDecoration: "none",
-                    boxShadow: "0 14px 36px rgba(3, 71, 244, 0.35)",
                   }}
                 >
                   View Leaderboard →
