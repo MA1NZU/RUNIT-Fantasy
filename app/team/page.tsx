@@ -9,7 +9,8 @@ import {
   where,
   orderBy,
   doc,
-  updateDoc,
+  runTransaction,
+  increment,
 } from "firebase/firestore";
 import { useAuth } from "@/lib/AuthContext";
 import Shell from "@/app/shell";
@@ -54,7 +55,8 @@ function PlayerCard({
   isSub?: boolean;
   onClick?: () => void;
 }) {
-  const isUnfit = player.desc !== "Fit to play";
+  const description = player.desc || "Fit to play";
+  const isUnfit = description !== "Fit to play";
 
   return (
     <div
@@ -75,8 +77,12 @@ function PlayerCard({
         cursor: "pointer",
         transition: "transform 0.1s",
       }}
-      onMouseEnter={(e) => (e.currentTarget.style.transform = "scale(1.02)")}
-      onMouseLeave={(e) => (e.currentTarget.style.transform = "scale(1)")}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.transform = "scale(1.02)";
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.transform = "scale(1)";
+      }}
     >
       <div
         style={{
@@ -185,7 +191,7 @@ function PlayerCard({
           overflow: "hidden",
         }}
       >
-        {player.desc}
+        {description}
       </div>
     </div>
   );
@@ -207,167 +213,190 @@ function StatsModal({
   const getBreakdown = () => {
     const rows: { label: string; val: any; pts: number }[] = [];
 
-    if (s("matchWin"))
+    if (s("matchWin")) {
       rows.push({
         label: "Match Win",
         val: s("matchWin"),
         pts: s("matchWin") * 2,
       });
+    }
 
-    if (s("matchLose"))
+    if (s("matchLose")) {
       rows.push({
         label: "Match Loss",
         val: s("matchLose"),
         pts: s("matchLose") * -2,
       });
+    }
 
-    if (s("mvp"))
+    if (s("mvp")) {
       rows.push({
         label: "MVP",
         val: s("mvp"),
         pts: s("mvp") * 8,
       });
+    }
 
-    if (s("svp"))
+    if (s("svp")) {
       rows.push({
         label: "SVP",
         val: s("svp"),
         pts: s("svp") * 5,
       });
+    }
 
-    if (s("bonus"))
+    if (s("bonus")) {
       rows.push({
         label: "Bonus",
         val: s("bonus"),
         pts: s("bonus") * 1,
       });
+    }
 
     if (player.game === "Valorant") {
-      if (s("kills"))
+      if (s("kills")) {
         rows.push({
           label: "Kills",
           val: s("kills"),
           pts: Math.floor(s("kills") / 2),
         });
+      }
 
-      if (s("assists"))
+      if (s("assists")) {
         rows.push({
           label: "Assists",
           val: s("assists"),
           pts: Math.floor(s("assists") / 2),
         });
+      }
 
-      if (s("deaths"))
+      if (s("deaths")) {
         rows.push({
           label: "Deaths",
           val: s("deaths"),
           pts: Math.floor(s("deaths") / 3) * -1,
         });
+      }
 
-      if (s("firstBlood"))
+      if (s("firstBlood")) {
         rows.push({
           label: "First Blood",
           val: s("firstBlood"),
           pts: s("firstBlood"),
         });
+      }
 
-      if (s("firstDeath"))
+      if (s("firstDeath")) {
         rows.push({
           label: "First Death",
           val: s("firstDeath"),
           pts: s("firstDeath") * -1,
         });
+      }
 
-      if (s("tripleKill"))
+      if (s("tripleKill")) {
         rows.push({
           label: "Triple Kill",
           val: s("tripleKill"),
           pts: s("tripleKill") * 3,
         });
+      }
 
-      if (s("quadraKill"))
+      if (s("quadraKill")) {
         rows.push({
           label: "Quadra Kill",
           val: s("quadraKill"),
           pts: s("quadraKill") * 5,
         });
+      }
 
-      if (s("ace"))
+      if (s("ace")) {
         rows.push({
           label: "Ace",
           val: s("ace"),
           pts: s("ace") * 8,
         });
+      }
 
-      if (s("clutch"))
+      if (s("clutch")) {
         rows.push({
           label: "Clutch",
           val: s("clutch"),
           pts: s("clutch") * 2,
         });
+      }
     } else {
-      if (s("kills"))
+      if (s("kills")) {
         rows.push({
           label: "Kills",
           val: s("kills"),
           pts: Math.floor(s("kills") / 3),
         });
+      }
 
-      if (s("assists"))
+      if (s("assists")) {
         rows.push({
           label: "Assists",
           val: s("assists"),
           pts: Math.floor(s("assists") / 4),
         });
+      }
 
-      if (s("deaths"))
+      if (s("deaths")) {
         rows.push({
           label: "Deaths",
           val: s("deaths"),
           pts: s("deaths") * -2,
         });
+      }
 
-      if (s("lastKills"))
+      if (s("lastKills")) {
         rows.push({
           label: "Last Kills",
           val: s("lastKills"),
           pts: Math.floor(s("lastKills") / 2),
         });
+      }
 
-      if (s("headKill"))
+      if (s("headKill")) {
         rows.push({
           label: "Head Kill",
           val: s("headKill"),
           pts: s("headKill") * 3,
         });
+      }
 
-      if (s("healing"))
+      if (s("healing")) {
         rows.push({
           label: "Healing",
           val: s("healing"),
           pts: Math.floor(s("healing") / 5050),
         });
+      }
 
-      if (s("damage"))
+      if (s("damage")) {
         rows.push({
           label: "Damage",
           val: s("damage"),
           pts: Math.floor(s("damage") / 5050),
         });
+      }
 
-      if (s("blocked"))
+      if (s("blocked")) {
         rows.push({
           label: "Blocked",
           val: s("blocked"),
           pts: Math.floor(s("blocked") / 5050),
         });
+      }
 
-      if (s("soloKills"))
+      if (s("soloKills")) {
         rows.push({
           label: "Solo Kills",
           val: s("soloKills"),
           pts: s("soloKills"),
         });
+      }
     }
 
     return rows;
@@ -556,7 +585,7 @@ function TeamContent() {
 
   const queryEmail = searchParams.get("email");
   const targetEmail = queryEmail || user?.email;
-  const isOwnTeam = !queryEmail || queryEmail === user?.email;
+  const isOwnTeam = !!user?.email && (!queryEmail || queryEmail === user.email);
 
   const [players, setPlayers] = useState<Record<string, Player>>({});
   const [gwTeams, setGwTeams] = useState<GWTeam[]>([]);
@@ -564,6 +593,7 @@ function TeamContent() {
 
   const [currentGW, setCurrentGW] = useState<number>(7);
   const [selectedGW, setSelectedGW] = useState<number>(7);
+  const [statsLoadedGW, setStatsLoadedGW] = useState<number | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [selectedStatPlayerId, setSelectedStatPlayerId] = useState<
@@ -583,7 +613,8 @@ function TeamContent() {
         let activeGW = 7;
 
         if (!settingsSnap.empty) {
-          activeGW = settingsSnap.docs[0].data().currentGameweek || 7;
+          activeGW = Number(settingsSnap.docs[0].data().currentGameweek || 7);
+
           setCurrentGW(activeGW);
           setSelectedGW(activeGW);
         }
@@ -629,7 +660,11 @@ function TeamContent() {
   }, [targetEmail]);
 
   useEffect(() => {
+    let cancelled = false;
+
     const loadStats = async () => {
+      setStatsLoadedGW(null);
+
       try {
         const statsSnap = await getDocs(
           query(
@@ -646,22 +681,36 @@ function TeamContent() {
           if (data.Title) {
             sMap[data.Title] = data;
           }
+
+          if (data.player) {
+            sMap[data.player] = data;
+          }
         });
 
-        setMatchStats(sMap);
+        if (!cancelled) {
+          setMatchStats(sMap);
+          setStatsLoadedGW(selectedGW);
+        }
       } catch (err) {
         console.error(err);
+
+        if (!cancelled) {
+          setMatchStats({});
+          setStatsLoadedGW(selectedGW);
+        }
       }
     };
 
     loadStats();
+
+    return () => {
+      cancelled = true;
+    };
   }, [selectedGW]);
 
   const currentTeam = gwTeams.find((t) => t.gameweek === selectedGW);
 
-  const availableGWs = Array.from(
-    new Set(gwTeams.map((t) => t.gameweek))
-  )
+  const availableGWs = Array.from(new Set(gwTeams.map((t) => t.gameweek)))
     .filter((gw) => gw <= currentGW)
     .sort((a, b) => b - a);
 
@@ -679,7 +728,12 @@ function TeamContent() {
 
     if (!p) return 0;
 
-    return Number(matchStats[p.name]?.gwPoints ?? p.points ?? 0);
+    const stats =
+      matchStats[p.name] ||
+      (p.ID ? matchStats[p.ID] : undefined) ||
+      matchStats[p.id];
+
+    return Number(stats?.gwPoints ?? 0);
   };
 
   const calculateTeamGWPoints = (team: GWTeam) => {
@@ -701,17 +755,19 @@ function TeamContent() {
     }, 0);
   };
 
-  const calculatedGWPoints = currentTeam
-    ? calculateTeamGWPoints(currentTeam)
-    : 0;
+  const calculatedGWPoints = currentTeam ? calculateTeamGWPoints(currentTeam) : 0;
 
   useEffect(() => {
     if (!currentTeam) return;
 
-    // Only auto-save for your own team.
-    // This prevents users from accidentally updating another manager's squad
-    // when viewing it through ?email=
+    // Only auto-sync your own team.
+    // This prevents normal users from changing another manager's totals
+    // by opening /team?email=someone@example.com
     if (!isOwnTeam) return;
+
+    // Wait until stats for the selected GW are fully loaded.
+    // This prevents saving wrong values before playerMatchStats finishes loading.
+    if (statsLoadedGW !== selectedGW) return;
 
     const mainPlayerIds = [
       currentTeam.player1,
@@ -727,36 +783,66 @@ function TeamContent() {
     if (!allPlayersLoaded) return;
 
     const newGWPoints = calculateTeamGWPoints(currentTeam);
-    const oldGWPoints = Number(currentTeam.gwPoints ?? 0);
 
-    if (newGWPoints === oldGWPoints) return;
-
-    const saveGWPoints = async () => {
+    const syncGwPointsAndTotal = async () => {
       try {
-        await updateDoc(doc(db, "gameweekTeams", currentTeam.id), {
-          gwPoints: newGWPoints,
-          "Updated Date": new Date().toISOString(),
+        const teamRef = doc(db, "gameweekTeams", currentTeam.id);
+
+        const userTeamsSnap = await getDocs(
+          query(
+            collection(db, "userTeams"),
+            where("ownerEmail", "==", currentTeam.ownerEmail)
+          )
+        );
+
+        await runTransaction(db, async (transaction) => {
+          const teamSnap = await transaction.get(teamRef);
+
+          if (!teamSnap.exists()) return;
+
+          const oldGWPoints = Number(teamSnap.data().gwPoints ?? 0);
+          const difference = newGWPoints - oldGWPoints;
+
+          if (difference === 0) return;
+
+          const now = new Date().toISOString();
+
+          // 1. Save the new GW points to gameweekTeams
+          transaction.update(teamRef, {
+            gwPoints: newGWPoints,
+            "Updated Date": now,
+          });
+
+          // 2. Update userTeams.totalPoints by the difference
+          // Example:
+          // old GW = 70, new GW = 90, difference = +20
+          // totalPoints += 20
+          userTeamsSnap.docs.forEach((userTeamDoc) => {
+            transaction.update(doc(db, "userTeams", userTeamDoc.id), {
+              gameweekPoints: newGWPoints,
+              totalPoints: increment(difference),
+              "Updated Date": now,
+            });
+          });
         });
 
         setGwTeams((prev) =>
           prev.map((team) =>
             team.id === currentTeam.id
-              ? { ...team, gwPoints: newGWPoints }
+              ? {
+                  ...team,
+                  gwPoints: newGWPoints,
+                }
               : team
           )
         );
       } catch (err) {
-        console.error("Failed to save GW points:", err);
+        console.error("Failed to sync GW points and total points:", err);
       }
     };
 
-    saveGWPoints();
-  }, [
-    currentTeam,
-    players,
-    matchStats,
-    isOwnTeam,
-  ]);
+    syncGwPointsAndTotal();
+  }, [currentTeam, players, matchStats, isOwnTeam, selectedGW, statsLoadedGW]);
 
   if (loading && gwTeams.length === 0) {
     return <p style={{ padding: "2rem" }}>Loading Squad...</p>;
@@ -886,15 +972,21 @@ function TeamContent() {
               marginBottom: "2rem",
             }}
           >
-            {playerIds.map((pid, i) => (
-              <PlayerCard
-                key={i}
-                player={players[pid]!}
-                points={getPoints(pid)}
-                isCaptain={currentTeam.captain === pid}
-                onClick={() => setSelectedStatPlayerId(pid)}
-              />
-            ))}
+            {playerIds.map((pid, i) => {
+              const player = players[pid];
+
+              if (!player) return null;
+
+              return (
+                <PlayerCard
+                  key={i}
+                  player={player}
+                  points={getPoints(pid)}
+                  isCaptain={currentTeam.captain === pid}
+                  onClick={() => setSelectedStatPlayerId(pid)}
+                />
+              );
+            })}
           </div>
 
           {currentTeam.sub && players[currentTeam.sub] && (
@@ -912,7 +1004,7 @@ function TeamContent() {
                 </div>
 
                 <PlayerCard
-                  player={players[currentTeam.sub]!}
+                  player={players[currentTeam.sub]}
                   points={getPoints(currentTeam.sub)}
                   isSub={true}
                   onClick={() => setSelectedStatPlayerId(currentTeam.sub)}
@@ -930,7 +1022,14 @@ function TeamContent() {
       {selectedStatPlayerId && players[selectedStatPlayerId] && (
         <StatsModal
           player={players[selectedStatPlayerId]}
-          stats={matchStats[players[selectedStatPlayerId].name] || {}}
+          stats={
+            matchStats[players[selectedStatPlayerId].name] ||
+            (players[selectedStatPlayerId].ID
+              ? matchStats[players[selectedStatPlayerId].ID as string]
+              : undefined) ||
+            matchStats[players[selectedStatPlayerId].id] ||
+            {}
+          }
           isCaptain={currentTeam?.captain === selectedStatPlayerId}
           onClose={() => setSelectedStatPlayerId(null)}
         />
