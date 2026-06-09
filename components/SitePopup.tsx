@@ -57,11 +57,10 @@ export default function SitePopup() {
           return;
         }
 
-        const popups = popupsSnap.docs
-          .map((popupDoc) => ({
-            id: popupDoc.id,
-            ...popupDoc.data(),
-          })) as SitePopupData[];
+        const popups = popupsSnap.docs.map((popupDoc) => ({
+          id: popupDoc.id,
+          ...popupDoc.data(),
+        })) as SitePopupData[];
 
         const sortedPopups = popups.sort(
           (a, b) => Number(b.priority || 0) - Number(a.priority || 0)
@@ -104,11 +103,15 @@ export default function SitePopup() {
     loadPopup();
   }, [user]);
 
-  const closePopup = () => {
+  const dismissPopup = () => {
     if (popup && typeof window !== "undefined") {
       localStorage.setItem(`sitePopupDismissed_${popup.id}`, "true");
     }
 
+    setPopup(null);
+  };
+
+  const closeForNow = () => {
     setPopup(null);
   };
 
@@ -312,7 +315,7 @@ export default function SitePopup() {
         }}
       >
         <button
-          onClick={closePopup}
+          onClick={dismissPopup}
           style={{
             position: "absolute",
             top: "1rem",
@@ -329,27 +332,6 @@ export default function SitePopup() {
         >
           ✕
         </button>
-
-        <div
-          style={{
-            width: "52px",
-            height: "52px",
-            borderRadius: "18px",
-            background: isClaimable
-              ? "rgba(255,193,7,0.12)"
-              : "rgba(3,71,244,0.14)",
-            border: isClaimable
-              ? "1px solid rgba(255,193,7,0.25)"
-              : "1px solid rgba(107,159,255,0.35)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: "1.6rem",
-            marginBottom: "1rem",
-          }}
-        >
-          {icon}
-        </div>
 
         <div
           style={{
@@ -490,7 +472,7 @@ export default function SitePopup() {
           }}
         >
           <button
-            onClick={isClaimable ? claimReward : closePopup}
+            onClick={isClaimable ? claimReward : dismissPopup}
             disabled={claiming || claimed}
             style={{
               flex: 1,
@@ -513,7 +495,7 @@ export default function SitePopup() {
 
           {isClaimable && (
             <button
-              onClick={closePopup}
+              onClick={closeForNow}
               disabled={claiming}
               style={{
                 background: "rgba(255,255,255,0.04)",
