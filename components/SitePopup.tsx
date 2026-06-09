@@ -7,11 +7,13 @@ import {
   doc,
   getDoc,
   getDocs,
+  increment,
   limit,
   orderBy,
   query,
   serverTimestamp,
   setDoc,
+  updateDoc,
   where,
 } from "firebase/firestore";
 import { useAuth } from "@/lib/AuthContext";
@@ -19,12 +21,18 @@ import { useAuth } from "@/lib/AuthContext";
 type SitePopupData = {
   id: string;
   active: boolean;
-  type: "news" | "reward";
+  type: "news" | "reward" | "gold";
   title: string;
   message: string;
   buttonText?: string;
+
+  // Free item reward
   rewardItemId?: string;
   rewardItemName?: string;
+
+  // Free gold/coins reward
+  goldAmount?: number;
+
   priority?: number;
 };
 
@@ -106,79 +114,132 @@ export default function SitePopup() {
     setPopup(null);
   };
 
-  const claimReward = async () => {
-    if (!popup) return;
+  const markClaimed = async () => {
+    if (!popup || !user?.uid || !user?.email) return;
 
-    setError("");
+    const claimId = `${user.uid}_${popup.id}`;
+    const claimRef = doc(db, "popupClaims", claimId);
 
-    if (!user?.uid || !user?.email) {
-      setError("Please sign in to claim this reward.");
-      return;
+    await setDoc(claimRef, {
+      ownerUid: user.uid,
+      ownerEmail: user.email,
+      popupId: popup.id,
+      popupType: popup.type,
+      rewardItemId: popup.rewardItemId || "",
+      rewardItemName: popup.rewardItemName || "",
+      goldAmount: Number(popup.goldAmount || 0),
+      claimedAt: serverTimestamp(),
+    });
+
+    if (typeof window !== "undefined") {
+      localStorage.setItem(`sitePopupDismissed_${popup.id}`, "true");
     }
+  };
+
+  const claimItemReward = async () => {
+    if (!popup) return;
 
     if (!popup.rewardItemId) {
       setError("No reward item found.");
       return;
     }
 
+    if (!user?.uid || !user?.email) {
+      setError("Please sign in to claim this reward.");
+      return;
+    }
+
+    const claimId = `${user.uid}_${popup.id}`;
+    const inventoryId = `${user.uid}_${popup.rewardItemId}`;
+
+    const claimRef = doc(db, "popupClaims", claimId);
+    const inventoryRef = doc(db, "userInventory", inventoryId);
+
+    const existingClaim = await getDoc(claimRef);
+
+    if (existingClaim.exists()) return;
+
+    await setDoc(
+      inventoryRef,
+      {
+        ownerUid: user.uid,
+        ownerEmail: user.email,
+
+        itemId: popup.rewardItemId,
+        itemName: popup.rewardItemName || "",
+
+        source: "sitePopup",
+        popupId: popup.id,
+        acquiredAt: serverTimestamp(),
+
+        ID: popup.rewardItemId,
+        item: popup.rewardItemId,
+      },
+      { merge: true }
+    );
+
+    await markClaimed();
+  };
+
+  const claimGoldReward = async () => {
+    if (!popup) return;
+
+    if (!user?.uid || !user?.email) {
+      setError("Please sign in to claim this reward.");
+      return;
+    }
+
+    const amount = Number(popup.goldAmount || 0);
+
+    if (!amount || amount <= 0) {
+      setError("No gold amount found.");
+      return;
+    }
+
+    const claimId = `${user.uid}_${popup.id}`;
+    const claimRef = doc(db, "popupClaims", claimId);
+
+    const existingClaim = await getDoc(claimRef);
+
+    if (existingClaim.exists()) return;
+
+    const userTeamsSnap = await getDocs(
+      query(collection(db, "userTeams"), where("ownerEmail", "==", user.email))
+    );
+
+    if (userTeamsSnap.empty) {
+      setError("Manager team not found.");
+      return;
+    }
+
+    await Promise.all(
+      userTeamsSnap.docs.map((managerDoc) =>
+        updateDoc(managerDoc.ref, {
+          coins: increment(amount),
+          lastPopupGoldAmount: amount,
+          lastPopupGoldPopupId: popup.id,
+          lastPopupGoldClaimedAt: serverTimestamp(),
+          "Updated Date": new Date().toISOString(),
+        })
+      )
+    );
+
+    await markClaimed();
+  };
+
+  const claimReward = async () => {
+    if (!popup) return;
+
+    setError("");
     setClaiming(true);
 
     try {
-      const claimId = `${user.uid}_${popup.id}`;
-      const inventoryId = `${user.uid}_${popup.rewardItemId}`;
-
-      const claimRef = doc(db, "popupClaims", claimId);
-
-      // Owned shop items collection
-      const inventoryRef = doc(db, "userInventory", inventoryId);
-
-      const existingClaim = await getDoc(claimRef);
-
-      if (existingClaim.exists()) {
-        setClaimed(true);
-
-        if (typeof window !== "undefined") {
-          localStorage.setItem(`sitePopupDismissed_${popup.id}`, "true");
-        }
-
-        setTimeout(() => setPopup(null), 1200);
-        setClaiming(false);
-        return;
+      if (popup.type === "reward") {
+        await claimItemReward();
       }
 
-      await setDoc(
-        inventoryRef,
-        {
-          ownerUid: user.uid,
-          ownerEmail: user.email,
-
-          // Item fields
-          itemId: popup.rewardItemId,
-          itemName: popup.rewardItemName || "",
-
-          // Useful for filtering/history
-          source: "sitePopup",
-          popupId: popup.id,
-          acquiredAt: serverTimestamp(),
-
-          // Compatibility fields in case your shop reads these names
-          ID: popup.rewardItemId,
-          item: popup.rewardItemId,
-        },
-        { merge: true }
-      );
-
-      await setDoc(claimRef, {
-        ownerUid: user.uid,
-        ownerEmail: user.email,
-        popupId: popup.id,
-        rewardItemId: popup.rewardItemId,
-        rewardItemName: popup.rewardItemName || "",
-        claimedAt: serverTimestamp(),
-      });
-
-      if (typeof window !== "undefined") {
-        localStorage.setItem(`sitePopupDismissed_${popup.id}`, "true");
+      if (popup.type === "gold") {
+        await claimGoldReward();
       }
 
       setClaimed(true);
@@ -197,6 +258,8 @@ export default function SitePopup() {
   if (loading || !popup) return null;
 
   const isReward = popup.type === "reward";
+  const isGold = popup.type === "gold";
+  const isClaimable = isReward || isGold;
 
   return (
     <div
@@ -205,215 +268,3 @@ export default function SitePopup() {
         inset: 0,
         background: "rgba(0,0,0,0.78)",
         zIndex: 9999,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: "1rem",
-      }}
-    >
-      <div
-        style={{
-          width: "100%",
-          maxWidth: "460px",
-          background:
-            "radial-gradient(circle at 20% 0%, rgba(3,71,244,0.22), transparent 35%), var(--surface)",
-          border: "1px solid var(--border)",
-          borderRadius: "26px",
-          padding: "1.5rem",
-          position: "relative",
-          overflow: "hidden",
-        }}
-      >
-        <button
-          onClick={closePopup}
-          style={{
-            position: "absolute",
-            top: "1rem",
-            right: "1rem",
-            width: "34px",
-            height: "34px",
-            borderRadius: "12px",
-            border: "1px solid rgba(255,255,255,0.1)",
-            background: "rgba(255,255,255,0.05)",
-            color: "#fff",
-            cursor: "pointer",
-            fontSize: "1rem",
-          }}
-        >
-          ✕
-        </button>
-
-        <div
-          style={{
-            width: "52px",
-            height: "52px",
-            borderRadius: "18px",
-            background: isReward
-              ? "rgba(255,193,7,0.12)"
-              : "rgba(3,71,244,0.14)",
-            border: isReward
-              ? "1px solid rgba(255,193,7,0.25)"
-              : "1px solid rgba(107,159,255,0.35)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: "1.6rem",
-            marginBottom: "1rem",
-          }}
-        >
-          {isReward ? "🎁" : "📰"}
-        </div>
-
-        <div
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: "8px",
-            background: isReward
-              ? "rgba(255,193,7,0.1)"
-              : "rgba(3,71,244,0.14)",
-            border: isReward
-              ? "1px solid rgba(255,193,7,0.24)"
-              : "1px solid rgba(107,159,255,0.35)",
-            color: isReward ? "var(--accent)" : "#8bb5ff",
-            fontSize: "0.72rem",
-            padding: "5px 10px",
-            borderRadius: "999px",
-            marginBottom: "0.85rem",
-            fontWeight: 900,
-            textTransform: "uppercase",
-            letterSpacing: "0.7px",
-          }}
-        >
-          {isReward ? "Free Reward" : "Latest News"}
-        </div>
-
-        <h2
-          style={{
-            fontSize: "1.65rem",
-            fontWeight: 900,
-            lineHeight: 1.1,
-            marginBottom: "0.75rem",
-            paddingRight: "2rem",
-          }}
-        >
-          {popup.title}
-        </h2>
-
-        <p
-          style={{
-            color: "var(--text-muted)",
-            lineHeight: 1.7,
-            fontSize: "0.95rem",
-            marginBottom: "1.25rem",
-            whiteSpace: "pre-line",
-          }}
-        >
-          {popup.message}
-        </p>
-
-        {isReward && popup.rewardItemName && (
-          <div
-            style={{
-              background: "rgba(255,255,255,0.035)",
-              border: "1px solid var(--border)",
-              borderRadius: "16px",
-              padding: "0.85rem 1rem",
-              marginBottom: "1rem",
-            }}
-          >
-            <div
-              style={{
-                fontSize: "0.72rem",
-                color: "var(--text-muted)",
-                marginBottom: "0.25rem",
-                fontWeight: 800,
-                textTransform: "uppercase",
-                letterSpacing: "0.7px",
-              }}
-            >
-              Reward Item
-            </div>
-
-            <div
-              style={{
-                fontWeight: 900,
-                color: "var(--accent)",
-              }}
-            >
-              {popup.rewardItemName}
-            </div>
-          </div>
-        )}
-
-        {error && (
-          <div
-            style={{
-              color: "var(--red)",
-              background: "rgba(255,70,70,0.08)",
-              border: "1px solid rgba(255,70,70,0.25)",
-              borderRadius: "12px",
-              padding: "0.75rem",
-              marginBottom: "1rem",
-              fontSize: "0.85rem",
-              fontWeight: 700,
-            }}
-          >
-            {error}
-          </div>
-        )}
-
-        <div
-          style={{
-            display: "flex",
-            gap: "0.75rem",
-          }}
-        >
-          <button
-            onClick={isReward ? claimReward : closePopup}
-            disabled={claiming || claimed}
-            style={{
-              flex: 1,
-              background: claimed
-                ? "var(--green)"
-                : isReward
-                ? "var(--accent)"
-                : "var(--blue)",
-              color: isReward && !claimed ? "#000" : "#fff",
-              border: "none",
-              borderRadius: "14px",
-              padding: "0.9rem 1rem",
-              fontWeight: 900,
-              cursor: claiming ? "default" : "pointer",
-              opacity: claiming ? 0.75 : 1,
-            }}
-          >
-            {claiming
-              ? "Claiming..."
-              : claimed
-              ? "Claimed!"
-              : popup.buttonText || (isReward ? "Claim Free Item" : "Got it")}
-          </button>
-
-          {isReward && (
-            <button
-              onClick={closePopup}
-              disabled={claiming}
-              style={{
-                background: "rgba(255,255,255,0.04)",
-                color: "var(--text-muted)",
-                border: "1px solid var(--border)",
-                borderRadius: "14px",
-                padding: "0.9rem 1rem",
-                fontWeight: 800,
-                cursor: "pointer",
-              }}
-            >
-              Later
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
