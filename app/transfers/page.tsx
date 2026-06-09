@@ -952,7 +952,7 @@ export default function TransfersPage() {
               style={{
                 fontSize: "clamp(2.5rem, 7vw, 4.75rem)",
                 lineHeight: 0.95,
-                background: "var(--blue)",
+                color: "var(--blue)",
                 letterSpacing: "-0.06em",
                 fontWeight: 900,
                 margin: "0 0 1rem",
