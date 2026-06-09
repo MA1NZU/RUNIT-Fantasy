@@ -116,8 +116,8 @@ export default function Leaderboard() {
 
   const activeSubtitle =
     sortBy === "totalPoints"
-      ? "The full season ranking based on each manager's total points."
-      : `Current gameweek ranking based on GW${currentGW} points.`;
+      ? "‎ "
+      : `‎ `;
 
   if (loading) {
     return (
