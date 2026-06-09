@@ -280,7 +280,7 @@ export default function Home() {
                     justifyContent: "center",
                     background: "var(--blue)",
                     color: "#fff",
-                    padding: "1.15rem 1.15rem",
+                    padding: "0.78rem 1.15rem",
                     borderRadius: "12px",
                     fontWeight: 800,
                     fontSize: "0.9rem",
