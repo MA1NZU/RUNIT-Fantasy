@@ -261,7 +261,6 @@ export default function SitePopup() {
   const isGold = popup.type === "gold";
   const isClaimable = isReward || isGold;
 
-  const icon = isGold ? "🪙" : isReward ? "🎁" : "📰";
   const badgeText = isGold
     ? "Free Gold"
     : isReward
