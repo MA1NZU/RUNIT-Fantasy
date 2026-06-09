@@ -163,3 +163,8 @@ export default function Shell({ children }: { children: React.ReactNode }) {
     </div>
   );
 }
+
+export const metadata = {
+  title: "RUNIT Fantasy",
+  description: "RUNIT Fantasy League",
+};
