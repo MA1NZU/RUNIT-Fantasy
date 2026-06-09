@@ -16,7 +16,7 @@ import {
 } from "firebase/firestore";
 import { useAuth } from "@/lib/AuthContext";
 
-type PopupType = "news" | "reward" | "gold";
+type PopupType = "news" | "reward" | "coins" | "gold";
 
 type SitePopupData = {
   id: string;
@@ -30,8 +30,13 @@ type SitePopupData = {
   rewardItemId?: string;
   rewardItemName?: string;
 
+  coinsAmount?: number;
+
+  // Legacy support if you already created gold popups
   goldAmount?: number;
 };
+
+const FIFTEEN_MINUTES = 15 * 60 * 1000;
 
 export default function SitePopup() {
   const { user } = useAuth();
@@ -67,13 +72,24 @@ export default function SitePopup() {
         );
 
         for (const popupData of sortedPopups) {
-          const localDismissKey = `sitePopupDismissed_${popupData.id}`;
+          const dismissKey = `sitePopupDismissed_${popupData.id}`;
+          const snoozeKey = `sitePopupSnoozedUntil_${popupData.id}`;
 
           if (typeof window !== "undefined") {
-            const dismissed = localStorage.getItem(localDismissKey);
+            const dismissed = localStorage.getItem(dismissKey);
 
             if (dismissed) {
               continue;
+            }
+
+            const snoozedUntil = Number(localStorage.getItem(snoozeKey) || 0);
+
+            if (snoozedUntil && Date.now() < snoozedUntil) {
+              continue;
+            }
+
+            if (snoozedUntil && Date.now() >= snoozedUntil) {
+              localStorage.removeItem(snoozeKey);
             }
           }
 
@@ -106,12 +122,20 @@ export default function SitePopup() {
   const dismissPopup = () => {
     if (popup && typeof window !== "undefined") {
       localStorage.setItem(`sitePopupDismissed_${popup.id}`, "true");
+      localStorage.removeItem(`sitePopupSnoozedUntil_${popup.id}`);
     }
 
     setPopup(null);
   };
 
-  const closeForNow = () => {
+  const laterPopup = () => {
+    if (popup && typeof window !== "undefined") {
+      localStorage.setItem(
+        `sitePopupSnoozedUntil_${popup.id}`,
+        String(Date.now() + FIFTEEN_MINUTES)
+      );
+    }
+
     setPopup(null);
   };
 
@@ -119,34 +143,36 @@ export default function SitePopup() {
     if (!popup || !user?.uid || !user?.email) return;
 
     const claimId = `${user.uid}_${popup.id}`;
+    const coinsAmount = Number(popup.coinsAmount ?? popup.goldAmount ?? 0);
 
     await setDoc(doc(db, "popupClaims", claimId), {
       ownerUid: user.uid,
       ownerEmail: user.email,
       popupId: popup.id,
-      popupType: popup.type,
+      popupType: popup.type === "gold" ? "coins" : popup.type,
       rewardItemId: popup.rewardItemId || "",
       rewardItemName: popup.rewardItemName || "",
-      goldAmount: Number(popup.goldAmount || 0),
+      coinsAmount,
       claimedAt: serverTimestamp(),
     });
 
     if (typeof window !== "undefined") {
       localStorage.setItem(`sitePopupDismissed_${popup.id}`, "true");
+      localStorage.removeItem(`sitePopupSnoozedUntil_${popup.id}`);
     }
   };
 
   const claimItemReward = async () => {
-    if (!popup) return;
+    if (!popup) return false;
 
     if (!user?.uid || !user?.email) {
       setError("Please sign in to claim this reward.");
-      return;
+      return false;
     }
 
     if (!popup.rewardItemId) {
       setError("No reward item found.");
-      return;
+      return false;
     }
 
     const claimId = `${user.uid}_${popup.id}`;
@@ -154,7 +180,7 @@ export default function SitePopup() {
     const claimSnap = await getDoc(claimRef);
 
     if (claimSnap.exists()) {
-      return;
+      return true;
     }
 
     const inventoryId = `${user.uid}_${popup.rewardItemId}`;
@@ -179,21 +205,23 @@ export default function SitePopup() {
     );
 
     await saveClaimRecord();
+
+    return true;
   };
 
-  const claimGoldReward = async () => {
-    if (!popup) return;
+  const claimCoinsReward = async () => {
+    if (!popup) return false;
 
     if (!user?.uid || !user?.email) {
       setError("Please sign in to claim this reward.");
-      return;
+      return false;
     }
 
-    const amount = Number(popup.goldAmount || 0);
+    const amount = Number(popup.coinsAmount ?? popup.goldAmount ?? 0);
 
     if (!amount || amount <= 0) {
-      setError("No gold amount found.");
-      return;
+      setError("No coins amount found.");
+      return false;
     }
 
     const claimId = `${user.uid}_${popup.id}`;
@@ -201,7 +229,7 @@ export default function SitePopup() {
     const claimSnap = await getDoc(claimRef);
 
     if (claimSnap.exists()) {
-      return;
+      return true;
     }
 
     const userTeamsSnap = await getDocs(
@@ -210,22 +238,30 @@ export default function SitePopup() {
 
     if (userTeamsSnap.empty) {
       setError("Manager team not found.");
-      return;
+      return false;
     }
 
     await Promise.all(
       userTeamsSnap.docs.map((managerDoc) =>
         updateDoc(managerDoc.ref, {
           coins: increment(amount),
+          lastPopupCoinsAmount: amount,
+          lastPopupCoinsPopupId: popup.id,
+          lastPopupCoinsClaimedAt: serverTimestamp(),
+
+          // legacy fields, harmless to keep
           lastPopupGoldAmount: amount,
           lastPopupGoldPopupId: popup.id,
           lastPopupGoldClaimedAt: serverTimestamp(),
+
           "Updated Date": new Date().toISOString(),
         })
       )
     );
 
     await saveClaimRecord();
+
+    return true;
   };
 
   const claimReward = async () => {
@@ -235,12 +271,19 @@ export default function SitePopup() {
     setClaiming(true);
 
     try {
+      let success = false;
+
       if (popup.type === "reward") {
-        await claimItemReward();
+        success = await claimItemReward();
       }
 
-      if (popup.type === "gold") {
-        await claimGoldReward();
+      if (popup.type === "coins" || popup.type === "gold") {
+        success = await claimCoinsReward();
+      }
+
+      if (!success) {
+        setClaiming(false);
+        return;
       }
 
       setClaimed(true);
@@ -261,11 +304,12 @@ export default function SitePopup() {
   }
 
   const isReward = popup.type === "reward";
-  const isGold = popup.type === "gold";
-  const isClaimable = isReward || isGold;
+  const isCoins = popup.type === "coins" || popup.type === "gold";
+  const isClaimable = isReward || isCoins;
+  const coinsAmount = Number(popup.coinsAmount ?? popup.goldAmount ?? 0);
 
-  const badgeText = isGold
-    ? "Free Gold"
+  const badgeText = isCoins
+    ? "Free Coins"
     : isReward
     ? "Free Reward"
     : "Latest News";
@@ -276,8 +320,8 @@ export default function SitePopup() {
     buttonLabel = "Claim Free Item";
   }
 
-  if (!popup.buttonText && isGold) {
-    buttonLabel = `Claim ${Number(popup.goldAmount || 0).toLocaleString()}¢`;
+  if (!popup.buttonText && isCoins) {
+    buttonLabel = `Claim ${coinsAmount.toLocaleString()}¢`;
   }
 
   if (claiming) {
@@ -414,7 +458,7 @@ export default function SitePopup() {
           </div>
         )}
 
-        {isGold && (
+        {isCoins && (
           <div
             style={{
               background: "rgba(255,255,255,0.035)",
@@ -434,7 +478,7 @@ export default function SitePopup() {
                 letterSpacing: "0.7px",
               }}
             >
-              Gold Reward
+              Coins Reward
             </div>
 
             <div
@@ -443,7 +487,7 @@ export default function SitePopup() {
                 color: "var(--accent)",
               }}
             >
-              {Number(popup.goldAmount || 0).toLocaleString()}¢
+              {coinsAmount.toLocaleString()}¢
             </div>
           </div>
         )}
@@ -495,7 +539,7 @@ export default function SitePopup() {
 
           {isClaimable && (
             <button
-              onClick={closeForNow}
+              onClick={laterPopup}
               disabled={claiming}
               style={{
                 background: "rgba(255,255,255,0.04)",
