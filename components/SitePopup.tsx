@@ -18,19 +18,19 @@ import {
 } from "firebase/firestore";
 import { useAuth } from "@/lib/AuthContext";
 
+type PopupType = "news" | "reward" | "gold";
+
 type SitePopupData = {
   id: string;
   active: boolean;
-  type: "news" | "reward" | "gold";
+  type: PopupType;
   title: string;
   message: string;
   buttonText?: string;
 
-  // Free item reward
   rewardItemId?: string;
   rewardItemName?: string;
 
-  // Free gold/coins reward
   goldAmount?: number;
 
   priority?: number;
@@ -66,12 +66,12 @@ export default function SitePopup() {
         }
 
         for (const popupDoc of popupsSnap.docs) {
-          const data = {
+          const popupData = {
             id: popupDoc.id,
             ...popupDoc.data(),
           } as SitePopupData;
 
-          const localDismissKey = `sitePopupDismissed_${data.id}`;
+          const localDismissKey = `sitePopupDismissed_${popupData.id}`;
 
           if (typeof window !== "undefined") {
             const dismissed = localStorage.getItem(localDismissKey);
@@ -82,7 +82,7 @@ export default function SitePopup() {
           }
 
           if (user?.uid) {
-            const claimId = `${user.uid}_${data.id}`;
+            const claimId = `${user.uid}_${popupData.id}`;
             const claimSnap = await getDoc(doc(db, "popupClaims", claimId));
 
             if (claimSnap.exists()) {
@@ -90,7 +90,7 @@ export default function SitePopup() {
             }
           }
 
-          setPopup(data);
+          setPopup(popupData);
           setLoading(false);
           return;
         }
@@ -114,13 +114,12 @@ export default function SitePopup() {
     setPopup(null);
   };
 
-  const markClaimed = async () => {
+  const saveClaimRecord = async () => {
     if (!popup || !user?.uid || !user?.email) return;
 
     const claimId = `${user.uid}_${popup.id}`;
-    const claimRef = doc(db, "popupClaims", claimId);
 
-    await setDoc(claimRef, {
+    await setDoc(doc(db, "popupClaims", claimId), {
       ownerUid: user.uid,
       ownerEmail: user.email,
       popupId: popup.id,
@@ -139,25 +138,26 @@ export default function SitePopup() {
   const claimItemReward = async () => {
     if (!popup) return;
 
-    if (!popup.rewardItemId) {
-      setError("No reward item found.");
-      return;
-    }
-
     if (!user?.uid || !user?.email) {
       setError("Please sign in to claim this reward.");
       return;
     }
 
+    if (!popup.rewardItemId) {
+      setError("No reward item found.");
+      return;
+    }
+
     const claimId = `${user.uid}_${popup.id}`;
-    const inventoryId = `${user.uid}_${popup.rewardItemId}`;
-
     const claimRef = doc(db, "popupClaims", claimId);
+    const claimSnap = await getDoc(claimRef);
+
+    if (claimSnap.exists()) {
+      return;
+    }
+
+    const inventoryId = `${user.uid}_${popup.rewardItemId}`;
     const inventoryRef = doc(db, "userInventory", inventoryId);
-
-    const existingClaim = await getDoc(claimRef);
-
-    if (existingClaim.exists()) return;
 
     await setDoc(
       inventoryRef,
@@ -178,7 +178,7 @@ export default function SitePopup() {
       { merge: true }
     );
 
-    await markClaimed();
+    await saveClaimRecord();
   };
 
   const claimGoldReward = async () => {
@@ -198,10 +198,11 @@ export default function SitePopup() {
 
     const claimId = `${user.uid}_${popup.id}`;
     const claimRef = doc(db, "popupClaims", claimId);
+    const claimSnap = await getDoc(claimRef);
 
-    const existingClaim = await getDoc(claimRef);
-
-    if (existingClaim.exists()) return;
+    if (claimSnap.exists()) {
+      return;
+    }
 
     const userTeamsSnap = await getDocs(
       query(collection(db, "userTeams"), where("ownerEmail", "==", user.email))
@@ -224,7 +225,7 @@ export default function SitePopup() {
       )
     );
 
-    await markClaimed();
+    await saveClaimRecord();
   };
 
   const claimReward = async () => {
@@ -249,22 +250,4 @@ export default function SitePopup() {
       }, 1200);
     } catch (err) {
       console.error("Failed to claim reward:", err);
-      setError("Failed to claim reward. Please try again.");
-    }
-
-    setClaiming(false);
-  };
-
-  if (loading || !popup) return null;
-
-  const isReward = popup.type === "reward";
-  const isGold = popup.type === "gold";
-  const isClaimable = isReward || isGold;
-
-  return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.78)",
-        zIndex: 9999,
+      setError("Failed to claim 
