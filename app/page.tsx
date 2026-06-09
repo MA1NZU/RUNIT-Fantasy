@@ -260,23 +260,9 @@ export default function Home() {
                     color: "var(--blue)",
                   }}
                 >
-                  Fantasy League
+                  Fantasy
                 </span>
               </h1>
-
-              <p
-                style={{
-                  maxWidth: "560px",
-                  color: "var(--text-muted)",
-                  fontSize: "1rem",
-                  lineHeight: 1.7,
-                  marginBottom: "1.5rem",
-                }}
-              >
-                Build your elite squad across Valorant and Marvel Rivals. Track
-                points, captain your star player, and fight your way to the top
-                of the RUNIT fantasy table.
-              </p>
 
               <div
                 style={{
