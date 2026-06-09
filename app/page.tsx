@@ -264,6 +264,18 @@ export default function Home() {
                 </span>
               </h1>
 
+              <p
+                style={{
+                  maxWidth: "560px",
+                  color: "var(--text-muted)",
+                  fontSize: "1rem",
+                  lineHeight: 1.7,
+                  marginBottom: "1.5rem",
+                }}
+              >
+                ‎ 
+              </p>
+
               <div
                 style={{
                   display: "flex",
