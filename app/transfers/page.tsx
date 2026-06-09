@@ -146,12 +146,13 @@ function PlayerCard({
         {isSub && (
           <span
             style={{
-              fontSize: "0.75rem",
-              color: "var(--text-muted)",
-              textTransform: "uppercase",
-              letterSpacing: "1px",
+              background: "rgba(255,255,255,0.08)",
+              color: "#fff",
+              border: "1px solid rgba(255,255,255,0.12)",
+              fontSize: "0.58rem",
               fontWeight: 900,
-              marginBottom: "1rem",
+              padding: "0.22rem 0.45rem",
+              borderRadius: "999px",
             }}
           >
             BENCH
