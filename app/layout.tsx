@@ -12,3 +12,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     </html>
   );
 }
+
+export const metadata = {
+  title: "RUNIT Fantasy",
+  description: "RUNIT Fantasy League",
+};
