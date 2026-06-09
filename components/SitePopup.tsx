@@ -228,26 +228,30 @@ export default function SitePopup() {
     await saveClaimRecord();
   };
 
-  const claimReward = async () => {
-    if (!popup) return;
+const claimReward = async () => {
+  if (!popup) return;
 
-    setError("");
-    setClaiming(true);
+  setError("");
+  setClaiming(true);
 
-    try {
-      if (popup.type === "reward") {
-        await claimItemReward();
-      }
+  try {
+    if (popup.type === "reward") {
+      await claimItemReward();
+    }
 
-      if (popup.type === "gold") {
-        await claimGoldReward();
-      }
+    if (popup.type === "gold") {
+      await claimGoldReward();
+    }
 
-      setClaimed(true);
+    setClaimed(true);
 
-      setTimeout(() => {
-        setPopup(null);
-      }, 1200);
-    } catch (err) {
-      console.error("Failed to claim reward:", err);
-      setError("Failed to claim 
+    setTimeout(() => {
+      setPopup(null);
+    }, 1200);
+  } catch (err) {
+    console.error("Failed to claim reward:", err);
+    setError("Failed to claim reward. Please try again.");
+  }
+
+  setClaiming(false);
+};
