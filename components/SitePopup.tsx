@@ -16,7 +16,7 @@ import {
 } from "firebase/firestore";
 import { useAuth } from "@/lib/AuthContext";
 
-type SitePopup = {
+type SitePopupData = {
   id: string;
   active: boolean;
   type: "news" | "reward";
@@ -31,7 +31,7 @@ type SitePopup = {
 export default function SitePopup() {
   const { user } = useAuth();
 
-  const [popup, setPopup] = useState<SitePopup | null>(null);
+  const [popup, setPopup] = useState<SitePopupData | null>(null);
   const [loading, setLoading] = useState(true);
   const [claiming, setClaiming] = useState(false);
   const [claimed, setClaimed] = useState(false);
@@ -61,7 +61,7 @@ export default function SitePopup() {
           const data = {
             id: popupDoc.id,
             ...popupDoc.data(),
-          } as SitePopup;
+          } as SitePopupData;
 
           const localDismissKey = `sitePopupDismissed_${data.id}`;
 
@@ -125,35 +125,55 @@ export default function SitePopup() {
 
     try {
       const claimId = `${user.uid}_${popup.id}`;
-      const userItemId = `${user.uid}_${popup.rewardItemId}`;
+      const inventoryId = `${user.uid}_${popup.rewardItemId}`;
 
       const claimRef = doc(db, "popupClaims", claimId);
-      const userItemRef = doc(db, "userItems", userItemId);
+
+      // Owned shop items collection
+      const inventoryRef = doc(db, "userInventory", inventoryId);
 
       const existingClaim = await getDoc(claimRef);
 
       if (existingClaim.exists()) {
         setClaimed(true);
+
+        if (typeof window !== "undefined") {
+          localStorage.setItem(`sitePopupDismissed_${popup.id}`, "true");
+        }
+
         setTimeout(() => setPopup(null), 1200);
         setClaiming(false);
         return;
       }
 
-      await setDoc(userItemRef, {
-        ownerUid: user.uid,
-        ownerEmail: user.email,
-        itemId: popup.rewardItemId,
-        itemName: popup.rewardItemName || "",
-        source: "sitePopup",
-        popupId: popup.id,
-        acquiredAt: serverTimestamp(),
-      });
+      await setDoc(
+        inventoryRef,
+        {
+          ownerUid: user.uid,
+          ownerEmail: user.email,
+
+          // Item fields
+          itemId: popup.rewardItemId,
+          itemName: popup.rewardItemName || "",
+
+          // Useful for filtering/history
+          source: "sitePopup",
+          popupId: popup.id,
+          acquiredAt: serverTimestamp(),
+
+          // Compatibility fields in case your shop reads these names
+          ID: popup.rewardItemId,
+          item: popup.rewardItemId,
+        },
+        { merge: true }
+      );
 
       await setDoc(claimRef, {
         ownerUid: user.uid,
         ownerEmail: user.email,
         popupId: popup.id,
         rewardItemId: popup.rewardItemId,
+        rewardItemName: popup.rewardItemName || "",
         claimedAt: serverTimestamp(),
       });
 
