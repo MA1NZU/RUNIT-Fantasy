@@ -50,6 +50,7 @@ type Settings = {
   currentGameweek: number;
   deadline: string;
   shopDeadline: string;
+  shopRefreshAt?: string;
   lockTeamLeaderboard?: boolean;
   lockTransfers?: boolean;
 };
@@ -65,6 +66,10 @@ type ShopItem = {
   rarity: string;
   section: string;
   isVisible: boolean;
+  arriveDate?: string;
+  leaveDate?: string;
+  showNewTag?: boolean;
+  showLeavingTodayTag?: boolean;
 };
 
 type Tab = "players" | "stats" | "managers" | "shop" | "settings" | "locks";
@@ -78,8 +83,20 @@ const getRankPrizeCoins = (rank: number) => {
   if (rank === 11) return 300;
   if (rank === 12) return 300;
   if (rank === 13) return 200;
-
   return 0;
+};
+
+const defaultNewItem: Partial<ShopItem> = {
+  itemType: "avatar",
+  rarity: "common",
+  price: 0,
+  section: "General",
+  isVisible: true,
+  songUrl: "",
+  arriveDate: "",
+  leaveDate: "",
+  showNewTag: false,
+  showLeavingTodayTag: false,
 };
 
 export default function AdminPage() {
@@ -98,15 +115,7 @@ export default function AdminPage() {
 
   const [selectedPlayerId, setSelectedPlayerId] = useState("");
   const [calcStats, setCalcStats] = useState<Record<string, string>>({});
-
-  const [newItem, setNewItem] = useState<Partial<ShopItem>>({
-    itemType: "avatar",
-    rarity: "common",
-    price: 0,
-    section: "General",
-    isVisible: true,
-    songUrl: "",
-  });
+  const [newItem, setNewItem] = useState<Partial<ShopItem>>(defaultNewItem);
 
   useEffect(() => {
     if (user && user.email !== ADMIN_EMAIL) router.replace("/");
@@ -139,10 +148,7 @@ export default function AdminPage() {
         }
 
         const gwTeamsSnap = await getDocs(
-          query(
-            collection(db, "gameweekTeams"),
-            where("gameweek", "==", activeGW)
-          )
+          query(collection(db, "gameweekTeams"), where("gameweek", "==", activeGW))
         );
 
         const currentGwPointsByEmail: Record<string, number> = {};
@@ -179,9 +185,7 @@ export default function AdminPage() {
                 lastGwCoinsGameweek: Number(manager.lastGwCoinsGameweek || 0),
               };
             })
-            .sort(
-              (a, b) => Number(b.totalPoints || 0) - Number(a.totalPoints || 0)
-            )
+            .sort((a, b) => Number(b.totalPoints || 0) - Number(a.totalPoints || 0))
         );
 
         setShopItems(
@@ -276,10 +280,7 @@ export default function AdminPage() {
 
         const canonical = playerDoc.id;
 
-        aliases.forEach((alias) => {
-          aliasToCanonical.set(alias, canonical);
-        });
-
+        aliases.forEach((alias) => aliasToCanonical.set(alias, canonical));
         playerAliasGroups.push(aliases);
       });
 
@@ -298,13 +299,11 @@ export default function AdminPage() {
         );
 
         const aliasesForThisStat = new Set<string>();
-
         directAliases.forEach((alias) => aliasesForThisStat.add(alias));
 
         playerAliasGroups.forEach((group) => {
           const groupMatchesStat = group.some((alias) => {
             const canonical = aliasToCanonical.get(alias) || alias;
-
             return (
               directAliases.includes(alias) || directCanonicalSet.has(canonical)
             );
@@ -460,9 +459,7 @@ export default function AdminPage() {
                 Number(manager.totalPoints || 0) + Number(update.difference),
             };
           })
-          .sort(
-            (a, b) => Number(b.totalPoints || 0) - Number(a.totalPoints || 0)
-          )
+          .sort((a, b) => Number(b.totalPoints || 0) - Number(a.totalPoints || 0))
       );
 
       console.log(`Synced ${operationCount} update(s) for GW${currentGameweek}.`);
@@ -476,6 +473,7 @@ export default function AdminPage() {
 
   const handleSaveStats = async () => {
     const p = players.find((x) => x.id === selectedPlayerId);
+
     if (!p || !settings) return;
 
     setSaving("matchstats");
@@ -521,6 +519,7 @@ export default function AdminPage() {
         currentGameweek: Number(settings.currentGameweek),
         deadline: settings.deadline,
         shopDeadline: settings.shopDeadline,
+        shopRefreshAt: settings.shopRefreshAt || "",
         lockTeamLeaderboard: !!settings.lockTeamLeaderboard,
         lockTransfers: !!settings.lockTransfers,
       });
@@ -634,21 +633,17 @@ export default function AdminPage() {
         ...newItem,
         ID: id,
         songUrl: newItem.songUrl || "",
+        arriveDate: newItem.arriveDate || "",
+        leaveDate: newItem.leaveDate || "",
+        showNewTag: !!newItem.showNewTag,
+        showLeavingTodayTag: !!newItem.showLeavingTodayTag,
         "Created Date": new Date().toISOString(),
       };
 
       await setDoc(doc(db, "shopItems", id), itemData);
 
       setShopItems([...shopItems, { id, ...itemData } as ShopItem]);
-
-      setNewItem({
-        itemType: "avatar",
-        rarity: "common",
-        price: 0,
-        section: "General",
-        isVisible: true,
-        songUrl: "",
-      });
+      setNewItem(defaultNewItem);
 
       markSaved("newShopItem");
     } catch (err) {
@@ -665,6 +660,10 @@ export default function AdminPage() {
       await updateDoc(doc(db, "shopItems", item.id), {
         ...item,
         songUrl: item.songUrl || "",
+        arriveDate: item.arriveDate || "",
+        leaveDate: item.leaveDate || "",
+        showNewTag: !!item.showNewTag,
+        showLeavingTodayTag: !!item.showLeavingTodayTag,
         "Updated Date": new Date().toISOString(),
       });
 
@@ -853,7 +852,7 @@ export default function AdminPage() {
         )}
 
         {tab === "settings" && settings && (
-          <div style={{ maxWidth: "600px" }}>
+          <div style={{ maxWidth: "900px" }}>
             <h2
               style={{
                 fontSize: "1.2rem",
@@ -896,16 +895,7 @@ export default function AdminPage() {
                         currentGameweek: settings.currentGameweek - 1,
                       })
                     }
-                    style={{
-                      background: "var(--bg)",
-                      border: "1px solid var(--border)",
-                      color: "#fff",
-                      width: "40px",
-                      height: "40px",
-                      borderRadius: "8px",
-                      cursor: "pointer",
-                      fontSize: "1.2rem",
-                    }}
+                    style={smallButtonStyle}
                   >
                     -
                   </button>
@@ -928,16 +918,7 @@ export default function AdminPage() {
                         currentGameweek: settings.currentGameweek + 1,
                       })
                     }
-                    style={{
-                      background: "var(--bg)",
-                      border: "1px solid var(--border)",
-                      color: "#fff",
-                      width: "40px",
-                      height: "40px",
-                      borderRadius: "8px",
-                      cursor: "pointer",
-                      fontSize: "1.2rem",
-                    }}
+                    style={smallButtonStyle}
                   >
                     +
                   </button>
@@ -947,24 +928,15 @@ export default function AdminPage() {
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "1fr 1fr",
+                  gridTemplateColumns: "repeat(3, 1fr)",
                   gap: "1rem",
                 }}
               >
                 <div>
-                  <div
-                    style={{
-                      fontSize: "0.8rem",
-                      color: "var(--text-muted)",
-                      marginBottom: "0.4rem",
-                    }}
-                  >
-                    Transfer Deadline
-                  </div>
-
+                  <div style={labelStyle}>Transfer Deadline</div>
                   <input
                     type="datetime-local"
-                    value={settings.deadline}
+                    value={settings.deadline || ""}
                     onChange={(e) =>
                       setSettings({ ...settings, deadline: e.target.value })
                     }
@@ -973,23 +945,29 @@ export default function AdminPage() {
                 </div>
 
                 <div>
-                  <div
-                    style={{
-                      fontSize: "0.8rem",
-                      color: "var(--text-muted)",
-                      marginBottom: "0.4rem",
-                    }}
-                  >
-                    Shop Deadline
-                  </div>
-
+                  <div style={labelStyle}>Shop Deadline</div>
                   <input
                     type="datetime-local"
-                    value={settings.shopDeadline}
+                    value={settings.shopDeadline || ""}
                     onChange={(e) =>
                       setSettings({
                         ...settings,
                         shopDeadline: e.target.value,
+                      })
+                    }
+                    style={inputStyle}
+                  />
+                </div>
+
+                <div>
+                  <div style={labelStyle}>Next Shop Refresh</div>
+                  <input
+                    type="datetime-local"
+                    value={settings.shopRefreshAt || ""}
+                    onChange={(e) =>
+                      setSettings({
+                        ...settings,
+                        shopRefreshAt: e.target.value,
                       })
                     }
                     style={inputStyle}
@@ -1047,10 +1025,10 @@ export default function AdminPage() {
                 style={{
                   display: "grid",
                   gridTemplateColumns:
-                    "1.5fr 1fr 0.7fr 2fr 2fr 1fr 1fr 0.5fr auto",
+                    "1.5fr 1fr 0.7fr 2fr 2fr 1fr 1fr 1fr 1fr 0.55fr 0.65fr 0.5fr auto",
                   gap: "0.75rem",
                   alignItems: "end",
-                  minWidth: "1050px",
+                  minWidth: "1500px",
                 }}
               >
                 <div>
@@ -1145,6 +1123,64 @@ export default function AdminPage() {
                   />
                 </div>
 
+                <div>
+                  <div style={{ fontSize: "0.7rem" }}>Arrive</div>
+                  <input
+                    type="date"
+                    value={newItem.arriveDate || ""}
+                    onChange={(e) =>
+                      setNewItem({
+                        ...newItem,
+                        arriveDate: e.target.value,
+                      })
+                    }
+                    style={inputStyle}
+                  />
+                </div>
+
+                <div>
+                  <div style={{ fontSize: "0.7rem" }}>Leave</div>
+                  <input
+                    type="date"
+                    value={newItem.leaveDate || ""}
+                    onChange={(e) =>
+                      setNewItem({
+                        ...newItem,
+                        leaveDate: e.target.value,
+                      })
+                    }
+                    style={inputStyle}
+                  />
+                </div>
+
+                <div style={{ textAlign: "center" }}>
+                  <div style={{ fontSize: "0.7rem" }}>NEW</div>
+                  <input
+                    type="checkbox"
+                    checked={!!newItem.showNewTag}
+                    onChange={(e) =>
+                      setNewItem({
+                        ...newItem,
+                        showNewTag: e.target.checked,
+                      })
+                    }
+                  />
+                </div>
+
+                <div style={{ textAlign: "center" }}>
+                  <div style={{ fontSize: "0.7rem" }}>Leaving</div>
+                  <input
+                    type="checkbox"
+                    checked={!!newItem.showLeavingTodayTag}
+                    onChange={(e) =>
+                      setNewItem({
+                        ...newItem,
+                        showLeavingTodayTag: e.target.checked,
+                      })
+                    }
+                  />
+                </div>
+
                 <div style={{ textAlign: "center" }}>
                   <div style={{ fontSize: "0.7rem" }}>Vis</div>
                   <input
@@ -1195,10 +1231,10 @@ export default function AdminPage() {
                     padding: "0.75rem 1rem",
                     display: "grid",
                     gridTemplateColumns:
-                      "1.5fr 1fr 0.7fr 2fr 2fr 1fr 1fr 0.5fr auto auto",
+                      "1.5fr 1fr 0.7fr 2fr 2fr 1fr 1fr 1fr 1fr 0.55fr 0.65fr 0.5fr auto auto",
                     gap: "0.75rem",
                     alignItems: "center",
-                    minWidth: "1100px",
+                    minWidth: "1560px",
                   }}
                 >
                   <input
@@ -1282,14 +1318,48 @@ export default function AdminPage() {
                   />
 
                   <input
+                    type="date"
+                    value={item.arriveDate || ""}
+                    onChange={(e) =>
+                      updateShopItemField(item.id, "arriveDate", e.target.value)
+                    }
+                    style={inputStyle}
+                  />
+
+                  <input
+                    type="date"
+                    value={item.leaveDate || ""}
+                    onChange={(e) =>
+                      updateShopItemField(item.id, "leaveDate", e.target.value)
+                    }
+                    style={inputStyle}
+                  />
+
+                  <input
                     type="checkbox"
-                    checked={!!item.isVisible}
+                    checked={!!item.showNewTag}
+                    onChange={(e) =>
+                      updateShopItemField(item.id, "showNewTag", e.target.checked)
+                    }
+                  />
+
+                  <input
+                    type="checkbox"
+                    checked={!!item.showLeavingTodayTag}
                     onChange={(e) =>
                       updateShopItemField(
                         item.id,
-                        "isVisible",
+                        "showLeavingTodayTag",
                         e.target.checked
                       )
+                    }
+                  />
+
+                  <input
+                    type="checkbox"
+                    checked={!!item.isVisible}
+                    onChange={(e) =>
+                      updateShopItemField(item.id, "isVisible", e.target.checked)
                     }
                   />
 
@@ -1318,9 +1388,7 @@ export default function AdminPage() {
                     onClick={() => {
                       if (confirm("Delete?")) {
                         deleteDoc(doc(db, "shopItems", item.id)).then(() =>
-                          setShopItems(
-                            shopItems.filter((i) => i.id !== item.id)
-                          )
+                          setShopItems(shopItems.filter((i) => i.id !== item.id))
                         );
                       }
                     }}
@@ -1739,11 +1807,7 @@ export default function AdminPage() {
                       type="number"
                       value={m.coins ?? 0}
                       onChange={(e) =>
-                        updateManagerField(
-                          m.id,
-                          "coins",
-                          Number(e.target.value)
-                        )
+                        updateManagerField(m.id, "coins", Number(e.target.value))
                       }
                       style={inputStyle}
                     />
@@ -1756,11 +1820,7 @@ export default function AdminPage() {
                       step="0.1"
                       value={m.Bank ?? 0}
                       onChange={(e) =>
-                        updateManagerField(
-                          m.id,
-                          "Bank",
-                          Number(e.target.value)
-                        )
+                        updateManagerField(m.id, "Bank", Number(e.target.value))
                       }
                       style={inputStyle}
                     />
@@ -1920,6 +1980,23 @@ const inputStyle = {
   padding: "0.5rem",
   borderRadius: "6px",
   fontSize: "0.85rem",
+};
+
+const labelStyle = {
+  fontSize: "0.8rem",
+  color: "var(--text-muted)",
+  marginBottom: "0.4rem",
+};
+
+const smallButtonStyle = {
+  background: "var(--bg)",
+  border: "1px solid var(--border)",
+  color: "#fff",
+  width: "40px",
+  height: "40px",
+  borderRadius: "8px",
+  cursor: "pointer",
+  fontSize: "1.2rem",
 };
 
 function StatInput({
