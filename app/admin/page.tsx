@@ -49,10 +49,10 @@ type Settings = {
   id: string;
   currentGameweek: number;
   deadline: string;
-  shopDeadline?: string;
   shopRefreshAt?: any;
   lockTeamLeaderboard?: boolean;
   lockTransfers?: boolean;
+  lockShop?: boolean;
 };
 
 type ShopItem = {
@@ -66,26 +66,11 @@ type ShopItem = {
   rarity: string;
   section: string;
   isVisible: boolean;
-  arriveDate?: any;
-  leaveDate?: any;
   showNewTag?: boolean;
   showLeavingTodayTag?: boolean;
 };
 
 type Tab = "players" | "stats" | "managers" | "shop" | "settings" | "locks";
-
-const getRankPrizeCoins = (rank: number) => {
-  if (rank === 1) return 4000;
-  if (rank === 2) return 2500;
-  if (rank === 3) return 1500;
-  if (rank === 4) return 1000;
-  if (rank >= 5 && rank <= 10) return 500;
-  if (rank === 11) return 300;
-  if (rank === 12) return 300;
-  if (rank === 13) return 200;
-
-  return 0;
-};
 
 const defaultNewItem: Partial<ShopItem> = {
   itemType: "avatar",
@@ -94,10 +79,48 @@ const defaultNewItem: Partial<ShopItem> = {
   section: "General",
   isVisible: true,
   songUrl: "",
-  arriveDate: "",
-  leaveDate: "",
   showNewTag: false,
   showLeavingTodayTag: false,
+};
+
+const inputStyle = {
+  width: "100%",
+  background: "var(--bg)",
+  border: "1px solid var(--border)",
+  color: "#fff",
+  padding: "0.5rem",
+  borderRadius: "6px",
+  fontSize: "0.85rem",
+};
+
+const labelStyle = {
+  fontSize: "0.8rem",
+  color: "var(--text-muted)",
+  marginBottom: "0.4rem",
+};
+
+const smallLabelStyle = {
+  fontSize: "0.68rem",
+  marginBottom: "0.25rem",
+};
+
+const toggleLabelStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: "0.4rem",
+  fontSize: "0.75rem",
+  color: "var(--text-muted)",
+};
+
+const smallButtonStyle = {
+  background: "var(--bg)",
+  border: "1px solid var(--border)",
+  color: "#fff",
+  width: "40px",
+  height: "40px",
+  borderRadius: "8px",
+  cursor: "pointer",
+  fontSize: "1.2rem",
 };
 
 function toDateSafe(value: any): Date | null {
@@ -116,8 +139,6 @@ function toDateSafe(value: any): Date | null {
   }
 
   if (typeof value === "string") {
-    if (!value) return null;
-
     const date = new Date(value);
 
     if (Number.isNaN(date.getTime())) return null;
@@ -128,24 +149,6 @@ function toDateSafe(value: any): Date | null {
   return null;
 }
 
-function dateInputValue(value: any) {
-  if (!value) return "";
-
-  if (typeof value === "string") {
-    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
-
-    const date = toDateSafe(value);
-    if (!date) return "";
-
-    return date.toISOString().slice(0, 10);
-  }
-
-  const date = toDateSafe(value);
-  if (!date) return "";
-
-  return date.toISOString().slice(0, 10);
-}
-
 function datetimeInputValue(value: any) {
   if (!value) return "";
 
@@ -153,16 +156,31 @@ function datetimeInputValue(value: any) {
     if (value.includes("T")) return value.slice(0, 16);
 
     const date = toDateSafe(value);
+
     if (!date) return "";
 
     return date.toISOString().slice(0, 16);
   }
 
   const date = toDateSafe(value);
+
   if (!date) return "";
 
   return date.toISOString().slice(0, 16);
 }
+
+const getRankPrizeCoins = (rank: number) => {
+  if (rank === 1) return 4000;
+  if (rank === 2) return 2500;
+  if (rank === 3) return 1500;
+  if (rank === 4) return 1000;
+  if (rank >= 5 && rank <= 10) return 500;
+  if (rank === 11) return 300;
+  if (rank === 12) return 300;
+  if (rank === 13) return 200;
+
+  return 0;
+};
 
 export default function AdminPage() {
   const { user } = useAuth();
@@ -351,7 +369,6 @@ export default function AdminPage() {
 
       playersSnap.docs.forEach((playerDoc) => {
         const data = playerDoc.data();
-
         const aliases = [playerDoc.id, data.ID, data.name, data.Title]
           .map((v) => String(v || ""))
           .filter(Boolean);
@@ -359,11 +376,7 @@ export default function AdminPage() {
         if (aliases.length === 0) return;
 
         const canonical = playerDoc.id;
-
-        aliases.forEach((alias) => {
-          aliasToCanonical.set(alias, canonical);
-        });
-
+        aliases.forEach((alias) => aliasToCanonical.set(alias, canonical));
         playerAliasGroups.push(aliases);
       });
 
@@ -372,7 +385,6 @@ export default function AdminPage() {
       statsSnap.docs.forEach((statDoc) => {
         const data = statDoc.data();
         const points = Number(data.gwPoints || 0);
-
         const directAliases = [data.player, data.Title, data.name, statDoc.id]
           .map((v) => String(v || ""))
           .filter(Boolean);
@@ -388,7 +400,6 @@ export default function AdminPage() {
         playerAliasGroups.forEach((group) => {
           const groupMatchesStat = group.some((alias) => {
             const canonical = aliasToCanonical.get(alias) || alias;
-
             return (
               directAliases.includes(alias) || directCanonicalSet.has(canonical)
             );
@@ -401,18 +412,13 @@ export default function AdminPage() {
 
         aliasesForThisStat.forEach((alias) => {
           pointsByAlias.set(alias, points);
-
           const canonical = aliasToCanonical.get(alias);
-
-          if (canonical) {
-            pointsByAlias.set(canonical, points);
-          }
+          if (canonical) pointsByAlias.set(canonical, points);
         });
       });
 
       const getPlayerPoints = (playerId: any) => {
         const key = String(playerId || "");
-
         if (!key) return 0;
 
         if (pointsByAlias.has(key)) {
@@ -500,7 +506,6 @@ export default function AdminPage() {
         operationCount += 1;
 
         const ownerEmail = String(team.ownerEmail || "").toLowerCase();
-
         if (!ownerEmail) return;
 
         const matchingUserTeams = userTeamsByEmail[ownerEmail] || [];
@@ -549,7 +554,7 @@ export default function AdminPage() {
           )
       );
 
-      console.log(`Synced ${operationCount} update(s) for GW${currentGameweek}.`);
+      console.log(`Synced ${operationCount} update(s).`);
     } catch (err) {
       console.error("Failed to sync current gameweek scores:", err);
       alert(
@@ -608,6 +613,7 @@ export default function AdminPage() {
         shopRefreshAt: settings.shopRefreshAt || "",
         lockTeamLeaderboard: !!settings.lockTeamLeaderboard,
         lockTransfers: !!settings.lockTransfers,
+        lockShop: !!settings.lockShop,
       });
 
       markSaved("settings");
@@ -719,8 +725,6 @@ export default function AdminPage() {
         ...newItem,
         ID: id,
         songUrl: newItem.songUrl || "",
-        arriveDate: newItem.arriveDate || "",
-        leaveDate: newItem.leaveDate || "",
         showNewTag: !!newItem.showNewTag,
         showLeavingTodayTag: !!newItem.showLeavingTodayTag,
         "Created Date": new Date().toISOString(),
@@ -746,8 +750,6 @@ export default function AdminPage() {
       await updateDoc(doc(db, "shopItems", item.id), {
         ...item,
         songUrl: item.songUrl || "",
-        arriveDate: item.arriveDate || "",
-        leaveDate: item.leaveDate || "",
         showNewTag: !!item.showNewTag,
         showLeavingTodayTag: !!item.showLeavingTodayTag,
         "Updated Date": new Date().toISOString(),
@@ -908,69 +910,41 @@ export default function AdminPage() {
                 gap: "1.5rem",
               }}
             >
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                }}
-              >
-                <div>
-                  <div style={{ fontWeight: 600 }}>My Team & Leaderboard</div>
-                  <div
-                    style={{
-                      fontSize: "0.75rem",
-                      color: "var(--text-muted)",
-                    }}
-                  >
-                    Restrict access to these pages
-                  </div>
-                </div>
+              <LockRow
+                title="My Team & Leaderboard"
+                desc="Restrict access to these pages"
+                checked={!!settings.lockTeamLeaderboard}
+                onChange={(checked) =>
+                  setSettings({
+                    ...settings,
+                    lockTeamLeaderboard: checked,
+                  })
+                }
+              />
 
-                <input
-                  type="checkbox"
-                  checked={settings.lockTeamLeaderboard || false}
-                  onChange={(e) =>
-                    setSettings({
-                      ...settings,
-                      lockTeamLeaderboard: e.target.checked,
-                    })
-                  }
-                  style={{ width: "24px", height: "24px", cursor: "pointer" }}
-                />
-              </div>
+              <LockRow
+                title="Transfers Page"
+                desc="Lock squad building and transfers"
+                checked={!!settings.lockTransfers}
+                onChange={(checked) =>
+                  setSettings({
+                    ...settings,
+                    lockTransfers: checked,
+                  })
+                }
+              />
 
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                }}
-              >
-                <div>
-                  <div style={{ fontWeight: 600 }}>Transfers Page</div>
-                  <div
-                    style={{
-                      fontSize: "0.75rem",
-                      color: "var(--text-muted)",
-                    }}
-                  >
-                    Lock squad building and transfers
-                  </div>
-                </div>
-
-                <input
-                  type="checkbox"
-                  checked={settings.lockTransfers || false}
-                  onChange={(e) =>
-                    setSettings({
-                      ...settings,
-                      lockTransfers: e.target.checked,
-                    })
-                  }
-                  style={{ width: "24px", height: "24px", cursor: "pointer" }}
-                />
-              </div>
+              <LockRow
+                title="Shop Page"
+                desc="Lock store purchases and shop access"
+                checked={!!settings.lockShop}
+                onChange={(checked) =>
+                  setSettings({
+                    ...settings,
+                    lockShop: checked,
+                  })
+                }
+              />
 
               <button
                 onClick={handleSaveSettings}
@@ -1276,8 +1250,7 @@ export default function AdminPage() {
                   <div
                     style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}
                   >
-                    Create a new item with dates, tags, visibility, and media
-                    URLs.
+                    Create a new item with tags, visibility, and media URLs.
                   </div>
                 </div>
 
@@ -1313,18 +1286,13 @@ export default function AdminPage() {
                   marginBottom: "0.85rem",
                 }}
               >
-                <div>
-                  <div style={{ fontSize: "0.7rem", marginBottom: "0.3rem" }}>
-                    Name
-                  </div>
-                  <input
-                    value={newItem.itemName || ""}
-                    onChange={(e) =>
-                      setNewItem({ ...newItem, itemName: e.target.value })
-                    }
-                    style={inputStyle}
-                  />
-                </div>
+                <ShopTextInput
+                  label="Name"
+                  value={newItem.itemName || ""}
+                  onChange={(value) =>
+                    setNewItem({ ...newItem, itemName: value })
+                  }
+                />
 
                 <div>
                   <div style={{ fontSize: "0.7rem", marginBottom: "0.3rem" }}>
@@ -1347,76 +1315,33 @@ export default function AdminPage() {
                   </select>
                 </div>
 
-                <div>
-                  <div style={{ fontSize: "0.7rem", marginBottom: "0.3rem" }}>
-                    Price
-                  </div>
-                  <input
-                    type="number"
-                    value={newItem.price || 0}
-                    onChange={(e) =>
-                      setNewItem({
-                        ...newItem,
-                        price: Number(e.target.value),
-                      })
-                    }
-                    style={inputStyle}
-                  />
-                </div>
+                <ShopTextInput
+                  label="Price"
+                  type="number"
+                  value={newItem.price || 0}
+                  onChange={(value) =>
+                    setNewItem({
+                      ...newItem,
+                      price: Number(value),
+                    })
+                  }
+                />
 
-                <div>
-                  <div style={{ fontSize: "0.7rem", marginBottom: "0.3rem" }}>
-                    Section
-                  </div>
-                  <input
-                    value={newItem.section || ""}
-                    onChange={(e) =>
-                      setNewItem({ ...newItem, section: e.target.value })
-                    }
-                    style={inputStyle}
-                  />
-                </div>
+                <ShopTextInput
+                  label="Section"
+                  value={newItem.section || ""}
+                  onChange={(value) =>
+                    setNewItem({ ...newItem, section: value })
+                  }
+                />
 
-                <div>
-                  <div style={{ fontSize: "0.7rem", marginBottom: "0.3rem" }}>
-                    Rarity
-                  </div>
-                  <input
-                    value={newItem.rarity || ""}
-                    onChange={(e) =>
-                      setNewItem({ ...newItem, rarity: e.target.value })
-                    }
-                    style={inputStyle}
-                  />
-                </div>
-
-                <div>
-                  <div style={{ fontSize: "0.7rem", marginBottom: "0.3rem" }}>
-                    Arrive Date
-                  </div>
-                  <input
-                    type="date"
-                    value={dateInputValue(newItem.arriveDate)}
-                    onChange={(e) =>
-                      setNewItem({ ...newItem, arriveDate: e.target.value })
-                    }
-                    style={inputStyle}
-                  />
-                </div>
-
-                <div>
-                  <div style={{ fontSize: "0.7rem", marginBottom: "0.3rem" }}>
-                    Leave Date
-                  </div>
-                  <input
-                    type="date"
-                    value={dateInputValue(newItem.leaveDate)}
-                    onChange={(e) =>
-                      setNewItem({ ...newItem, leaveDate: e.target.value })
-                    }
-                    style={inputStyle}
-                  />
-                </div>
+                <ShopTextInput
+                  label="Rarity"
+                  value={newItem.rarity || ""}
+                  onChange={(value) =>
+                    setNewItem({ ...newItem, rarity: value })
+                  }
+                />
               </div>
 
               <div
@@ -1427,34 +1352,24 @@ export default function AdminPage() {
                   marginBottom: "0.85rem",
                 }}
               >
-                <div>
-                  <div style={{ fontSize: "0.7rem", marginBottom: "0.3rem" }}>
-                    Image URL
-                  </div>
-                  <input
-                    value={newItem.previewImage || ""}
-                    onChange={(e) =>
-                      setNewItem({
-                        ...newItem,
-                        previewImage: e.target.value,
-                      })
-                    }
-                    style={inputStyle}
-                  />
-                </div>
+                <ShopTextInput
+                  label="Image URL"
+                  value={newItem.previewImage || ""}
+                  onChange={(value) =>
+                    setNewItem({
+                      ...newItem,
+                      previewImage: value,
+                    })
+                  }
+                />
 
-                <div>
-                  <div style={{ fontSize: "0.7rem", marginBottom: "0.3rem" }}>
-                    Song URL
-                  </div>
-                  <input
-                    value={newItem.songUrl || ""}
-                    onChange={(e) =>
-                      setNewItem({ ...newItem, songUrl: e.target.value })
-                    }
-                    style={inputStyle}
-                  />
-                </div>
+                <ShopTextInput
+                  label="Song URL"
+                  value={newItem.songUrl || ""}
+                  onChange={(value) =>
+                    setNewItem({ ...newItem, songUrl: value })
+                  }
+                />
               </div>
 
               <div
@@ -1517,371 +1432,21 @@ export default function AdminPage() {
               }}
             >
               {filteredShopItems.map((item) => (
-                <div
+                <ShopItemCard
                   key={item.id}
-                  style={{
-                    background: "var(--surface)",
-                    border: "1px solid var(--border)",
-                    borderRadius: "14px",
-                    padding: "1rem",
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "0.85rem",
+                  item={item}
+                  saving={saving}
+                  saved={saved}
+                  onChange={updateShopItemField}
+                  onSave={handleUpdateShopItem}
+                  onDelete={() => {
+                    if (confirm("Delete?")) {
+                      deleteDoc(doc(db, "shopItems", item.id)).then(() =>
+                        setShopItems(shopItems.filter((i) => i.id !== item.id))
+                      );
+                    }
                   }}
-                >
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "flex-start",
-                      gap: "0.75rem",
-                    }}
-                  >
-                    <div style={{ minWidth: 0 }}>
-                      <div
-                        style={{
-                          fontWeight: 800,
-                          fontSize: "1rem",
-                          whiteSpace: "nowrap",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                        }}
-                      >
-                        {item.itemName || "Untitled Item"}
-                      </div>
-
-                      <div
-                        style={{
-                          color: "var(--text-muted)",
-                          fontSize: "0.75rem",
-                          marginTop: "0.2rem",
-                        }}
-                      >
-                        {item.itemType} · {item.section || "General"}
-                      </div>
-                    </div>
-
-                    <div
-                      style={{
-                        display: "flex",
-                        gap: "0.4rem",
-                        flexShrink: 0,
-                      }}
-                    >
-                      {item.showNewTag && (
-                        <span
-                          style={{
-                            background: "var(--blue)",
-                            color: "#fff",
-                            fontSize: "0.62rem",
-                            fontWeight: 900,
-                            padding: "0.22rem 0.45rem",
-                            borderRadius: "999px",
-                          }}
-                        >
-                          NEW
-                        </span>
-                      )}
-
-                      {item.showLeavingTodayTag && (
-                        <span
-                          style={{
-                            background: "#0f0d1b",
-                            color: "var(--accent)",
-                            border: "1px solid rgba(255,193,7,0.3)",
-                            fontSize: "0.62rem",
-                            fontWeight: 900,
-                            padding: "0.22rem 0.45rem",
-                            borderRadius: "999px",
-                          }}
-                        >
-                          LEAVING
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "1.4fr 1fr 0.7fr",
-                      gap: "0.65rem",
-                    }}
-                  >
-                    <div>
-                      <div style={smallLabelStyle}>Name</div>
-                      <input
-                        value={item.itemName || ""}
-                        onChange={(e) =>
-                          updateShopItemField(
-                            item.id,
-                            "itemName",
-                            e.target.value
-                          )
-                        }
-                        style={inputStyle}
-                      />
-                    </div>
-
-                    <div>
-                      <div style={smallLabelStyle}>Type</div>
-                      <select
-                        value={item.itemType}
-                        onChange={(e) =>
-                          updateShopItemField(
-                            item.id,
-                            "itemType",
-                            e.target.value as ShopItem["itemType"]
-                          )
-                        }
-                        style={inputStyle}
-                      >
-                        <option value="avatar">Avatar</option>
-                        <option value="banner">Banner</option>
-                        <option value="song">Song</option>
-                        <option value="title">Title</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <div style={smallLabelStyle}>Price</div>
-                      <input
-                        type="number"
-                        value={item.price || 0}
-                        onChange={(e) =>
-                          updateShopItemField(
-                            item.id,
-                            "price",
-                            Number(e.target.value)
-                          )
-                        }
-                        style={inputStyle}
-                      />
-                    </div>
-                  </div>
-
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "1fr 1fr 1fr 1fr",
-                      gap: "0.65rem",
-                    }}
-                  >
-                    <div>
-                      <div style={smallLabelStyle}>Section</div>
-                      <input
-                        value={item.section || ""}
-                        onChange={(e) =>
-                          updateShopItemField(
-                            item.id,
-                            "section",
-                            e.target.value
-                          )
-                        }
-                        style={inputStyle}
-                      />
-                    </div>
-
-                    <div>
-                      <div style={smallLabelStyle}>Rarity</div>
-                      <input
-                        value={item.rarity || ""}
-                        onChange={(e) =>
-                          updateShopItemField(
-                            item.id,
-                            "rarity",
-                            e.target.value
-                          )
-                        }
-                        style={inputStyle}
-                      />
-                    </div>
-
-                    <div>
-                      <div style={smallLabelStyle}>Arrive</div>
-                      <input
-                        type="date"
-                        value={dateInputValue(item.arriveDate)}
-                        onChange={(e) =>
-                          updateShopItemField(
-                            item.id,
-                            "arriveDate",
-                            e.target.value
-                          )
-                        }
-                        style={inputStyle}
-                      />
-                    </div>
-
-                    <div>
-                      <div style={smallLabelStyle}>Leave</div>
-                      <input
-                        type="date"
-                        value={dateInputValue(item.leaveDate)}
-                        onChange={(e) =>
-                          updateShopItemField(
-                            item.id,
-                            "leaveDate",
-                            e.target.value
-                          )
-                        }
-                        style={inputStyle}
-                      />
-                    </div>
-                  </div>
-
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "1fr 1fr",
-                      gap: "0.65rem",
-                    }}
-                  >
-                    <div>
-                      <div style={smallLabelStyle}>Image URL</div>
-                      <input
-                        value={item.previewImage || ""}
-                        onChange={(e) =>
-                          updateShopItemField(
-                            item.id,
-                            "previewImage",
-                            e.target.value
-                          )
-                        }
-                        style={inputStyle}
-                      />
-                    </div>
-
-                    <div>
-                      <div style={smallLabelStyle}>Song URL</div>
-                      <input
-                        value={item.songUrl || ""}
-                        onChange={(e) =>
-                          updateShopItemField(
-                            item.id,
-                            "songUrl",
-                            e.target.value
-                          )
-                        }
-                        style={inputStyle}
-                      />
-                    </div>
-                  </div>
-
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      gap: "0.75rem",
-                      flexWrap: "wrap",
-                      borderTop: "1px solid var(--border)",
-                      paddingTop: "0.85rem",
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: "flex",
-                        gap: "0.85rem",
-                        flexWrap: "wrap",
-                        alignItems: "center",
-                      }}
-                    >
-                      <label style={toggleLabelStyle}>
-                        <input
-                          type="checkbox"
-                          checked={!!item.showNewTag}
-                          onChange={(e) =>
-                            updateShopItemField(
-                              item.id,
-                              "showNewTag",
-                              e.target.checked
-                            )
-                          }
-                        />
-                        NEW
-                      </label>
-
-                      <label style={toggleLabelStyle}>
-                        <input
-                          type="checkbox"
-                          checked={!!item.showLeavingTodayTag}
-                          onChange={(e) =>
-                            updateShopItemField(
-                              item.id,
-                              "showLeavingTodayTag",
-                              e.target.checked
-                            )
-                          }
-                        />
-                        LEAVING
-                      </label>
-
-                      <label style={toggleLabelStyle}>
-                        <input
-                          type="checkbox"
-                          checked={!!item.isVisible}
-                          onChange={(e) =>
-                            updateShopItemField(
-                              item.id,
-                              "isVisible",
-                              e.target.checked
-                            )
-                          }
-                        />
-                        Visible
-                      </label>
-                    </div>
-
-                    <div style={{ display: "flex", gap: "0.5rem" }}>
-                      <button
-                        onClick={() => handleUpdateShopItem(item)}
-                        disabled={saving === item.id}
-                        style={{
-                          background:
-                            saved === item.id
-                              ? "var(--green)"
-                              : "var(--accent)",
-                          color: "#000",
-                          border: "none",
-                          borderRadius: "8px",
-                          padding: "0.5rem 0.9rem",
-                          fontWeight: 800,
-                          cursor: "pointer",
-                        }}
-                      >
-                        {saving === item.id
-                          ? "Saving..."
-                          : saved === item.id
-                          ? "Saved"
-                          : "Save"}
-                      </button>
-
-                      <button
-                        onClick={() => {
-                          if (confirm("Delete?")) {
-                            deleteDoc(doc(db, "shopItems", item.id)).then(() =>
-                              setShopItems(
-                                shopItems.filter((i) => i.id !== item.id)
-                              )
-                            );
-                          }
-                        }}
-                        style={{
-                          background: "transparent",
-                          border: "1px solid var(--border)",
-                          color: "var(--red)",
-                          borderRadius: "8px",
-                          padding: "0.5rem 0.75rem",
-                          cursor: "pointer",
-                          fontWeight: 800,
-                        }}
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  </div>
-                </div>
+                />
               ))}
             </div>
           </div>
@@ -2285,11 +1850,7 @@ export default function AdminPage() {
                       type="number"
                       value={m.coins ?? 0}
                       onChange={(e) =>
-                        updateManagerField(
-                          m.id,
-                          "coins",
-                          Number(e.target.value)
-                        )
+                        updateManagerField(m.id, "coins", Number(e.target.value))
                       }
                       style={inputStyle}
                     />
@@ -2302,11 +1863,7 @@ export default function AdminPage() {
                       step="0.1"
                       value={m.Bank ?? 0}
                       onChange={(e) =>
-                        updateManagerField(
-                          m.id,
-                          "Bank",
-                          Number(e.target.value)
-                        )
+                        updateManagerField(m.id, "Bank", Number(e.target.value))
                       }
                       style={inputStyle}
                     />
@@ -2458,45 +2015,350 @@ export default function AdminPage() {
   );
 }
 
-const inputStyle = {
-  width: "100%",
-  background: "var(--bg)",
-  border: "1px solid var(--border)",
-  color: "#fff",
-  padding: "0.5rem",
-  borderRadius: "6px",
-  fontSize: "0.85rem",
-};
+function LockRow({
+  title,
+  desc,
+  checked,
+  onChange,
+}: {
+  title: string;
+  desc: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+      }}
+    >
+      <div>
+        <div style={{ fontWeight: 600 }}>{title}</div>
+        <div
+          style={{
+            fontSize: "0.75rem",
+            color: "var(--text-muted)",
+          }}
+        >
+          {desc}
+        </div>
+      </div>
 
-const labelStyle = {
-  fontSize: "0.8rem",
-  color: "var(--text-muted)",
-  marginBottom: "0.4rem",
-};
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        style={{ width: "24px", height: "24px", cursor: "pointer" }}
+      />
+    </div>
+  );
+}
 
-const smallLabelStyle = {
-  fontSize: "0.68rem",
-  marginBottom: "0.25rem",
-};
+function ShopTextInput({
+  label,
+  value,
+  onChange,
+  type = "text",
+}: {
+  label: string;
+  value: any;
+  onChange: (value: string) => void;
+  type?: string;
+}) {
+  return (
+    <div>
+      <div style={{ fontSize: "0.7rem", marginBottom: "0.3rem" }}>{label}</div>
+      <input
+        type={type}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        style={inputStyle}
+      />
+    </div>
+  );
+}
 
-const toggleLabelStyle = {
-  display: "flex",
-  alignItems: "center",
-  gap: "0.4rem",
-  fontSize: "0.75rem",
-  color: "var(--text-muted)",
-};
+function ShopItemCard({
+  item,
+  saving,
+  saved,
+  onChange,
+  onSave,
+  onDelete,
+}: {
+  item: ShopItem;
+  saving: string | null;
+  saved: string | null;
+  onChange: (id: string, field: keyof ShopItem, value: any) => void;
+  onSave: (item: ShopItem) => void;
+  onDelete: () => void;
+}) {
+  return (
+    <div
+      style={{
+        background: "var(--surface)",
+        border: "1px solid var(--border)",
+        borderRadius: "14px",
+        padding: "1rem",
+        display: "flex",
+        flexDirection: "column",
+        gap: "0.85rem",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "flex-start",
+          gap: "0.75rem",
+        }}
+      >
+        <div style={{ minWidth: 0 }}>
+          <div
+            style={{
+              fontWeight: 800,
+              fontSize: "1rem",
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+          >
+            {item.itemName || "Untitled Item"}
+          </div>
 
-const smallButtonStyle = {
-  background: "var(--bg)",
-  border: "1px solid var(--border)",
-  color: "#fff",
-  width: "40px",
-  height: "40px",
-  borderRadius: "8px",
-  cursor: "pointer",
-  fontSize: "1.2rem",
-};
+          <div
+            style={{
+              color: "var(--text-muted)",
+              fontSize: "0.75rem",
+              marginTop: "0.2rem",
+            }}
+          >
+            {item.itemType} · {item.section || "General"}
+          </div>
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            gap: "0.4rem",
+            flexShrink: 0,
+          }}
+        >
+          {item.showNewTag && (
+            <span
+              style={{
+                background: "var(--blue)",
+                color: "#fff",
+                fontSize: "0.62rem",
+                fontWeight: 900,
+                padding: "0.22rem 0.45rem",
+                borderRadius: "999px",
+              }}
+            >
+              NEW
+            </span>
+          )}
+
+          {item.showLeavingTodayTag && (
+            <span
+              style={{
+                background: "#0f0d1b",
+                color: "var(--accent)",
+                border: "1px solid rgba(255,193,7,0.3)",
+                fontSize: "0.62rem",
+                fontWeight: 900,
+                padding: "0.22rem 0.45rem",
+                borderRadius: "999px",
+              }}
+            >
+              LEAVING
+            </span>
+          )}
+        </div>
+      </div>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1.4fr 1fr 0.7fr",
+          gap: "0.65rem",
+        }}
+      >
+        <div>
+          <div style={smallLabelStyle}>Name</div>
+          <input
+            value={item.itemName || ""}
+            onChange={(e) => onChange(item.id, "itemName", e.target.value)}
+            style={inputStyle}
+          />
+        </div>
+
+        <div>
+          <div style={smallLabelStyle}>Type</div>
+          <select
+            value={item.itemType}
+            onChange={(e) =>
+              onChange(item.id, "itemType", e.target.value as ShopItem["itemType"])
+            }
+            style={inputStyle}
+          >
+            <option value="avatar">Avatar</option>
+            <option value="banner">Banner</option>
+            <option value="song">Song</option>
+            <option value="title">Title</option>
+          </select>
+        </div>
+
+        <div>
+          <div style={smallLabelStyle}>Price</div>
+          <input
+            type="number"
+            value={item.price || 0}
+            onChange={(e) => onChange(item.id, "price", Number(e.target.value))}
+            style={inputStyle}
+          />
+        </div>
+      </div>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr",
+          gap: "0.65rem",
+        }}
+      >
+        <div>
+          <div style={smallLabelStyle}>Section</div>
+          <input
+            value={item.section || ""}
+            onChange={(e) => onChange(item.id, "section", e.target.value)}
+            style={inputStyle}
+          />
+        </div>
+
+        <div>
+          <div style={smallLabelStyle}>Rarity</div>
+          <input
+            value={item.rarity || ""}
+            onChange={(e) => onChange(item.id, "rarity", e.target.value)}
+            style={inputStyle}
+          />
+        </div>
+      </div>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr",
+          gap: "0.65rem",
+        }}
+      >
+        <div>
+          <div style={smallLabelStyle}>Image URL</div>
+          <input
+            value={item.previewImage || ""}
+            onChange={(e) => onChange(item.id, "previewImage", e.target.value)}
+            style={inputStyle}
+          />
+        </div>
+
+        <div>
+          <div style={smallLabelStyle}>Song URL</div>
+          <input
+            value={item.songUrl || ""}
+            onChange={(e) => onChange(item.id, "songUrl", e.target.value)}
+            style={inputStyle}
+          />
+        </div>
+      </div>
+
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: "0.75rem",
+          flexWrap: "wrap",
+          borderTop: "1px solid var(--border)",
+          paddingTop: "0.85rem",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            gap: "0.85rem",
+            flexWrap: "wrap",
+            alignItems: "center",
+          }}
+        >
+          <label style={toggleLabelStyle}>
+            <input
+              type="checkbox"
+              checked={!!item.showNewTag}
+              onChange={(e) => onChange(item.id, "showNewTag", e.target.checked)}
+            />
+            NEW
+          </label>
+
+          <label style={toggleLabelStyle}>
+            <input
+              type="checkbox"
+              checked={!!item.showLeavingTodayTag}
+              onChange={(e) =>
+                onChange(item.id, "showLeavingTodayTag", e.target.checked)
+              }
+            />
+            LEAVING
+          </label>
+
+          <label style={toggleLabelStyle}>
+            <input
+              type="checkbox"
+              checked={!!item.isVisible}
+              onChange={(e) => onChange(item.id, "isVisible", e.target.checked)}
+            />
+            Visible
+          </label>
+        </div>
+
+        <div style={{ display: "flex", gap: "0.5rem" }}>
+          <button
+            onClick={() => onSave(item)}
+            disabled={saving === item.id}
+            style={{
+              background: saved === item.id ? "var(--green)" : "var(--accent)",
+              color: "#000",
+              border: "none",
+              borderRadius: "8px",
+              padding: "0.5rem 0.9rem",
+              fontWeight: 800,
+              cursor: "pointer",
+            }}
+          >
+            {saving === item.id ? "Saving..." : saved === item.id ? "Saved" : "Save"}
+          </button>
+
+          <button
+            onClick={onDelete}
+            style={{
+              background: "transparent",
+              border: "1px solid var(--border)",
+              color: "var(--red)",
+              borderRadius: "8px",
+              padding: "0.5rem 0.75rem",
+              cursor: "pointer",
+              fontWeight: 800,
+            }}
+          >
+            ✕
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function StatInput({
   label,
