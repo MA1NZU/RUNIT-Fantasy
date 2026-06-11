@@ -138,7 +138,7 @@ const getRarityColor = (rarity?: string) => {
     case "epic":
       return "#a855f7";
     case "legendary":
-      return "ffce1b";
+      return "#ffce1b";
     case "icon":
       return "#22d3ee";
     default:
