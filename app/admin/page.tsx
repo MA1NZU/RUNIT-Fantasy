@@ -70,7 +70,20 @@ type ShopItem = {
   showLeavingTodayTag?: boolean;
 };
 
-type Tab = "players" | "stats" | "managers" | "shop" | "settings" | "locks";
+type ShopSection = {
+  id: string;
+  title: string;
+  order: number;
+};
+
+type Tab =
+  | "players"
+  | "stats"
+  | "managers"
+  | "shop"
+  | "sections"
+  | "settings"
+  | "locks";
 
 const defaultNewItem: Partial<ShopItem> = {
   itemType: "avatar",
@@ -83,66 +96,36 @@ const defaultNewItem: Partial<ShopItem> = {
   showLeavingTodayTag: false,
 };
 
-const inputStyle = {
-  width: "100%",
-  background: "var(--bg)",
-  border: "1px solid var(--border)",
-  color: "#fff",
-  padding: "0.5rem",
-  borderRadius: "6px",
-  fontSize: "0.85rem",
+const getRankPrizeCoins = (rank: number) => {
+  if (rank === 1) return 4000;
+  if (rank === 2) return 2500;
+  if (rank === 3) return 1500;
+  if (rank === 4) return 1000;
+  if (rank >= 5 && rank <= 10) return 500;
+  if (rank === 11) return 300;
+  if (rank === 12) return 300;
+  if (rank === 13) return 200;
+  return 0;
 };
 
-const labelStyle = {
-  fontSize: "0.8rem",
-  color: "var(--text-muted)",
-  marginBottom: "0.4rem",
-};
-
-const smallLabelStyle = {
-  fontSize: "0.68rem",
-  marginBottom: "0.25rem",
-};
-
-const toggleLabelStyle = {
-  display: "flex",
-  alignItems: "center",
-  gap: "0.4rem",
-  fontSize: "0.75rem",
-  color: "var(--text-muted)",
-};
-
-const smallButtonStyle = {
-  background: "var(--bg)",
-  border: "1px solid var(--border)",
-  color: "#fff",
-  width: "40px",
-  height: "40px",
-  borderRadius: "8px",
-  cursor: "pointer",
-  fontSize: "1.2rem",
-};
+function sectionDocId(title: string) {
+  return encodeURIComponent((title || "General").trim());
+}
 
 function toDateSafe(value: any): Date | null {
   if (!value) return null;
 
-  if (typeof value.toDate === "function") {
-    return value.toDate();
-  }
+  if (typeof value.toDate === "function") return value.toDate();
 
   if (typeof value === "object" && typeof value.seconds === "number") {
     return new Date(value.seconds * 1000);
   }
 
-  if (value instanceof Date) {
-    return value;
-  }
+  if (value instanceof Date) return value;
 
   if (typeof value === "string") {
     const date = new Date(value);
-
     if (Number.isNaN(date.getTime())) return null;
-
     return date;
   }
 
@@ -156,40 +139,27 @@ function datetimeInputValue(value: any) {
     if (value.includes("T")) return value.slice(0, 16);
 
     const date = toDateSafe(value);
-
     if (!date) return "";
 
     return date.toISOString().slice(0, 16);
   }
 
   const date = toDateSafe(value);
-
   if (!date) return "";
 
   return date.toISOString().slice(0, 16);
 }
-
-const getRankPrizeCoins = (rank: number) => {
-  if (rank === 1) return 4000;
-  if (rank === 2) return 2500;
-  if (rank === 3) return 1500;
-  if (rank === 4) return 1000;
-  if (rank >= 5 && rank <= 10) return 500;
-  if (rank === 11) return 300;
-  if (rank === 12) return 300;
-  if (rank === 13) return 200;
-
-  return 0;
-};
 
 export default function AdminPage() {
   const { user } = useAuth();
   const router = useRouter();
 
   const [tab, setTab] = useState<Tab>("players");
+
   const [players, setPlayers] = useState<Player[]>([]);
   const [managers, setManagers] = useState<UserTeam[]>([]);
   const [shopItems, setShopItems] = useState<ShopItem[]>([]);
+  const [shopSections, setShopSections] = useState<ShopSection[]>([]);
   const [settings, setSettings] = useState<Settings | null>(null);
 
   const [loading, setLoading] = useState(true);
@@ -221,12 +191,14 @@ export default function AdminPage() {
       setLoading(true);
 
       try {
-        const [pSnap, mSnap, sSnap, shopSnap] = await Promise.all([
-          getDocs(collection(db, "players")),
-          getDocs(collection(db, "userTeams")),
-          getDocs(collection(db, "settings")),
-          getDocs(collection(db, "shopItems")),
-        ]);
+        const [pSnap, mSnap, sSnap, shopSnap, sectionsSnap] =
+          await Promise.all([
+            getDocs(collection(db, "players")),
+            getDocs(collection(db, "userTeams")),
+            getDocs(collection(db, "settings")),
+            getDocs(collection(db, "shopItems")),
+            getDocs(collection(db, "shopSections")),
+          ]);
 
         let activeGW = 7;
 
@@ -239,6 +211,43 @@ export default function AdminPage() {
           setSettings(settingsData);
           activeGW = Number(settingsData.currentGameweek || 7);
         }
+
+        const loadedShopItems = shopSnap.docs.map(
+          (d) => ({ id: d.id, ...d.data() } as ShopItem)
+        );
+
+        setShopItems(loadedShopItems);
+
+        const sectionMap: Record<string, ShopSection> = {};
+
+        sectionsSnap.docs.forEach((d) => {
+          const data = d.data();
+          const title = String(data.title || d.id || "General");
+
+          sectionMap[title] = {
+            id: d.id,
+            title,
+            order: Number(data.order ?? 99),
+          };
+        });
+
+        loadedShopItems.forEach((item) => {
+          const title = item.section || "General";
+
+          if (!sectionMap[title]) {
+            sectionMap[title] = {
+              id: sectionDocId(title),
+              title,
+              order: 99,
+            };
+          }
+        });
+
+        setShopSections(
+          Object.values(sectionMap).sort(
+            (a, b) => a.order - b.order || a.title.localeCompare(b.title)
+          )
+        );
 
         const gwTeamsSnap = await getDocs(
           query(
@@ -253,9 +262,7 @@ export default function AdminPage() {
           const data = d.data();
           const email = String(data.ownerEmail || "").toLowerCase();
 
-          if (email) {
-            currentGwPointsByEmail[email] = Number(data.gwPoints ?? 0);
-          }
+          if (email) currentGwPointsByEmail[email] = Number(data.gwPoints ?? 0);
         });
 
         setPlayers(
@@ -284,10 +291,6 @@ export default function AdminPage() {
             .sort(
               (a, b) => Number(b.totalPoints || 0) - Number(a.totalPoints || 0)
             )
-        );
-
-        setShopItems(
-          shopSnap.docs.map((d) => ({ id: d.id, ...d.data() } as ShopItem))
         );
       } catch (err) {
         console.error("Load Error:", err);
@@ -369,6 +372,7 @@ export default function AdminPage() {
 
       playersSnap.docs.forEach((playerDoc) => {
         const data = playerDoc.data();
+
         const aliases = [playerDoc.id, data.ID, data.name, data.Title]
           .map((v) => String(v || ""))
           .filter(Boolean);
@@ -376,6 +380,7 @@ export default function AdminPage() {
         if (aliases.length === 0) return;
 
         const canonical = playerDoc.id;
+
         aliases.forEach((alias) => aliasToCanonical.set(alias, canonical));
         playerAliasGroups.push(aliases);
       });
@@ -385,6 +390,7 @@ export default function AdminPage() {
       statsSnap.docs.forEach((statDoc) => {
         const data = statDoc.data();
         const points = Number(data.gwPoints || 0);
+
         const directAliases = [data.player, data.Title, data.name, statDoc.id]
           .map((v) => String(v || ""))
           .filter(Boolean);
@@ -394,7 +400,6 @@ export default function AdminPage() {
         );
 
         const aliasesForThisStat = new Set<string>();
-
         directAliases.forEach((alias) => aliasesForThisStat.add(alias));
 
         playerAliasGroups.forEach((group) => {
@@ -412,6 +417,7 @@ export default function AdminPage() {
 
         aliasesForThisStat.forEach((alias) => {
           pointsByAlias.set(alias, points);
+
           const canonical = aliasToCanonical.get(alias);
           if (canonical) pointsByAlias.set(canonical, points);
         });
@@ -421,9 +427,7 @@ export default function AdminPage() {
         const key = String(playerId || "");
         if (!key) return 0;
 
-        if (pointsByAlias.has(key)) {
-          return Number(pointsByAlias.get(key) || 0);
-        }
+        if (pointsByAlias.has(key)) return Number(pointsByAlias.get(key) || 0);
 
         const canonical = aliasToCanonical.get(key);
 
@@ -455,9 +459,7 @@ export default function AdminPage() {
 
         if (!email) return;
 
-        if (!userTeamsByEmail[email]) {
-          userTeamsByEmail[email] = [];
-        }
+        if (!userTeamsByEmail[email]) userTeamsByEmail[email] = [];
 
         userTeamsByEmail[email].push(userTeamDoc);
       });
@@ -506,6 +508,7 @@ export default function AdminPage() {
         operationCount += 1;
 
         const ownerEmail = String(team.ownerEmail || "").toLowerCase();
+
         if (!ownerEmail) return;
 
         const matchingUserTeams = userTeamsByEmail[ownerEmail] || [];
@@ -553,8 +556,6 @@ export default function AdminPage() {
             (a, b) => Number(b.totalPoints || 0) - Number(a.totalPoints || 0)
           )
       );
-
-      console.log(`Synced ${operationCount} update(s).`);
     } catch (err) {
       console.error("Failed to sync current gameweek scores:", err);
       alert(
@@ -720,10 +721,12 @@ export default function AdminPage() {
 
     try {
       const id = Math.random().toString(36).substr(2, 9);
+      const sectionTitle = newItem.section || "General";
 
       const itemData = {
         ...newItem,
         ID: id,
+        section: sectionTitle,
         songUrl: newItem.songUrl || "",
         showNewTag: !!newItem.showNewTag,
         showLeavingTodayTag: !!newItem.showLeavingTodayTag,
@@ -733,6 +736,20 @@ export default function AdminPage() {
       await setDoc(doc(db, "shopItems", id), itemData);
 
       setShopItems([...shopItems, { id, ...itemData } as ShopItem]);
+
+      setShopSections((prev) => {
+        if (prev.some((s) => s.title === sectionTitle)) return prev;
+
+        return [
+          ...prev,
+          {
+            id: sectionDocId(sectionTitle),
+            title: sectionTitle,
+            order: prev.length + 1,
+          },
+        ];
+      });
+
       setNewItem({ ...defaultNewItem });
 
       markSaved("newShopItem");
@@ -747,12 +764,28 @@ export default function AdminPage() {
     setSaving(item.id);
 
     try {
+      const sectionTitle = item.section || "General";
+
       await updateDoc(doc(db, "shopItems", item.id), {
         ...item,
+        section: sectionTitle,
         songUrl: item.songUrl || "",
         showNewTag: !!item.showNewTag,
         showLeavingTodayTag: !!item.showLeavingTodayTag,
         "Updated Date": new Date().toISOString(),
+      });
+
+      setShopSections((prev) => {
+        if (prev.some((s) => s.title === sectionTitle)) return prev;
+
+        return [
+          ...prev,
+          {
+            id: sectionDocId(sectionTitle),
+            title: sectionTitle,
+            order: prev.length + 1,
+          },
+        ];
       });
 
       markSaved(item.id);
@@ -761,6 +794,70 @@ export default function AdminPage() {
     }
 
     setSaving(null);
+  };
+
+  const handleSaveShopSections = async () => {
+    setSaving("shopSections");
+
+    try {
+      const batch = writeBatch(db);
+      const now = new Date().toISOString();
+
+      shopSections.forEach((section, index) => {
+        const title = section.title || "General";
+
+        batch.set(
+          doc(db, "shopSections", sectionDocId(title)),
+          {
+            title,
+            order: Number(section.order || index + 1),
+            "Updated Date": now,
+          },
+          { merge: true }
+        );
+      });
+
+      await batch.commit();
+
+      setShopSections((prev) =>
+        [...prev].sort(
+          (a, b) => Number(a.order || 99) - Number(b.order || 99)
+        )
+      );
+
+      markSaved("shopSections");
+    } catch (err) {
+      console.error("Failed to save shop sections:", err);
+      alert("Failed to save shop section order.");
+    }
+
+    setSaving(null);
+  };
+
+  const moveSection = (index: number, direction: -1 | 1) => {
+    setShopSections((prev) => {
+      const arr = [...prev];
+      const target = index + direction;
+
+      if (target < 0 || target >= arr.length) return prev;
+
+      const temp = arr[index];
+      arr[index] = arr[target];
+      arr[target] = temp;
+
+      return arr.map((section, i) => ({
+        ...section,
+        order: i + 1,
+      }));
+    });
+  };
+
+  const updateSectionOrder = (title: string, order: number) => {
+    setShopSections((prev) =>
+      prev.map((section) =>
+        section.title === title ? { ...section, order } : section
+      )
+    );
   };
 
   const updateManagerField = (id: string, field: keyof UserTeam, value: any) => {
@@ -851,6 +948,10 @@ export default function AdminPage() {
       return 0;
     });
 
+  const sortedShopSections = [...shopSections].sort(
+    (a, b) => Number(a.order || 99) - Number(b.order || 99)
+  );
+
   return (
     <Shell>
       <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
@@ -866,59 +967,44 @@ export default function AdminPage() {
             flexWrap: "wrap",
           }}
         >
-          {["players", "stats", "managers", "shop", "settings", "locks"].map(
-            (t) => (
-              <button
-                key={t}
-                onClick={() => setTab(t as Tab)}
-                style={{
-                  padding: "0.6rem 1.2rem",
-                  borderRadius: "8px",
-                  border: "1px solid var(--border)",
-                  background: tab === t ? "var(--blue)" : "var(--surface)",
-                  color: "#fff",
-                  cursor: "pointer",
-                  fontWeight: 600,
-                }}
-              >
-                {t.toUpperCase()}
-              </button>
-            )
-          )}
+          {[
+            "players",
+            "stats",
+            "managers",
+            "shop",
+            "sections",
+            "settings",
+            "locks",
+          ].map((t) => (
+            <button
+              key={t}
+              onClick={() => setTab(t as Tab)}
+              style={{
+                padding: "0.6rem 1.2rem",
+                borderRadius: "8px",
+                border: "1px solid var(--border)",
+                background: tab === t ? "var(--blue)" : "var(--surface)",
+                color: "#fff",
+                cursor: "pointer",
+                fontWeight: 600,
+              }}
+            >
+              {t.toUpperCase()}
+            </button>
+          ))}
         </div>
 
         {tab === "locks" && settings && (
           <div style={{ maxWidth: "500px" }}>
-            <h2
-              style={{
-                fontSize: "1.2rem",
-                fontWeight: 700,
-                marginBottom: "1.5rem",
-              }}
-            >
-              Page Access Locks
-            </h2>
+            <h2 style={sectionTitleStyle}>Page Access Locks</h2>
 
-            <div
-              style={{
-                background: "var(--surface)",
-                border: "1px solid var(--border)",
-                borderRadius: "12px",
-                padding: "1.5rem",
-                display: "flex",
-                flexDirection: "column",
-                gap: "1.5rem",
-              }}
-            >
+            <div style={panelStyle}>
               <LockRow
                 title="My Team & Leaderboard"
                 desc="Restrict access to these pages"
                 checked={!!settings.lockTeamLeaderboard}
                 onChange={(checked) =>
-                  setSettings({
-                    ...settings,
-                    lockTeamLeaderboard: checked,
-                  })
+                  setSettings({ ...settings, lockTeamLeaderboard: checked })
                 }
               />
 
@@ -927,10 +1013,7 @@ export default function AdminPage() {
                 desc="Lock squad building and transfers"
                 checked={!!settings.lockTransfers}
                 onChange={(checked) =>
-                  setSettings({
-                    ...settings,
-                    lockTransfers: checked,
-                  })
+                  setSettings({ ...settings, lockTransfers: checked })
                 }
               />
 
@@ -939,27 +1022,14 @@ export default function AdminPage() {
                 desc="Lock store purchases and shop access"
                 checked={!!settings.lockShop}
                 onChange={(checked) =>
-                  setSettings({
-                    ...settings,
-                    lockShop: checked,
-                  })
+                  setSettings({ ...settings, lockShop: checked })
                 }
               />
 
               <button
                 onClick={handleSaveSettings}
                 disabled={saving === "settings"}
-                style={{
-                  background:
-                    saved === "settings" ? "var(--green)" : "var(--blue)",
-                  color: "#fff",
-                  border: "none",
-                  padding: "0.8rem",
-                  borderRadius: "8px",
-                  fontWeight: 700,
-                  cursor: "pointer",
-                  marginTop: "1rem",
-                }}
+                style={primaryButtonStyle(saved === "settings")}
               >
                 {saving === "settings"
                   ? "Saving..."
@@ -973,37 +1043,11 @@ export default function AdminPage() {
 
         {tab === "settings" && settings && (
           <div style={{ maxWidth: "900px" }}>
-            <h2
-              style={{
-                fontSize: "1.2rem",
-                fontWeight: 700,
-                marginBottom: "1.5rem",
-              }}
-            >
-              Gameweek Settings
-            </h2>
+            <h2 style={sectionTitleStyle}>Gameweek Settings</h2>
 
-            <div
-              style={{
-                background: "var(--surface)",
-                border: "1px solid var(--border)",
-                borderRadius: "12px",
-                padding: "1.5rem",
-                display: "flex",
-                flexDirection: "column",
-                gap: "1.5rem",
-              }}
-            >
+            <div style={panelStyle}>
               <div>
-                <div
-                  style={{
-                    fontSize: "0.8rem",
-                    color: "var(--text-muted)",
-                    marginBottom: "0.5rem",
-                  }}
-                >
-                  Current Gameweek
-                </div>
+                <div style={labelStyle}>Current Gameweek</div>
 
                 <div
                   style={{ display: "flex", alignItems: "center", gap: "1rem" }}
@@ -1083,16 +1127,7 @@ export default function AdminPage() {
               <button
                 onClick={handleSaveSettings}
                 disabled={saving === "settings"}
-                style={{
-                  background:
-                    saved === "settings" ? "var(--green)" : "var(--blue)",
-                  color: "#fff",
-                  border: "none",
-                  padding: "0.8rem",
-                  borderRadius: "8px",
-                  fontWeight: 700,
-                  cursor: "pointer",
-                }}
+                style={primaryButtonStyle(saved === "settings")}
               >
                 {saving === "settings"
                   ? "Saving..."
@@ -1104,17 +1139,112 @@ export default function AdminPage() {
           </div>
         )}
 
-        {tab === "shop" && (
-          <div>
-            <h2
+        {tab === "sections" && (
+          <div style={{ maxWidth: "750px" }}>
+            <h2 style={sectionTitleStyle}>Shop Section Order</h2>
+
+            <div
               style={{
-                fontSize: "1.2rem",
-                fontWeight: 700,
-                marginBottom: "1rem",
+                ...panelStyle,
+                gap: "1rem",
               }}
             >
-              Shop Manager
-            </h2>
+              <div
+                style={{
+                  color: "var(--text-muted)",
+                  fontSize: "0.85rem",
+                  lineHeight: 1.6,
+                }}
+              >
+                Reorder shop sections from top to bottom. Lower order appears
+                first in the shop.
+              </div>
+
+              {sortedShopSections.length === 0 ? (
+                <div style={{ color: "var(--text-muted)" }}>
+                  No shop sections found.
+                </div>
+              ) : (
+                sortedShopSections.map((section, index) => (
+                  <div
+                    key={section.title}
+                    style={{
+                      background: "rgba(255,255,255,0.035)",
+                      border: "1px solid var(--border)",
+                      borderRadius: "12px",
+                      padding: "1rem",
+                      display: "grid",
+                      gridTemplateColumns: "1fr 110px auto auto",
+                      gap: "0.75rem",
+                      alignItems: "center",
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontWeight: 800 }}>{section.title}</div>
+                      <div
+                        style={{
+                          color: "var(--text-muted)",
+                          fontSize: "0.75rem",
+                          marginTop: "0.2rem",
+                        }}
+                      >
+                        {shopItems.filter(
+                          (item) =>
+                            (item.section || "General") === section.title
+                        ).length}{" "}
+                        item(s)
+                      </div>
+                    </div>
+
+                    <input
+                      type="number"
+                      value={section.order}
+                      onChange={(e) =>
+                        updateSectionOrder(
+                          section.title,
+                          Number(e.target.value)
+                        )
+                      }
+                      style={inputStyle}
+                    />
+
+                    <button
+                      onClick={() => moveSection(index, -1)}
+                      disabled={index === 0}
+                      style={secondaryButtonStyle}
+                    >
+                      ↑
+                    </button>
+
+                    <button
+                      onClick={() => moveSection(index, 1)}
+                      disabled={index === sortedShopSections.length - 1}
+                      style={secondaryButtonStyle}
+                    >
+                      ↓
+                    </button>
+                  </div>
+                ))
+              )}
+
+              <button
+                onClick={handleSaveShopSections}
+                disabled={saving === "shopSections"}
+                style={primaryButtonStyle(saved === "shopSections")}
+              >
+                {saving === "shopSections"
+                  ? "Saving..."
+                  : saved === "shopSections"
+                  ? "✓ Saved"
+                  : "Save Section Order"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {tab === "shop" && (
+          <div>
+            <h2 style={sectionTitleStyle}>Shop Manager</h2>
 
             <div
               style={{
@@ -1194,15 +1324,7 @@ export default function AdminPage() {
                   setShopTypeFilter("all");
                   setShopSortBy("type");
                 }}
-                style={{
-                  background: "transparent",
-                  border: "1px solid var(--border)",
-                  color: "var(--text-muted)",
-                  borderRadius: "8px",
-                  padding: "0.6rem 0.9rem",
-                  fontWeight: 800,
-                  cursor: "pointer",
-                }}
+                style={secondaryButtonStyle}
               >
                 Reset
               </button>
@@ -1257,18 +1379,7 @@ export default function AdminPage() {
                 <button
                   onClick={handleAddShopItem}
                   disabled={saving === "newShopItem"}
-                  style={{
-                    background:
-                      saved === "newShopItem"
-                        ? "var(--green)"
-                        : "var(--blue)",
-                    color: "#fff",
-                    border: "none",
-                    padding: "0.7rem 1rem",
-                    borderRadius: "10px",
-                    fontWeight: 800,
-                    cursor: "pointer",
-                  }}
+                  style={primaryButtonStyle(saved === "newShopItem")}
                 >
                   {saving === "newShopItem"
                     ? "Adding..."
@@ -2200,7 +2311,11 @@ function ShopItemCard({
           <select
             value={item.itemType}
             onChange={(e) =>
-              onChange(item.id, "itemType", e.target.value as ShopItem["itemType"])
+              onChange(
+                item.id,
+                "itemType",
+                e.target.value as ShopItem["itemType"]
+              )
             }
             style={inputStyle}
           >
@@ -2297,7 +2412,9 @@ function ShopItemCard({
             <input
               type="checkbox"
               checked={!!item.showNewTag}
-              onChange={(e) => onChange(item.id, "showNewTag", e.target.checked)}
+              onChange={(e) =>
+                onChange(item.id, "showNewTag", e.target.checked)
+              }
             />
             NEW
           </label>
@@ -2337,7 +2454,11 @@ function ShopItemCard({
               cursor: "pointer",
             }}
           >
-            {saving === item.id ? "Saving..." : saved === item.id ? "Saved" : "Save"}
+            {saving === item.id
+              ? "Saving..."
+              : saved === item.id
+              ? "Saved"
+              : "Save"}
           </button>
 
           <button
@@ -2399,3 +2520,79 @@ function StatInput({
     </div>
   );
 }
+
+const inputStyle = {
+  width: "100%",
+  background: "var(--bg)",
+  border: "1px solid var(--border)",
+  color: "#fff",
+  padding: "0.5rem",
+  borderRadius: "6px",
+  fontSize: "0.85rem",
+};
+
+const labelStyle = {
+  fontSize: "0.8rem",
+  color: "var(--text-muted)",
+  marginBottom: "0.4rem",
+};
+
+const smallLabelStyle = {
+  fontSize: "0.68rem",
+  marginBottom: "0.25rem",
+};
+
+const sectionTitleStyle = {
+  fontSize: "1.2rem",
+  fontWeight: 700,
+  marginBottom: "1.5rem",
+};
+
+const panelStyle = {
+  background: "var(--surface)",
+  border: "1px solid var(--border)",
+  borderRadius: "12px",
+  padding: "1.5rem",
+  display: "flex",
+  flexDirection: "column" as const,
+  gap: "1.5rem",
+};
+
+const toggleLabelStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: "0.4rem",
+  fontSize: "0.75rem",
+  color: "var(--text-muted)",
+};
+
+const smallButtonStyle = {
+  background: "var(--bg)",
+  border: "1px solid var(--border)",
+  color: "#fff",
+  width: "40px",
+  height: "40px",
+  borderRadius: "8px",
+  cursor: "pointer",
+  fontSize: "1.2rem",
+};
+
+const secondaryButtonStyle = {
+  background: "transparent",
+  border: "1px solid var(--border)",
+  color: "var(--text-muted)",
+  borderRadius: "8px",
+  padding: "0.55rem 0.75rem",
+  fontWeight: 800,
+  cursor: "pointer",
+};
+
+const primaryButtonStyle = (isSaved: boolean) => ({
+  background: isSaved ? "var(--green)" : "var(--blue)",
+  color: "#fff",
+  border: "none",
+  padding: "0.8rem",
+  borderRadius: "8px",
+  fontWeight: 700,
+  cursor: "pointer",
+});
