@@ -28,6 +28,11 @@ type ShopItem = {
   showLeavingTodayTag?: boolean;
 };
 
+type ShopSection = {
+  title: string;
+  order: number;
+};
+
 type Settings = {
   currentGameweek?: number;
   deadline?: any;
@@ -38,23 +43,17 @@ type Settings = {
 function toDateSafe(value: any): Date | null {
   if (!value) return null;
 
-  if (typeof value.toDate === "function") {
-    return value.toDate();
-  }
+  if (typeof value.toDate === "function") return value.toDate();
 
   if (typeof value === "object" && typeof value.seconds === "number") {
     return new Date(value.seconds * 1000);
   }
 
-  if (value instanceof Date) {
-    return value;
-  }
+  if (value instanceof Date) return value;
 
   if (typeof value === "string") {
     const date = new Date(value);
-
     if (Number.isNaN(date.getTime())) return null;
-
     return date;
   }
 
@@ -139,7 +138,7 @@ const getRarityColor = (rarity?: string) => {
     case "epic":
       return "#a855f7";
     case "legendary":
-      return "#ffce1b";
+      return "var(--accent)";
     case "icon":
       return "#22d3ee";
     default:
@@ -153,6 +152,7 @@ export default function ShopPage() {
   const [itemsBySection, setItemsBySection] = useState<
     Record<string, ShopItem[]>
   >({});
+  const [sectionOrders, setSectionOrders] = useState<Record<string, number>>({});
   const [settings, setSettings] = useState<Settings | null>(null);
   const [userCoins, setUserCoins] = useState(0);
   const [ownedIds, setOwnedIds] = useState<string[]>([]);
@@ -169,22 +169,34 @@ export default function ShopPage() {
       setLoading(true);
 
       try {
-        const [itemSnap, settingsSnap, teamSnap, invSnap] = await Promise.all([
-          getDocs(collection(db, "shopItems")),
-          getDocs(collection(db, "settings")),
-          getDocs(
-            query(
-              collection(db, "userTeams"),
-              where("ownerEmail", "==", userEmail)
-            )
-          ),
-          getDocs(
-            query(
-              collection(db, "userInventory"),
-              where("ownerEmail", "==", userEmail)
-            )
-          ),
-        ]);
+        const [itemSnap, settingsSnap, teamSnap, invSnap, sectionsSnap] =
+          await Promise.all([
+            getDocs(collection(db, "shopItems")),
+            getDocs(collection(db, "settings")),
+            getDocs(
+              query(
+                collection(db, "userTeams"),
+                where("ownerEmail", "==", userEmail)
+              )
+            ),
+            getDocs(
+              query(
+                collection(db, "userInventory"),
+                where("ownerEmail", "==", userEmail)
+              )
+            ),
+            getDocs(collection(db, "shopSections")),
+          ]);
+
+        const orderMap: Record<string, number> = {};
+
+        sectionsSnap.docs.forEach((d) => {
+          const data = d.data() as ShopSection;
+          const title = String(data.title || d.id || "General");
+          orderMap[title] = Number(data.order ?? 99);
+        });
+
+        setSectionOrders(orderMap);
 
         if (!settingsSnap.empty) {
           const settingsData = settingsSnap.docs[0].data() as Settings;
@@ -201,7 +213,7 @@ export default function ShopPage() {
           (d) => ({ ...d.data() } as ShopItem)
         );
 
-        const availableItems = allItems.filter(isItemAvailable);
+        const availableItems = allItems.filter((item) => item.isVisible !== false);
 
         const grouped = availableItems.reduce((acc, item) => {
           const sec = item.section || "General";
@@ -239,10 +251,6 @@ export default function ShopPage() {
 
     loadShop();
   }, [user]);
-
-  const isItemAvailable = (item: ShopItem) => {
-    return item.isVisible !== false;
-  };
 
   const handleBuy = async (item: ShopItem) => {
     const userEmail = user?.email;
@@ -331,7 +339,7 @@ export default function ShopPage() {
             padding: "2.5rem",
           }}
         >
-          <div style={{ fontSize: "3rem", marginBottom: "1rem" }}>🔄</div>
+          <div style={{ fontSize: "3rem", marginBottom: "1rem" }}>🔒</div>
 
           <h1
             style={{
@@ -340,18 +348,25 @@ export default function ShopPage() {
               marginBottom: "0.5rem",
             }}
           >
-            Refreshing Shop...
+            Shop is Locked
           </h1>
 
           <p style={{ color: "var(--text-muted)" }}>
-            Estimated Time: 2 Minutes
+            Store access is currently restricted by the admin.
           </p>
         </div>
       </Shell>
     );
   }
 
-  const sections = Object.entries(itemsBySection);
+  const sections = Object.entries(itemsBySection).sort(([aTitle], [bTitle]) => {
+    const aOrder = Number(sectionOrders[aTitle] ?? 99);
+    const bOrder = Number(sectionOrders[bTitle] ?? 99);
+
+    if (aOrder !== bOrder) return aOrder - bOrder;
+
+    return aTitle.localeCompare(bTitle);
+  });
 
   return (
     <Shell>
@@ -432,7 +447,8 @@ export default function ShopPage() {
                 marginBottom: "1.25rem",
               }}
             >
-              ‎ 
+              Unlock cosmetics, profile upgrades, banners, songs, and limited
+              items before they leave the store.
             </p>
 
             <div
