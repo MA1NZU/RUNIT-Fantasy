@@ -38,45 +38,79 @@ type Settings = {
   shopRefreshAt?: any;
 };
 
-function toDateSafe(value: any, endOfDay = false): Date | null {
-  if (!value) return null;
+function pad2(n: number) {
+  return String(n).padStart(2, "0");
+}
+
+function getTodayKey() {
+  const now = new Date();
+
+  return `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(
+    now.getDate()
+  )}`;
+}
+
+function toDateKey(value: any): string {
+  if (!value) return "";
 
   if (typeof value.toDate === "function") {
     const date = value.toDate();
 
-    if (endOfDay) {
-      date.setHours(23, 59, 59, 999);
-    }
-
-    return date;
+    return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(
+      date.getDate()
+    )}`;
   }
 
   if (typeof value === "object" && typeof value.seconds === "number") {
     const date = new Date(value.seconds * 1000);
 
-    if (endOfDay) {
-      date.setHours(23, 59, 59, 999);
-    }
-
-    return date;
+    return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(
+      date.getDate()
+    )}`;
   }
 
   if (value instanceof Date) {
-    const date = new Date(value);
-
-    if (endOfDay) {
-      date.setHours(23, 59, 59, 999);
-    }
-
-    return date;
+    return `${value.getFullYear()}-${pad2(value.getMonth() + 1)}-${pad2(
+      value.getDate()
+    )}`;
   }
 
   if (typeof value === "string") {
-    if (!value) return null;
+    if (!value) return "";
 
-    const date = value.includes("T")
-      ? new Date(value)
-      : new Date(`${value}T${endOfDay ? "23:59:59" : "00:00:00"}`);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      return value;
+    }
+
+    const date = new Date(value);
+
+    if (Number.isNaN(date.getTime())) return "";
+
+    return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(
+      date.getDate()
+    )}`;
+  }
+
+  return "";
+}
+
+function toDateSafe(value: any): Date | null {
+  if (!value) return null;
+
+  if (typeof value.toDate === "function") {
+    return value.toDate();
+  }
+
+  if (typeof value === "object" && typeof value.seconds === "number") {
+    return new Date(value.seconds * 1000);
+  }
+
+  if (value instanceof Date) {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const date = new Date(value);
 
     if (Number.isNaN(date.getTime())) return null;
 
@@ -164,7 +198,7 @@ const getRarityColor = (rarity?: string) => {
     case "epic":
       return "#a855f7";
     case "legendary":
-      return "#ffce1b";
+      return "var(--accent)";
     case "icon":
       return "#22d3ee";
     default:
@@ -260,13 +294,18 @@ export default function ShopPage() {
   const isItemAvailable = (item: ShopItem) => {
     if (item.isVisible === false) return false;
 
-    const now = new Date();
+    const today = getTodayKey();
 
-    const arrive = toDateSafe(item.arriveDate);
-    const leave = toDateSafe(item.leaveDate, true);
+    const arriveKey = toDateKey(item.arriveDate);
+    const leaveKey = toDateKey(item.leaveDate);
 
-    if (arrive && now < arrive) return false;
-    if (leave && now > leave) return false;
+    if (arriveKey && today < arriveKey) {
+      return false;
+    }
+
+    if (leaveKey && today > leaveKey) {
+      return false;
+    }
 
     return true;
   };
@@ -425,7 +464,8 @@ export default function ShopPage() {
                 marginBottom: "1.25rem",
               }}
             >
-              ‎
+              Unlock cosmetics, profile upgrades, banners, songs, and limited
+              items before they leave the store.
             </p>
 
             <div
