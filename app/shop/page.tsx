@@ -425,8 +425,7 @@ export default function ShopPage() {
                 marginBottom: "1.25rem",
               }}
             >
-              Unlock cosmetics, profile upgrades, banners, songs, and limited
-              items before they leave the store.
+              ‎
             </p>
 
             <div
