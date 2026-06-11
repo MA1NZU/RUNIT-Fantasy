@@ -86,18 +86,6 @@ function toDateSafe(value: any, endOfDay = false): Date | null {
   return null;
 }
 
-function formatDateSafe(value: any) {
-  const date = toDateSafe(value);
-
-  if (!date) return "";
-
-  return date.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
-
 function ShopRefreshTimer({ refreshAt }: { refreshAt?: any }) {
   const [timeLeft, setTimeLeft] = useState("");
 
@@ -164,6 +152,25 @@ function ShopRefreshTimer({ refreshAt }: { refreshAt?: any }) {
     </div>
   );
 }
+
+const getRarityColor = (rarity?: string) => {
+  switch ((rarity || "").toLowerCase()) {
+    case "common":
+      return "#9ca3af";
+    case "uncommon":
+      return "#22c55e";
+    case "rare":
+      return "var(--blue)";
+    case "epic":
+      return "#a855f7";
+    case "legendary":
+      return "var(--accent)";
+    case "icon":
+      return "#22d3ee";
+    default:
+      return "var(--text-muted)";
+  }
+};
 
 export default function ShopPage() {
   const { user } = useAuth();
@@ -418,7 +425,8 @@ export default function ShopPage() {
                 marginBottom: "1.25rem",
               }}
             >
-              ‎ 
+              Unlock cosmetics, profile upgrades, banners, songs, and limited
+              items before they leave the store.
             </p>
 
             <div
@@ -567,7 +575,7 @@ export default function ShopPage() {
                         {item.showLeavingTodayTag && (
                           <span
                             style={{
-                              background: "rgba(255,193,7,0.14)",
+                              background: "#0f0d1b",
                               color: "var(--accent)",
                               border: "1px solid rgba(255,193,7,0.3)",
                               fontSize: "0.62rem",
@@ -645,8 +653,8 @@ export default function ShopPage() {
                           <div
                             style={{
                               fontSize: "0.65rem",
-                              color: "var(--text-muted)",
-                              fontWeight: 800,
+                              color: getRarityColor(item.rarity),
+                              fontWeight: 900,
                               textTransform: "uppercase",
                               letterSpacing: "0.7px",
                             }}
@@ -667,29 +675,6 @@ export default function ShopPage() {
                           {item.itemName}
                         </div>
 
-                        {(item.arriveDate || item.leaveDate) && (
-                          <div
-                            style={{
-                              display: "flex",
-                              flexDirection: "column",
-                              gap: "0.25rem",
-                              marginBottom: "0.9rem",
-                              color: "var(--text-muted)",
-                              fontSize: "0.72rem",
-                            }}
-                          >
-                            {item.arriveDate && (
-                              <div>
-                                Arrived: {formatDateSafe(item.arriveDate)}
-                              </div>
-                            )}
-
-                            {item.leaveDate && (
-                              <div>Leaves: {formatDateSafe(item.leaveDate)}</div>
-                            )}
-                          </div>
-                        )}
-
                         <button
                           onClick={() => handleBuy(item)}
                           disabled={owned || !canAfford || isBuying}
@@ -709,7 +694,9 @@ export default function ShopPage() {
                               ? "rgba(255,255,255,0.08)"
                               : "var(--blue)",
                             color:
-                              owned || !canAfford ? "var(--text-muted)" : "#fff",
+                              owned || !canAfford
+                                ? "var(--text-muted)"
+                                : "#fff",
                           }}
                         >
                           {owned
