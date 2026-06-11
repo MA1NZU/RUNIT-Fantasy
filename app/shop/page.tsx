@@ -138,7 +138,7 @@ const getRarityColor = (rarity?: string) => {
     case "epic":
       return "#a855f7";
     case "legendary":
-      return "var(--accent)";
+      return "ffce1b";
     case "icon":
       return "#22d3ee";
     default:
@@ -339,7 +339,7 @@ export default function ShopPage() {
             padding: "2.5rem",
           }}
         >
-          <div style={{ fontSize: "3rem", marginBottom: "1rem" }}>🔒</div>
+          <div style={{ fontSize: "3rem", marginBottom: "1rem" }}>↻</div>
 
           <h1
             style={{
@@ -348,11 +348,11 @@ export default function ShopPage() {
               marginBottom: "0.5rem",
             }}
           >
-            Shop is Locked
+            REFRESHING SHOP
           </h1>
 
           <p style={{ color: "var(--text-muted)" }}>
-            Store access is currently restricted by the admin.
+            Estimated Time: 2 minutes.
           </p>
         </div>
       </Shell>
@@ -447,8 +447,7 @@ export default function ShopPage() {
                 marginBottom: "1.25rem",
               }}
             >
-              Unlock cosmetics, profile upgrades, banners, songs, and limited
-              items before they leave the store.
+              ‎ 
             </p>
 
             <div
