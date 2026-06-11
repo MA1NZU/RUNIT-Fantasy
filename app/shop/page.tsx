@@ -331,7 +331,7 @@ export default function ShopPage() {
             padding: "2.5rem",
           }}
         >
-          <div style={{ fontSize: "3rem", marginBottom: "1rem" }}>🔒</div>
+          <div style={{ fontSize: "3rem", marginBottom: "1rem" }}>🔄</div>
 
           <h1
             style={{
@@ -340,11 +340,11 @@ export default function ShopPage() {
               marginBottom: "0.5rem",
             }}
           >
-            Shop is Locked
+            Refreshing Shop...
           </h1>
 
           <p style={{ color: "var(--text-muted)" }}>
-            Store access is currently restricted by the admin.
+            Estimated Time: 2 Minutes
           </p>
         </div>
       </Shell>
