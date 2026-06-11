@@ -25,37 +25,92 @@ type ShopItem = {
   section: string;
   isVisible: boolean;
 
-  arriveDate?: string;
-  leaveDate?: string;
+  arriveDate?: any;
+  leaveDate?: any;
   showNewTag?: boolean;
   showLeavingTodayTag?: boolean;
 };
 
 type Settings = {
   currentGameweek?: number;
-  deadline?: string;
-  shopDeadline?: string;
-  shopRefreshAt?: string;
+  deadline?: any;
+  shopDeadline?: any;
+  shopRefreshAt?: any;
 };
 
-function ShopRefreshTimer({ refreshAt }: { refreshAt?: string }) {
+function toDateSafe(value: any, endOfDay = false): Date | null {
+  if (!value) return null;
+
+  if (typeof value.toDate === "function") {
+    const date = value.toDate();
+
+    if (endOfDay) {
+      date.setHours(23, 59, 59, 999);
+    }
+
+    return date;
+  }
+
+  if (typeof value === "object" && typeof value.seconds === "number") {
+    const date = new Date(value.seconds * 1000);
+
+    if (endOfDay) {
+      date.setHours(23, 59, 59, 999);
+    }
+
+    return date;
+  }
+
+  if (value instanceof Date) {
+    const date = new Date(value);
+
+    if (endOfDay) {
+      date.setHours(23, 59, 59, 999);
+    }
+
+    return date;
+  }
+
+  if (typeof value === "string") {
+    if (!value) return null;
+
+    const date = value.includes("T")
+      ? new Date(value)
+      : new Date(`${value}T${endOfDay ? "23:59:59" : "00:00:00"}`);
+
+    if (Number.isNaN(date.getTime())) return null;
+
+    return date;
+  }
+
+  return null;
+}
+
+function formatDateSafe(value: any) {
+  const date = toDateSafe(value);
+
+  if (!date) return "";
+
+  return date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function ShopRefreshTimer({ refreshAt }: { refreshAt?: any }) {
   const [timeLeft, setTimeLeft] = useState("");
 
   useEffect(() => {
     const update = () => {
-      if (!refreshAt) {
+      const refreshDate = toDateSafe(refreshAt);
+
+      if (!refreshDate) {
         setTimeLeft("Not set");
         return;
       }
 
-      const target = new Date(refreshAt).getTime();
-
-      if (Number.isNaN(target)) {
-        setTimeLeft("Not set");
-        return;
-      }
-
-      const diff = target - Date.now();
+      const diff = refreshDate.getTime() - Date.now();
 
       if (diff <= 0) {
         setTimeLeft("Refresh available");
@@ -135,7 +190,10 @@ export default function ShopPage() {
           getDocs(collection(db, "shopItems")),
           getDocs(collection(db, "settings")),
           getDocs(
-            query(collection(db, "userTeams"), where("ownerEmail", "==", userEmail))
+            query(
+              collection(db, "userTeams"),
+              where("ownerEmail", "==", userEmail)
+            )
           ),
           getDocs(
             query(
@@ -197,17 +255,11 @@ export default function ShopPage() {
 
     const now = new Date();
 
-    if (item.arriveDate) {
-      const arrive = new Date(`${item.arriveDate}T00:00:00`);
+    const arrive = toDateSafe(item.arriveDate);
+    const leave = toDateSafe(item.leaveDate, true);
 
-      if (now < arrive) return false;
-    }
-
-    if (item.leaveDate) {
-      const leave = new Date(`${item.leaveDate}T23:59:59`);
-
-      if (now > leave) return false;
-    }
+    if (arrive && now < arrive) return false;
+    if (leave && now > leave) return false;
 
     return true;
   };
@@ -628,11 +680,13 @@ export default function ShopPage() {
                             }}
                           >
                             {item.arriveDate && (
-                              <div>Arrived: {item.arriveDate}</div>
+                              <div>
+                                Arrived: {formatDateSafe(item.arriveDate)}
+                              </div>
                             )}
 
                             {item.leaveDate && (
-                              <div>Leaves: {item.leaveDate}</div>
+                              <div>Leaves: {formatDateSafe(item.leaveDate)}</div>
                             )}
                           </div>
                         )}
@@ -655,15 +709,14 @@ export default function ShopPage() {
                               : !canAfford
                               ? "rgba(255,255,255,0.08)"
                               : "var(--blue)",
-                            color: owned || !canAfford ? "var(--text-muted)" : "#fff",
+                            color:
+                              owned || !canAfford ? "var(--text-muted)" : "#fff",
                           }}
                         >
                           {owned
                             ? "OWNED"
                             : isBuying
                             ? "Buying..."
-                            : !canAfford
-                            ? `${item.price} Coins`
                             : `${item.price} Coins`}
                         </button>
                       </div>
