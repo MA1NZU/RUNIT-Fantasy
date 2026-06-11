@@ -50,7 +50,7 @@ type Settings = {
   currentGameweek: number;
   deadline: string;
   shopDeadline?: string;
-  shopRefreshAt?: string;
+  shopRefreshAt?: any;
   lockTeamLeaderboard?: boolean;
   lockTransfers?: boolean;
 };
@@ -66,8 +66,8 @@ type ShopItem = {
   rarity: string;
   section: string;
   isVisible: boolean;
-  arriveDate?: string;
-  leaveDate?: string;
+  arriveDate?: any;
+  leaveDate?: any;
   showNewTag?: boolean;
   showLeavingTodayTag?: boolean;
 };
@@ -100,6 +100,70 @@ const defaultNewItem: Partial<ShopItem> = {
   showLeavingTodayTag: false,
 };
 
+function toDateSafe(value: any): Date | null {
+  if (!value) return null;
+
+  if (typeof value.toDate === "function") {
+    return value.toDate();
+  }
+
+  if (typeof value === "object" && typeof value.seconds === "number") {
+    return new Date(value.seconds * 1000);
+  }
+
+  if (value instanceof Date) {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    if (!value) return null;
+
+    const date = new Date(value);
+
+    if (Number.isNaN(date.getTime())) return null;
+
+    return date;
+  }
+
+  return null;
+}
+
+function dateInputValue(value: any) {
+  if (!value) return "";
+
+  if (typeof value === "string") {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+
+    const date = toDateSafe(value);
+    if (!date) return "";
+
+    return date.toISOString().slice(0, 10);
+  }
+
+  const date = toDateSafe(value);
+  if (!date) return "";
+
+  return date.toISOString().slice(0, 10);
+}
+
+function datetimeInputValue(value: any) {
+  if (!value) return "";
+
+  if (typeof value === "string") {
+    if (value.includes("T")) return value.slice(0, 16);
+
+    const date = toDateSafe(value);
+    if (!date) return "";
+
+    return date.toISOString().slice(0, 16);
+  }
+
+  const date = toDateSafe(value);
+  if (!date) return "";
+
+  return date.toISOString().slice(0, 16);
+}
+
 export default function AdminPage() {
   const { user } = useAuth();
   const router = useRouter();
@@ -119,6 +183,14 @@ export default function AdminPage() {
   const [newItem, setNewItem] = useState<Partial<ShopItem>>({
     ...defaultNewItem,
   });
+
+  const [shopSearch, setShopSearch] = useState("");
+  const [shopTypeFilter, setShopTypeFilter] = useState<
+    "all" | ShopItem["itemType"]
+  >("all");
+  const [shopSortBy, setShopSortBy] = useState<
+    "type" | "name" | "price" | "section" | "rarity"
+  >("type");
 
   useEffect(() => {
     if (user && user.email !== ADMIN_EMAIL) router.replace("/");
@@ -717,6 +789,66 @@ export default function AdminPage() {
 
   const activePlayer = players.find((p) => p.id === selectedPlayerId);
 
+  const filteredShopItems = [...shopItems]
+    .filter((item) => {
+      const search = shopSearch.toLowerCase().trim();
+
+      if (!search) return true;
+
+      return (
+        String(item.itemName || "").toLowerCase().includes(search) ||
+        String(item.itemType || "").toLowerCase().includes(search) ||
+        String(item.section || "").toLowerCase().includes(search) ||
+        String(item.rarity || "").toLowerCase().includes(search) ||
+        String(item.ID || "").toLowerCase().includes(search)
+      );
+    })
+    .filter((item) => {
+      if (shopTypeFilter === "all") return true;
+      return item.itemType === shopTypeFilter;
+    })
+    .sort((a, b) => {
+      if (shopSortBy === "type") {
+        const typeCompare = String(a.itemType || "").localeCompare(
+          String(b.itemType || "")
+        );
+
+        if (typeCompare !== 0) return typeCompare;
+
+        return String(a.itemName || "").localeCompare(String(b.itemName || ""));
+      }
+
+      if (shopSortBy === "name") {
+        return String(a.itemName || "").localeCompare(String(b.itemName || ""));
+      }
+
+      if (shopSortBy === "price") {
+        return Number(a.price || 0) - Number(b.price || 0);
+      }
+
+      if (shopSortBy === "section") {
+        const sectionCompare = String(a.section || "").localeCompare(
+          String(b.section || "")
+        );
+
+        if (sectionCompare !== 0) return sectionCompare;
+
+        return String(a.itemName || "").localeCompare(String(b.itemName || ""));
+      }
+
+      if (shopSortBy === "rarity") {
+        const rarityCompare = String(a.rarity || "").localeCompare(
+          String(b.rarity || "")
+        );
+
+        if (rarityCompare !== 0) return rarityCompare;
+
+        return String(a.itemName || "").localeCompare(String(b.itemName || ""));
+      }
+
+      return 0;
+    });
+
   return (
     <Shell>
       <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
@@ -950,7 +1082,7 @@ export default function AdminPage() {
                   <div style={labelStyle}>Transfer Deadline</div>
                   <input
                     type="datetime-local"
-                    value={settings.deadline || ""}
+                    value={datetimeInputValue(settings.deadline)}
                     onChange={(e) =>
                       setSettings({ ...settings, deadline: e.target.value })
                     }
@@ -962,7 +1094,7 @@ export default function AdminPage() {
                   <div style={labelStyle}>Next Shop Refresh</div>
                   <input
                     type="datetime-local"
-                    value={settings.shopRefreshAt || ""}
+                    value={datetimeInputValue(settings.shopRefreshAt)}
                     onChange={(e) =>
                       setSettings({
                         ...settings,
@@ -1009,6 +1141,114 @@ export default function AdminPage() {
             >
               Shop Manager
             </h2>
+
+            <div
+              style={{
+                background: "var(--surface)",
+                border: "1px solid var(--border)",
+                borderRadius: "14px",
+                padding: "1rem",
+                marginBottom: "1rem",
+                display: "grid",
+                gridTemplateColumns: "1.5fr 1fr 1fr auto",
+                gap: "0.85rem",
+                alignItems: "end",
+              }}
+            >
+              <div>
+                <div style={{ fontSize: "0.7rem", marginBottom: "0.3rem" }}>
+                  Search Items
+                </div>
+                <input
+                  value={shopSearch}
+                  onChange={(e) => setShopSearch(e.target.value)}
+                  placeholder="Search by name, type, section, rarity..."
+                  style={inputStyle}
+                />
+              </div>
+
+              <div>
+                <div style={{ fontSize: "0.7rem", marginBottom: "0.3rem" }}>
+                  Filter Type
+                </div>
+                <select
+                  value={shopTypeFilter}
+                  onChange={(e) =>
+                    setShopTypeFilter(
+                      e.target.value as "all" | ShopItem["itemType"]
+                    )
+                  }
+                  style={inputStyle}
+                >
+                  <option value="all">All Types</option>
+                  <option value="avatar">Avatars</option>
+                  <option value="banner">Banners</option>
+                  <option value="song">Songs</option>
+                  <option value="title">Titles</option>
+                </select>
+              </div>
+
+              <div>
+                <div style={{ fontSize: "0.7rem", marginBottom: "0.3rem" }}>
+                  Sort By
+                </div>
+                <select
+                  value={shopSortBy}
+                  onChange={(e) =>
+                    setShopSortBy(
+                      e.target.value as
+                        | "type"
+                        | "name"
+                        | "price"
+                        | "section"
+                        | "rarity"
+                    )
+                  }
+                  style={inputStyle}
+                >
+                  <option value="type">Type</option>
+                  <option value="name">Name</option>
+                  <option value="price">Price</option>
+                  <option value="section">Section</option>
+                  <option value="rarity">Rarity</option>
+                </select>
+              </div>
+
+              <button
+                onClick={() => {
+                  setShopSearch("");
+                  setShopTypeFilter("all");
+                  setShopSortBy("type");
+                }}
+                style={{
+                  background: "transparent",
+                  border: "1px solid var(--border)",
+                  color: "var(--text-muted)",
+                  borderRadius: "8px",
+                  padding: "0.6rem 0.9rem",
+                  fontWeight: 800,
+                  cursor: "pointer",
+                }}
+              >
+                Reset
+              </button>
+
+              <div
+                style={{
+                  gridColumn: "1 / -1",
+                  color: "var(--text-muted)",
+                  fontSize: "0.8rem",
+                }}
+              >
+                Showing{" "}
+                <strong style={{ color: "#fff" }}>
+                  {filteredShopItems.length}
+                </strong>{" "}
+                of{" "}
+                <strong style={{ color: "#fff" }}>{shopItems.length}</strong>{" "}
+                items
+              </div>
+            </div>
 
             <div
               style={{
@@ -1156,7 +1396,7 @@ export default function AdminPage() {
                   </div>
                   <input
                     type="date"
-                    value={newItem.arriveDate || ""}
+                    value={dateInputValue(newItem.arriveDate)}
                     onChange={(e) =>
                       setNewItem({ ...newItem, arriveDate: e.target.value })
                     }
@@ -1170,7 +1410,7 @@ export default function AdminPage() {
                   </div>
                   <input
                     type="date"
-                    value={newItem.leaveDate || ""}
+                    value={dateInputValue(newItem.leaveDate)}
                     onChange={(e) =>
                       setNewItem({ ...newItem, leaveDate: e.target.value })
                     }
@@ -1276,7 +1516,7 @@ export default function AdminPage() {
                 gap: "1rem",
               }}
             >
-              {shopItems.map((item) => (
+              {filteredShopItems.map((item) => (
                 <div
                   key={item.id}
                   style={{
@@ -1346,7 +1586,7 @@ export default function AdminPage() {
                       {item.showLeavingTodayTag && (
                         <span
                           style={{
-                            background: "rgba(255,193,7,0.14)",
+                            background: "#0f0d1b",
                             color: "var(--accent)",
                             border: "1px solid rgba(255,193,7,0.3)",
                             fontSize: "0.62rem",
@@ -1461,7 +1701,7 @@ export default function AdminPage() {
                       <div style={smallLabelStyle}>Arrive</div>
                       <input
                         type="date"
-                        value={item.arriveDate || ""}
+                        value={dateInputValue(item.arriveDate)}
                         onChange={(e) =>
                           updateShopItemField(
                             item.id,
@@ -1477,7 +1717,7 @@ export default function AdminPage() {
                       <div style={smallLabelStyle}>Leave</div>
                       <input
                         type="date"
-                        value={item.leaveDate || ""}
+                        value={dateInputValue(item.leaveDate)}
                         onChange={(e) =>
                           updateShopItemField(
                             item.id,
