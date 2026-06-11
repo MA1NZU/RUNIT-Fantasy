@@ -24,9 +24,6 @@ type ShopItem = {
   rarity: string;
   section: string;
   isVisible: boolean;
-
-  arriveDate?: any;
-  leaveDate?: any;
   showNewTag?: boolean;
   showLeavingTodayTag?: boolean;
 };
@@ -34,65 +31,9 @@ type ShopItem = {
 type Settings = {
   currentGameweek?: number;
   deadline?: any;
-  shopDeadline?: any;
   shopRefreshAt?: any;
+  lockShop?: boolean;
 };
-
-function pad2(n: number) {
-  return String(n).padStart(2, "0");
-}
-
-function getTodayKey() {
-  const now = new Date();
-
-  return `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(
-    now.getDate()
-  )}`;
-}
-
-function toDateKey(value: any): string {
-  if (!value) return "";
-
-  if (typeof value.toDate === "function") {
-    const date = value.toDate();
-
-    return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(
-      date.getDate()
-    )}`;
-  }
-
-  if (typeof value === "object" && typeof value.seconds === "number") {
-    const date = new Date(value.seconds * 1000);
-
-    return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(
-      date.getDate()
-    )}`;
-  }
-
-  if (value instanceof Date) {
-    return `${value.getFullYear()}-${pad2(value.getMonth() + 1)}-${pad2(
-      value.getDate()
-    )}`;
-  }
-
-  if (typeof value === "string") {
-    if (!value) return "";
-
-    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-      return value;
-    }
-
-    const date = new Date(value);
-
-    if (Number.isNaN(date.getTime())) return "";
-
-    return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(
-      date.getDate()
-    )}`;
-  }
-
-  return "";
-}
 
 function toDateSafe(value: any): Date | null {
   if (!value) return null;
@@ -217,6 +158,7 @@ export default function ShopPage() {
   const [ownedIds, setOwnedIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [buying, setBuying] = useState<string | null>(null);
+  const [isLocked, setIsLocked] = useState(false);
 
   useEffect(() => {
     const userEmail = user?.email;
@@ -245,7 +187,14 @@ export default function ShopPage() {
         ]);
 
         if (!settingsSnap.empty) {
-          setSettings(settingsSnap.docs[0].data() as Settings);
+          const settingsData = settingsSnap.docs[0].data() as Settings;
+          setSettings(settingsData);
+
+          if (settingsData.lockShop) {
+            setIsLocked(true);
+            setLoading(false);
+            return;
+          }
         }
 
         const allItems = itemSnap.docs.map(
@@ -292,22 +241,7 @@ export default function ShopPage() {
   }, [user]);
 
   const isItemAvailable = (item: ShopItem) => {
-    if (item.isVisible === false) return false;
-
-    const today = getTodayKey();
-
-    const arriveKey = toDateKey(item.arriveDate);
-    const leaveKey = toDateKey(item.leaveDate);
-
-    if (arriveKey && today < arriveKey) {
-      return false;
-    }
-
-    if (leaveKey && today > leaveKey) {
-      return false;
-    }
-
-    return true;
+    return item.isVisible !== false;
   };
 
   const handleBuy = async (item: ShopItem) => {
@@ -379,6 +313,40 @@ export default function ShopPage() {
     return (
       <Shell>
         <p style={{ padding: "2rem" }}>Loading Shop...</p>
+      </Shell>
+    );
+  }
+
+  if (isLocked) {
+    return (
+      <Shell>
+        <div
+          style={{
+            maxWidth: "760px",
+            margin: "4rem auto",
+            textAlign: "center",
+            background: "var(--surface)",
+            border: "1px solid var(--border)",
+            borderRadius: "24px",
+            padding: "2.5rem",
+          }}
+        >
+          <div style={{ fontSize: "3rem", marginBottom: "1rem" }}>🔒</div>
+
+          <h1
+            style={{
+              fontSize: "1.8rem",
+              fontWeight: 900,
+              marginBottom: "0.5rem",
+            }}
+          >
+            Shop is Locked
+          </h1>
+
+          <p style={{ color: "var(--text-muted)" }}>
+            Store access is currently restricted by the admin.
+          </p>
+        </div>
       </Shell>
     );
   }
@@ -464,8 +432,7 @@ export default function ShopPage() {
                 marginBottom: "1.25rem",
               }}
             >
-              Unlock cosmetics, profile upgrades, banners, songs, and limited
-              items before they leave the store.
+              ‎ 
             </p>
 
             <div
