@@ -49,7 +49,7 @@ type Settings = {
   id: string;
   currentGameweek: number;
   deadline: string;
-  shopDeadline: string;
+  shopDeadline?: string;
   shopRefreshAt?: string;
   lockTeamLeaderboard?: boolean;
   lockTransfers?: boolean;
@@ -83,6 +83,7 @@ const getRankPrizeCoins = (rank: number) => {
   if (rank === 11) return 300;
   if (rank === 12) return 300;
   if (rank === 13) return 200;
+
   return 0;
 };
 
@@ -115,7 +116,9 @@ export default function AdminPage() {
 
   const [selectedPlayerId, setSelectedPlayerId] = useState("");
   const [calcStats, setCalcStats] = useState<Record<string, string>>({});
-  const [newItem, setNewItem] = useState<Partial<ShopItem>>(defaultNewItem);
+  const [newItem, setNewItem] = useState<Partial<ShopItem>>({
+    ...defaultNewItem,
+  });
 
   useEffect(() => {
     if (user && user.email !== ADMIN_EMAIL) router.replace("/");
@@ -148,7 +151,10 @@ export default function AdminPage() {
         }
 
         const gwTeamsSnap = await getDocs(
-          query(collection(db, "gameweekTeams"), where("gameweek", "==", activeGW))
+          query(
+            collection(db, "gameweekTeams"),
+            where("gameweek", "==", activeGW)
+          )
         );
 
         const currentGwPointsByEmail: Record<string, number> = {};
@@ -185,7 +191,9 @@ export default function AdminPage() {
                 lastGwCoinsGameweek: Number(manager.lastGwCoinsGameweek || 0),
               };
             })
-            .sort((a, b) => Number(b.totalPoints || 0) - Number(a.totalPoints || 0))
+            .sort(
+              (a, b) => Number(b.totalPoints || 0) - Number(a.totalPoints || 0)
+            )
         );
 
         setShopItems(
@@ -280,7 +288,10 @@ export default function AdminPage() {
 
         const canonical = playerDoc.id;
 
-        aliases.forEach((alias) => aliasToCanonical.set(alias, canonical));
+        aliases.forEach((alias) => {
+          aliasToCanonical.set(alias, canonical);
+        });
+
         playerAliasGroups.push(aliases);
       });
 
@@ -299,11 +310,13 @@ export default function AdminPage() {
         );
 
         const aliasesForThisStat = new Set<string>();
+
         directAliases.forEach((alias) => aliasesForThisStat.add(alias));
 
         playerAliasGroups.forEach((group) => {
           const groupMatchesStat = group.some((alias) => {
             const canonical = aliasToCanonical.get(alias) || alias;
+
             return (
               directAliases.includes(alias) || directCanonicalSet.has(canonical)
             );
@@ -459,7 +472,9 @@ export default function AdminPage() {
                 Number(manager.totalPoints || 0) + Number(update.difference),
             };
           })
-          .sort((a, b) => Number(b.totalPoints || 0) - Number(a.totalPoints || 0))
+          .sort(
+            (a, b) => Number(b.totalPoints || 0) - Number(a.totalPoints || 0)
+          )
       );
 
       console.log(`Synced ${operationCount} update(s) for GW${currentGameweek}.`);
@@ -518,7 +533,6 @@ export default function AdminPage() {
       await updateDoc(doc(db, "settings", settings.id), {
         currentGameweek: Number(settings.currentGameweek),
         deadline: settings.deadline,
-        shopDeadline: settings.shopDeadline,
         shopRefreshAt: settings.shopRefreshAt || "",
         lockTeamLeaderboard: !!settings.lockTeamLeaderboard,
         lockTransfers: !!settings.lockTransfers,
@@ -643,7 +657,7 @@ export default function AdminPage() {
       await setDoc(doc(db, "shopItems", id), itemData);
 
       setShopItems([...shopItems, { id, ...itemData } as ShopItem]);
-      setNewItem(defaultNewItem);
+      setNewItem({ ...defaultNewItem });
 
       markSaved("newShopItem");
     } catch (err) {
@@ -928,7 +942,7 @@ export default function AdminPage() {
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "repeat(3, 1fr)",
+                  gridTemplateColumns: "repeat(2, minmax(220px, 1fr))",
                   gap: "1rem",
                 }}
               >
@@ -939,21 +953,6 @@ export default function AdminPage() {
                     value={settings.deadline || ""}
                     onChange={(e) =>
                       setSettings({ ...settings, deadline: e.target.value })
-                    }
-                    style={inputStyle}
-                  />
-                </div>
-
-                <div>
-                  <div style={labelStyle}>Shop Deadline</div>
-                  <input
-                    type="datetime-local"
-                    value={settings.shopDeadline || ""}
-                    onChange={(e) =>
-                      setSettings({
-                        ...settings,
-                        shopDeadline: e.target.value,
-                      })
                     }
                     style={inputStyle}
                   />
@@ -1015,24 +1014,69 @@ export default function AdminPage() {
               style={{
                 background: "var(--surface)",
                 border: "1px solid var(--border)",
-                borderRadius: "12px",
-                padding: "1.5rem",
+                borderRadius: "14px",
+                padding: "1.25rem",
                 marginBottom: "2rem",
-                overflowX: "auto",
               }}
             >
               <div
                 style={{
-                  display: "grid",
-                  gridTemplateColumns:
-                    "1.5fr 1fr 0.7fr 2fr 2fr 1fr 1fr 1fr 1fr 0.55fr 0.65fr 0.5fr auto",
-                  gap: "0.75rem",
-                  alignItems: "end",
-                  minWidth: "1500px",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: "1rem",
+                  marginBottom: "1rem",
+                  flexWrap: "wrap",
                 }}
               >
                 <div>
-                  <div style={{ fontSize: "0.7rem" }}>Name</div>
+                  <div style={{ fontWeight: 800, fontSize: "1rem" }}>
+                    Add Shop Item
+                  </div>
+                  <div
+                    style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}
+                  >
+                    Create a new item with dates, tags, visibility, and media
+                    URLs.
+                  </div>
+                </div>
+
+                <button
+                  onClick={handleAddShopItem}
+                  disabled={saving === "newShopItem"}
+                  style={{
+                    background:
+                      saved === "newShopItem"
+                        ? "var(--green)"
+                        : "var(--blue)",
+                    color: "#fff",
+                    border: "none",
+                    padding: "0.7rem 1rem",
+                    borderRadius: "10px",
+                    fontWeight: 800,
+                    cursor: "pointer",
+                  }}
+                >
+                  {saving === "newShopItem"
+                    ? "Adding..."
+                    : saved === "newShopItem"
+                    ? "Added"
+                    : "Add Item"}
+                </button>
+              </div>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                  gap: "0.85rem",
+                  marginBottom: "0.85rem",
+                }}
+              >
+                <div>
+                  <div style={{ fontSize: "0.7rem", marginBottom: "0.3rem" }}>
+                    Name
+                  </div>
                   <input
                     value={newItem.itemName || ""}
                     onChange={(e) =>
@@ -1043,7 +1087,9 @@ export default function AdminPage() {
                 </div>
 
                 <div>
-                  <div style={{ fontSize: "0.7rem" }}>Type</div>
+                  <div style={{ fontSize: "0.7rem", marginBottom: "0.3rem" }}>
+                    Type
+                  </div>
                   <select
                     value={newItem.itemType}
                     onChange={(e) =>
@@ -1062,7 +1108,9 @@ export default function AdminPage() {
                 </div>
 
                 <div>
-                  <div style={{ fontSize: "0.7rem" }}>Price</div>
+                  <div style={{ fontSize: "0.7rem", marginBottom: "0.3rem" }}>
+                    Price
+                  </div>
                   <input
                     type="number"
                     value={newItem.price || 0}
@@ -1077,7 +1125,72 @@ export default function AdminPage() {
                 </div>
 
                 <div>
-                  <div style={{ fontSize: "0.7rem" }}>Image URL</div>
+                  <div style={{ fontSize: "0.7rem", marginBottom: "0.3rem" }}>
+                    Section
+                  </div>
+                  <input
+                    value={newItem.section || ""}
+                    onChange={(e) =>
+                      setNewItem({ ...newItem, section: e.target.value })
+                    }
+                    style={inputStyle}
+                  />
+                </div>
+
+                <div>
+                  <div style={{ fontSize: "0.7rem", marginBottom: "0.3rem" }}>
+                    Rarity
+                  </div>
+                  <input
+                    value={newItem.rarity || ""}
+                    onChange={(e) =>
+                      setNewItem({ ...newItem, rarity: e.target.value })
+                    }
+                    style={inputStyle}
+                  />
+                </div>
+
+                <div>
+                  <div style={{ fontSize: "0.7rem", marginBottom: "0.3rem" }}>
+                    Arrive Date
+                  </div>
+                  <input
+                    type="date"
+                    value={newItem.arriveDate || ""}
+                    onChange={(e) =>
+                      setNewItem({ ...newItem, arriveDate: e.target.value })
+                    }
+                    style={inputStyle}
+                  />
+                </div>
+
+                <div>
+                  <div style={{ fontSize: "0.7rem", marginBottom: "0.3rem" }}>
+                    Leave Date
+                  </div>
+                  <input
+                    type="date"
+                    value={newItem.leaveDate || ""}
+                    onChange={(e) =>
+                      setNewItem({ ...newItem, leaveDate: e.target.value })
+                    }
+                    style={inputStyle}
+                  />
+                </div>
+              </div>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+                  gap: "0.85rem",
+                  marginBottom: "0.85rem",
+                }}
+              >
+                <div>
+                  <div style={{ fontSize: "0.7rem", marginBottom: "0.3rem" }}>
+                    Image URL
+                  </div>
                   <input
                     value={newItem.previewImage || ""}
                     onChange={(e) =>
@@ -1091,7 +1204,9 @@ export default function AdminPage() {
                 </div>
 
                 <div>
-                  <div style={{ fontSize: "0.7rem" }}>Song URL</div>
+                  <div style={{ fontSize: "0.7rem", marginBottom: "0.3rem" }}>
+                    Song URL
+                  </div>
                   <input
                     value={newItem.songUrl || ""}
                     onChange={(e) =>
@@ -1100,61 +1215,17 @@ export default function AdminPage() {
                     style={inputStyle}
                   />
                 </div>
+              </div>
 
-                <div>
-                  <div style={{ fontSize: "0.7rem" }}>Section</div>
-                  <input
-                    value={newItem.section || ""}
-                    onChange={(e) =>
-                      setNewItem({ ...newItem, section: e.target.value })
-                    }
-                    style={inputStyle}
-                  />
-                </div>
-
-                <div>
-                  <div style={{ fontSize: "0.7rem" }}>Rarity</div>
-                  <input
-                    value={newItem.rarity || ""}
-                    onChange={(e) =>
-                      setNewItem({ ...newItem, rarity: e.target.value })
-                    }
-                    style={inputStyle}
-                  />
-                </div>
-
-                <div>
-                  <div style={{ fontSize: "0.7rem" }}>Arrive</div>
-                  <input
-                    type="date"
-                    value={newItem.arriveDate || ""}
-                    onChange={(e) =>
-                      setNewItem({
-                        ...newItem,
-                        arriveDate: e.target.value,
-                      })
-                    }
-                    style={inputStyle}
-                  />
-                </div>
-
-                <div>
-                  <div style={{ fontSize: "0.7rem" }}>Leave</div>
-                  <input
-                    type="date"
-                    value={newItem.leaveDate || ""}
-                    onChange={(e) =>
-                      setNewItem({
-                        ...newItem,
-                        leaveDate: e.target.value,
-                      })
-                    }
-                    style={inputStyle}
-                  />
-                </div>
-
-                <div style={{ textAlign: "center" }}>
-                  <div style={{ fontSize: "0.7rem" }}>NEW</div>
+              <div
+                style={{
+                  display: "flex",
+                  gap: "1rem",
+                  flexWrap: "wrap",
+                  alignItems: "center",
+                }}
+              >
+                <label style={toggleLabelStyle}>
                   <input
                     type="checkbox"
                     checked={!!newItem.showNewTag}
@@ -1165,10 +1236,10 @@ export default function AdminPage() {
                       })
                     }
                   />
-                </div>
+                  NEW Tag
+                </label>
 
-                <div style={{ textAlign: "center" }}>
-                  <div style={{ fontSize: "0.7rem" }}>Leaving</div>
+                <label style={toggleLabelStyle}>
                   <input
                     type="checkbox"
                     checked={!!newItem.showLeavingTodayTag}
@@ -1179,10 +1250,10 @@ export default function AdminPage() {
                       })
                     }
                   />
-                </div>
+                  LEAVING TODAY Tag
+                </label>
 
-                <div style={{ textAlign: "center" }}>
-                  <div style={{ fontSize: "0.7rem" }}>Vis</div>
+                <label style={toggleLabelStyle}>
                   <input
                     type="checkbox"
                     checked={!!newItem.isVisible}
@@ -1193,32 +1264,16 @@ export default function AdminPage() {
                       })
                     }
                   />
-                </div>
-
-                <button
-                  onClick={handleAddShopItem}
-                  disabled={saving === "newShopItem"}
-                  style={{
-                    background: "var(--blue)",
-                    color: "#fff",
-                    border: "none",
-                    padding: "0.6rem 1rem",
-                    borderRadius: "8px",
-                    fontWeight: 700,
-                    cursor: "pointer",
-                  }}
-                >
-                  {saving === "newShopItem" ? "Adding..." : "Add"}
-                </button>
+                  Visible
+                </label>
               </div>
             </div>
 
             <div
               style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: "0.5rem",
-                overflowX: "auto",
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fill, minmax(360px, 1fr))",
+                gap: "1rem",
               }}
             >
               {shopItems.map((item) => (
@@ -1227,182 +1282,365 @@ export default function AdminPage() {
                   style={{
                     background: "var(--surface)",
                     border: "1px solid var(--border)",
-                    borderRadius: "8px",
-                    padding: "0.75rem 1rem",
-                    display: "grid",
-                    gridTemplateColumns:
-                      "1.5fr 1fr 0.7fr 2fr 2fr 1fr 1fr 1fr 1fr 0.55fr 0.65fr 0.5fr auto auto",
-                    gap: "0.75rem",
-                    alignItems: "center",
-                    minWidth: "1560px",
+                    borderRadius: "14px",
+                    padding: "1rem",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "0.85rem",
                   }}
                 >
-                  <input
-                    value={item.itemName || ""}
-                    placeholder="Name"
-                    onChange={(e) =>
-                      updateShopItemField(item.id, "itemName", e.target.value)
-                    }
-                    style={inputStyle}
-                  />
-
-                  <select
-                    value={item.itemType}
-                    onChange={(e) =>
-                      updateShopItemField(
-                        item.id,
-                        "itemType",
-                        e.target.value as ShopItem["itemType"]
-                      )
-                    }
-                    style={inputStyle}
-                  >
-                    <option value="avatar">Avatar</option>
-                    <option value="banner">Banner</option>
-                    <option value="song">Song</option>
-                    <option value="title">Title</option>
-                  </select>
-
-                  <input
-                    type="number"
-                    value={item.price || 0}
-                    placeholder="Price"
-                    onChange={(e) =>
-                      updateShopItemField(
-                        item.id,
-                        "price",
-                        Number(e.target.value)
-                      )
-                    }
-                    style={inputStyle}
-                  />
-
-                  <input
-                    value={item.previewImage || ""}
-                    placeholder="Image URL"
-                    onChange={(e) =>
-                      updateShopItemField(
-                        item.id,
-                        "previewImage",
-                        e.target.value
-                      )
-                    }
-                    style={inputStyle}
-                  />
-
-                  <input
-                    value={item.songUrl || ""}
-                    placeholder="Song URL"
-                    onChange={(e) =>
-                      updateShopItemField(item.id, "songUrl", e.target.value)
-                    }
-                    style={inputStyle}
-                  />
-
-                  <input
-                    value={item.section || ""}
-                    placeholder="Section"
-                    onChange={(e) =>
-                      updateShopItemField(item.id, "section", e.target.value)
-                    }
-                    style={inputStyle}
-                  />
-
-                  <input
-                    value={item.rarity || ""}
-                    placeholder="Rarity"
-                    onChange={(e) =>
-                      updateShopItemField(item.id, "rarity", e.target.value)
-                    }
-                    style={inputStyle}
-                  />
-
-                  <input
-                    type="date"
-                    value={item.arriveDate || ""}
-                    onChange={(e) =>
-                      updateShopItemField(item.id, "arriveDate", e.target.value)
-                    }
-                    style={inputStyle}
-                  />
-
-                  <input
-                    type="date"
-                    value={item.leaveDate || ""}
-                    onChange={(e) =>
-                      updateShopItemField(item.id, "leaveDate", e.target.value)
-                    }
-                    style={inputStyle}
-                  />
-
-                  <input
-                    type="checkbox"
-                    checked={!!item.showNewTag}
-                    onChange={(e) =>
-                      updateShopItemField(item.id, "showNewTag", e.target.checked)
-                    }
-                  />
-
-                  <input
-                    type="checkbox"
-                    checked={!!item.showLeavingTodayTag}
-                    onChange={(e) =>
-                      updateShopItemField(
-                        item.id,
-                        "showLeavingTodayTag",
-                        e.target.checked
-                      )
-                    }
-                  />
-
-                  <input
-                    type="checkbox"
-                    checked={!!item.isVisible}
-                    onChange={(e) =>
-                      updateShopItemField(item.id, "isVisible", e.target.checked)
-                    }
-                  />
-
-                  <button
-                    onClick={() => handleUpdateShopItem(item)}
-                    disabled={saving === item.id}
+                  <div
                     style={{
-                      background:
-                        saved === item.id ? "var(--green)" : "var(--accent)",
-                      color: "#000",
-                      border: "none",
-                      borderRadius: "4px",
-                      padding: "0.4rem 0.8rem",
-                      fontWeight: 700,
-                      cursor: "pointer",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "flex-start",
+                      gap: "0.75rem",
                     }}
                   >
-                    {saving === item.id
-                      ? "Saving..."
-                      : saved === item.id
-                      ? "Saved"
-                      : "Save"}
-                  </button>
+                    <div style={{ minWidth: 0 }}>
+                      <div
+                        style={{
+                          fontWeight: 800,
+                          fontSize: "1rem",
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        }}
+                      >
+                        {item.itemName || "Untitled Item"}
+                      </div>
 
-                  <button
-                    onClick={() => {
-                      if (confirm("Delete?")) {
-                        deleteDoc(doc(db, "shopItems", item.id)).then(() =>
-                          setShopItems(shopItems.filter((i) => i.id !== item.id))
-                        );
-                      }
-                    }}
+                      <div
+                        style={{
+                          color: "var(--text-muted)",
+                          fontSize: "0.75rem",
+                          marginTop: "0.2rem",
+                        }}
+                      >
+                        {item.itemType} · {item.section || "General"}
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: "0.4rem",
+                        flexShrink: 0,
+                      }}
+                    >
+                      {item.showNewTag && (
+                        <span
+                          style={{
+                            background: "var(--blue)",
+                            color: "#fff",
+                            fontSize: "0.62rem",
+                            fontWeight: 900,
+                            padding: "0.22rem 0.45rem",
+                            borderRadius: "999px",
+                          }}
+                        >
+                          NEW
+                        </span>
+                      )}
+
+                      {item.showLeavingTodayTag && (
+                        <span
+                          style={{
+                            background: "rgba(255,193,7,0.14)",
+                            color: "var(--accent)",
+                            border: "1px solid rgba(255,193,7,0.3)",
+                            fontSize: "0.62rem",
+                            fontWeight: 900,
+                            padding: "0.22rem 0.45rem",
+                            borderRadius: "999px",
+                          }}
+                        >
+                          LEAVING
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div
                     style={{
-                      background: "transparent",
-                      border: "1px solid var(--border)",
-                      color: "var(--red)",
-                      borderRadius: "4px",
-                      padding: "0.4rem",
-                      cursor: "pointer",
+                      display: "grid",
+                      gridTemplateColumns: "1.4fr 1fr 0.7fr",
+                      gap: "0.65rem",
                     }}
                   >
-                    ✕
-                  </button>
+                    <div>
+                      <div style={smallLabelStyle}>Name</div>
+                      <input
+                        value={item.itemName || ""}
+                        onChange={(e) =>
+                          updateShopItemField(
+                            item.id,
+                            "itemName",
+                            e.target.value
+                          )
+                        }
+                        style={inputStyle}
+                      />
+                    </div>
+
+                    <div>
+                      <div style={smallLabelStyle}>Type</div>
+                      <select
+                        value={item.itemType}
+                        onChange={(e) =>
+                          updateShopItemField(
+                            item.id,
+                            "itemType",
+                            e.target.value as ShopItem["itemType"]
+                          )
+                        }
+                        style={inputStyle}
+                      >
+                        <option value="avatar">Avatar</option>
+                        <option value="banner">Banner</option>
+                        <option value="song">Song</option>
+                        <option value="title">Title</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <div style={smallLabelStyle}>Price</div>
+                      <input
+                        type="number"
+                        value={item.price || 0}
+                        onChange={(e) =>
+                          updateShopItemField(
+                            item.id,
+                            "price",
+                            Number(e.target.value)
+                          )
+                        }
+                        style={inputStyle}
+                      />
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "1fr 1fr 1fr 1fr",
+                      gap: "0.65rem",
+                    }}
+                  >
+                    <div>
+                      <div style={smallLabelStyle}>Section</div>
+                      <input
+                        value={item.section || ""}
+                        onChange={(e) =>
+                          updateShopItemField(
+                            item.id,
+                            "section",
+                            e.target.value
+                          )
+                        }
+                        style={inputStyle}
+                      />
+                    </div>
+
+                    <div>
+                      <div style={smallLabelStyle}>Rarity</div>
+                      <input
+                        value={item.rarity || ""}
+                        onChange={(e) =>
+                          updateShopItemField(
+                            item.id,
+                            "rarity",
+                            e.target.value
+                          )
+                        }
+                        style={inputStyle}
+                      />
+                    </div>
+
+                    <div>
+                      <div style={smallLabelStyle}>Arrive</div>
+                      <input
+                        type="date"
+                        value={item.arriveDate || ""}
+                        onChange={(e) =>
+                          updateShopItemField(
+                            item.id,
+                            "arriveDate",
+                            e.target.value
+                          )
+                        }
+                        style={inputStyle}
+                      />
+                    </div>
+
+                    <div>
+                      <div style={smallLabelStyle}>Leave</div>
+                      <input
+                        type="date"
+                        value={item.leaveDate || ""}
+                        onChange={(e) =>
+                          updateShopItemField(
+                            item.id,
+                            "leaveDate",
+                            e.target.value
+                          )
+                        }
+                        style={inputStyle}
+                      />
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "1fr 1fr",
+                      gap: "0.65rem",
+                    }}
+                  >
+                    <div>
+                      <div style={smallLabelStyle}>Image URL</div>
+                      <input
+                        value={item.previewImage || ""}
+                        onChange={(e) =>
+                          updateShopItemField(
+                            item.id,
+                            "previewImage",
+                            e.target.value
+                          )
+                        }
+                        style={inputStyle}
+                      />
+                    </div>
+
+                    <div>
+                      <div style={smallLabelStyle}>Song URL</div>
+                      <input
+                        value={item.songUrl || ""}
+                        onChange={(e) =>
+                          updateShopItemField(
+                            item.id,
+                            "songUrl",
+                            e.target.value
+                          )
+                        }
+                        style={inputStyle}
+                      />
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      gap: "0.75rem",
+                      flexWrap: "wrap",
+                      borderTop: "1px solid var(--border)",
+                      paddingTop: "0.85rem",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: "0.85rem",
+                        flexWrap: "wrap",
+                        alignItems: "center",
+                      }}
+                    >
+                      <label style={toggleLabelStyle}>
+                        <input
+                          type="checkbox"
+                          checked={!!item.showNewTag}
+                          onChange={(e) =>
+                            updateShopItemField(
+                              item.id,
+                              "showNewTag",
+                              e.target.checked
+                            )
+                          }
+                        />
+                        NEW
+                      </label>
+
+                      <label style={toggleLabelStyle}>
+                        <input
+                          type="checkbox"
+                          checked={!!item.showLeavingTodayTag}
+                          onChange={(e) =>
+                            updateShopItemField(
+                              item.id,
+                              "showLeavingTodayTag",
+                              e.target.checked
+                            )
+                          }
+                        />
+                        LEAVING
+                      </label>
+
+                      <label style={toggleLabelStyle}>
+                        <input
+                          type="checkbox"
+                          checked={!!item.isVisible}
+                          onChange={(e) =>
+                            updateShopItemField(
+                              item.id,
+                              "isVisible",
+                              e.target.checked
+                            )
+                          }
+                        />
+                        Visible
+                      </label>
+                    </div>
+
+                    <div style={{ display: "flex", gap: "0.5rem" }}>
+                      <button
+                        onClick={() => handleUpdateShopItem(item)}
+                        disabled={saving === item.id}
+                        style={{
+                          background:
+                            saved === item.id
+                              ? "var(--green)"
+                              : "var(--accent)",
+                          color: "#000",
+                          border: "none",
+                          borderRadius: "8px",
+                          padding: "0.5rem 0.9rem",
+                          fontWeight: 800,
+                          cursor: "pointer",
+                        }}
+                      >
+                        {saving === item.id
+                          ? "Saving..."
+                          : saved === item.id
+                          ? "Saved"
+                          : "Save"}
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          if (confirm("Delete?")) {
+                            deleteDoc(doc(db, "shopItems", item.id)).then(() =>
+                              setShopItems(
+                                shopItems.filter((i) => i.id !== item.id)
+                              )
+                            );
+                          }
+                        }}
+                        style={{
+                          background: "transparent",
+                          border: "1px solid var(--border)",
+                          color: "var(--red)",
+                          borderRadius: "8px",
+                          padding: "0.5rem 0.75rem",
+                          cursor: "pointer",
+                          fontWeight: 800,
+                        }}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  </div>
                 </div>
               ))}
             </div>
@@ -1807,7 +2045,11 @@ export default function AdminPage() {
                       type="number"
                       value={m.coins ?? 0}
                       onChange={(e) =>
-                        updateManagerField(m.id, "coins", Number(e.target.value))
+                        updateManagerField(
+                          m.id,
+                          "coins",
+                          Number(e.target.value)
+                        )
                       }
                       style={inputStyle}
                     />
@@ -1820,7 +2062,11 @@ export default function AdminPage() {
                       step="0.1"
                       value={m.Bank ?? 0}
                       onChange={(e) =>
-                        updateManagerField(m.id, "Bank", Number(e.target.value))
+                        updateManagerField(
+                          m.id,
+                          "Bank",
+                          Number(e.target.value)
+                        )
                       }
                       style={inputStyle}
                     />
@@ -1986,6 +2232,19 @@ const labelStyle = {
   fontSize: "0.8rem",
   color: "var(--text-muted)",
   marginBottom: "0.4rem",
+};
+
+const smallLabelStyle = {
+  fontSize: "0.68rem",
+  marginBottom: "0.25rem",
+};
+
+const toggleLabelStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: "0.4rem",
+  fontSize: "0.75rem",
+  color: "var(--text-muted)",
 };
 
 const smallButtonStyle = {
