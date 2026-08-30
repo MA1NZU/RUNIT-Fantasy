@@ -93,11 +93,11 @@ export default function InventoryPage() {
 
   return (
     <Shell>
-      <div style={{ maxWidth: "1000px", margin: "0 auto" }}>
+      <div className="page-container inventory-page" style={{ maxWidth: "1000px", margin: "0 auto" }}>
         <h1 style={{ fontSize: "2rem", fontWeight: 700, marginBottom: "2rem" }}>Inventory</h1>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: "1.5rem" }}>
+        <div className="inventory-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: "1.5rem" }}>
           {ownedItems.length === 0 ? (
-            <div style={{ background: "var(--surface)", padding: "3rem", borderRadius: "20px", textAlign: "center", gridColumn: "1/-1", border: "1px dashed var(--border)" }}>
+            <div className="inventory-empty-state" style={{ background: "var(--surface)", padding: "3rem", borderRadius: "20px", textAlign: "center", gridColumn: "1/-1", border: "1px dashed var(--border)" }}>
               <p style={{ color: "var(--text-muted)", marginBottom: "1rem" }}>You haven't purchased any items yet.</p>
               <Link href="/shop" style={{ color: "var(--blue)", fontWeight: 700, textDecoration: "none" }}>Go to Shop →</Link>
             </div>
@@ -111,7 +111,7 @@ export default function InventoryPage() {
               const displayType = type.charAt(0).toUpperCase() + type.slice(1);
 
               return (
-                <div key={item.ID} style={{ background: "var(--surface)", border: `1px solid ${isEquipped ? "var(--blue)" : "var(--border)"}`, borderRadius: "12px", padding: "1rem", textAlign: "center" }}>
+                <div className="inventory-item-card" key={item.ID} style={{ background: "var(--surface)", border: `1px solid ${isEquipped ? "var(--blue)" : "var(--border)"}`, borderRadius: "12px", padding: "1rem", textAlign: "center" }}>
                   <img src={img} style={{ width: "80px", height: "80px", borderRadius: "12px", objectFit: "cover", marginBottom: "1rem" }} />
                   <div style={{ fontWeight: 700, fontSize: "0.95rem", marginBottom: "0.2rem" }}>{item.itemName}</div>
                   <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginBottom: "1.25rem" }}>{displayType}</div>

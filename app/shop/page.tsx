@@ -106,6 +106,7 @@ function ShopRefreshTimer({ refreshAt }: { refreshAt?: any }) {
 
   return (
     <div
+      className="shop-refresh-timer"
       style={{
         display: "inline-flex",
         alignItems: "center",
@@ -370,8 +371,9 @@ export default function ShopPage() {
 
   return (
     <Shell>
-      <div style={{ maxWidth: "1120px", margin: "0 auto" }}>
+      <div className="page-container shop-page" style={{ maxWidth: "1120px", margin: "0 auto" }}>
         <section
+          className="page-hero shop-hero"
           style={{
             position: "relative",
             overflow: "hidden",
@@ -451,6 +453,7 @@ export default function ShopPage() {
             </p>
 
             <div
+              className="shop-hero-meta"
               style={{
                 display: "flex",
                 gap: "0.75rem",
@@ -494,6 +497,7 @@ export default function ShopPage() {
           sections.map(([sectionTitle, items]) => (
             <section key={sectionTitle} style={{ marginBottom: "3rem" }}>
               <div
+                className="shop-section-header"
                 style={{
                   display: "flex",
                   justifyContent: "space-between",
@@ -544,6 +548,7 @@ export default function ShopPage() {
               </div>
 
               <div
+                className="shop-items-grid"
                 style={{
                   display: "grid",
                   gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
