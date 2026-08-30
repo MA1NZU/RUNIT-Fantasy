@@ -252,6 +252,7 @@ export default function Leaderboard() {
   return (
     <Shell>
       <main
+        className="page-container leaderboard-page"
         style={{
           maxWidth: "1120px",
           margin: "0 auto",
@@ -260,6 +261,7 @@ export default function Leaderboard() {
       >
         {/* HEADER */}
         <section
+          className="page-hero leaderboard-hero"
           style={{
             position: "relative",
             overflow: "hidden",
@@ -348,6 +350,7 @@ export default function Leaderboard() {
 
             {/* RANKING BUTTONS */}
             <div
+              className="leaderboard-sort-controls"
               style={{
                 display: "inline-flex",
                 background: "rgba(255,255,255,0.045)",
@@ -399,6 +402,7 @@ export default function Leaderboard() {
 
         {/* STATS */}
         <section
+          className="summary-grid leaderboard-summary-grid"
           style={{
             display: "grid",
             gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
@@ -553,6 +557,7 @@ export default function Leaderboard() {
 
         {/* STANDINGS TABLE */}
         <section
+          className="leaderboard-table-card responsive-scroll"
           style={{
             background: "var(--surface)",
             border: "1px solid var(--border)",
@@ -587,8 +592,9 @@ export default function Leaderboard() {
             </span>
           </div>
 
-          <div style={{ minWidth: "640px" }}>
+          <div className="leaderboard-table" style={{ minWidth: "640px" }}>
             <div
+              className="leaderboard-table-row leaderboard-table-heading"
               style={{
                 display: "grid",
                 gridTemplateColumns: "55px 1fr 120px 120px",
@@ -614,6 +620,7 @@ export default function Leaderboard() {
               return (
                 <div
                   key={team.id}
+                  className="leaderboard-table-row"
                   style={{
                     display: "grid",
                     gridTemplateColumns: "55px 1fr 120px 120px",

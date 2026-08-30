@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { useAuth } from "@/lib/AuthContext";
 import { logout } from "@/lib/auth";
@@ -23,6 +23,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
+  const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
     if (!loading && !user && pathname !== "/login") {
@@ -30,9 +31,31 @@ export default function Shell({ children }: { children: React.ReactNode }) {
     }
   }, [user, loading, pathname, router]);
 
+  useEffect(() => {
+    setMenuOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMenuOpen(false);
+    };
+
+    window.addEventListener("keydown", closeOnEscape);
+
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [menuOpen]);
+
+  const handleLogout = () => {
+    setMenuOpen(false);
+    logout().then(() => router.replace("/login"));
+  };
+
   if (loading) {
     return (
       <div
+        className="app-state"
         style={{
           minHeight: "100vh",
           display: "flex",
@@ -49,6 +72,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   if (!user && pathname !== "/login") {
     return (
       <div
+        className="app-state"
         style={{
           minHeight: "100vh",
           display: "flex",
@@ -72,92 +96,140 @@ export default function Shell({ children }: { children: React.ReactNode }) {
       : NAV;
 
   return (
-    <div>
+    <div className="app-shell">
       <nav
+        className="site-nav"
+        aria-label="Main navigation"
         style={{
           background: "var(--surface)",
           borderBottom: "1px solid var(--border)",
           padding: "0.875rem 2rem",
-          display: "flex",
-          alignItems: "center",
           position: "sticky",
           top: 0,
           zIndex: 100,
         }}
       >
-        <span
-          style={{
-            color: "var(--accent)",
-            fontWeight: 700,
-            fontSize: "1rem",
-            minWidth: "140px",
-          }}
-        >
-          RUNIT Fantasy
-        </span>
+        <div className="site-nav-bar">
+          <Link
+            href="/"
+            className="site-brand"
+            style={{
+              color: "var(--accent)",
+              fontWeight: 700,
+              fontSize: "1rem",
+              minWidth: "140px",
+            }}
+          >
+            RUNIT Fantasy
+          </Link>
 
-        <div
-          style={{
-            display: "flex",
-            gap: "0.25rem",
-            flex: 1,
-            justifyContent: "center",
-          }}
-        >
-          {links.map((link) => {
-            const active = pathname === link.href;
+          <div
+            className="site-nav-links desktop-nav"
+            style={{
+              display: "flex",
+              gap: "0.25rem",
+              flex: 1,
+              justifyContent: "center",
+            }}
+          >
+            {links.map((link) => {
+              const active = pathname === link.href;
 
-            return (
-              <Link
-                key={link.href}
-                href={link.href}
-                style={{
-                  fontSize: "0.875rem",
-                  fontWeight: active ? 600 : 400,
-                  color: active ? "#fff" : "var(--text-muted)",
-                  background: active ? "var(--blue)" : "transparent",
-                  padding: "0.4rem 1rem",
-                  borderRadius: "7px",
-                  textDecoration: "none",
-                }}
-              >
-                {link.label}
-              </Link>
-            );
-          })}
+              return (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  style={{
+                    fontSize: "0.875rem",
+                    fontWeight: active ? 600 : 400,
+                    color: active ? "#fff" : "var(--text-muted)",
+                    background: active ? "var(--blue)" : "transparent",
+                    padding: "0.4rem 1rem",
+                    borderRadius: "7px",
+                    textDecoration: "none",
+                  }}
+                >
+                  {link.label}
+                </Link>
+              );
+            })}
+          </div>
+
+          <div
+            className="site-account desktop-nav"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "1rem",
+              minWidth: "140px",
+              justifyContent: "flex-end",
+            }}
+          >
+            <span style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>
+              {user?.email?.split("@")[0]}
+            </span>
+
+            <button
+              type="button"
+              onClick={handleLogout}
+              style={{
+                background: "transparent",
+                border: "1px solid var(--border)",
+                color: "var(--text-muted)",
+                padding: "0.35rem 0.85rem",
+                borderRadius: "6px",
+                cursor: "pointer",
+                fontSize: "0.8rem",
+              }}
+            >
+              Logout
+            </button>
+          </div>
+
+          <button
+            type="button"
+            className="mobile-menu-toggle"
+            aria-expanded={menuOpen}
+            aria-controls="mobile-navigation"
+            onClick={() => setMenuOpen((open) => !open)}
+          >
+            <span aria-hidden="true">{menuOpen ? "×" : "☰"}</span>
+            <span>Menu</span>
+          </button>
         </div>
 
         <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "1rem",
-            minWidth: "140px",
-            justifyContent: "flex-end",
-          }}
+          id="mobile-navigation"
+          className={`mobile-nav-panel${menuOpen ? " is-open" : ""}`}
+          aria-hidden={!menuOpen}
         >
-          <span style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>
-            {user?.email?.split("@")[0]}
-          </span>
+          <div className="mobile-nav-links">
+            {links.map((link) => {
+              const active = pathname === link.href;
 
-          <button
-            onClick={() => logout().then(() => router.replace("/login"))}
-            style={{
-              background: "transparent",
-              border: "1px solid var(--border)",
-              color: "var(--text-muted)",
-              padding: "0.35rem 0.85rem",
-              borderRadius: "6px",
-              cursor: "pointer",
-              fontSize: "0.8rem",
-            }}
-          >
-            Logout
-          </button>
+              return (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  onClick={() => setMenuOpen(false)}
+                  className={`mobile-nav-link${active ? " is-active" : ""}`}
+                >
+                  {link.label}
+                </Link>
+              );
+            })}
+          </div>
+
+          <div className="mobile-nav-account">
+            <span>{user?.email}</span>
+            <button type="button" onClick={handleLogout}>
+              Logout
+            </button>
+          </div>
         </div>
       </nav>
 
-      <main style={{ padding: "2rem" }}>{children}</main>
+      <div className="app-shell-content">{children}</div>
 
       <SitePopup />
     </div>

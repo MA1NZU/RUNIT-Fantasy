@@ -58,14 +58,14 @@ export default function LoginPage() {
   };
 
   return (
-    <div style={{
+    <div className="login-page" style={{
       minHeight: "100vh",
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
       background: "var(--bg)",
     }}>
-      <div style={{
+      <div className="login-card" style={{
         background: "var(--surface)",
         border: "1px solid var(--border)",
         borderRadius: "12px",

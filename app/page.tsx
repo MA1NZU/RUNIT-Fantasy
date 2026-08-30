@@ -172,6 +172,7 @@ export default function Home() {
   return (
     <Shell>
       <main
+        className="page-container home-page"
         style={{
           maxWidth: "1120px",
           margin: "0 auto",
@@ -180,6 +181,7 @@ export default function Home() {
       >
         {/* HERO */}
         <section
+          className="page-hero home-hero"
           style={{
             position: "relative",
             overflow: "hidden",
@@ -207,6 +209,7 @@ export default function Home() {
           />
 
           <div
+            className="home-hero-grid"
             style={{
               position: "relative",
               zIndex: 1,
@@ -277,6 +280,7 @@ export default function Home() {
               </p>
 
               <div
+                className="home-hero-actions"
                 style={{
                   display: "flex",
                   flexWrap: "wrap",
@@ -371,6 +375,7 @@ export default function Home() {
 
             {/* COMMAND CARD */}
             <aside
+              className="home-command-card"
               style={{
                 background: "rgba(10, 13, 22, 0.72)",
                 border: "1px solid rgba(255,255,255,0.1)",
@@ -505,6 +510,7 @@ export default function Home() {
               </div>
 
               <div
+                className="home-deadline"
                 style={{
                   display: "grid",
                   gridTemplateColumns: "1fr auto",
@@ -548,6 +554,7 @@ export default function Home() {
 
         {/* STATS */}
         <section
+          className="summary-grid home-summary-grid"
           style={{
             display: "grid",
             gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
@@ -630,6 +637,7 @@ export default function Home() {
 
         {/* MAIN CONTENT */}
         <section
+          className="home-content-grid"
           style={{
             display: "grid",
             gridTemplateColumns: "minmax(0, 1fr) 360px",
@@ -638,6 +646,7 @@ export default function Home() {
         >
           {/* LEADERBOARD */}
           <div
+            className="home-leaderboard-card"
             style={{
               background: "var(--surface)",
               border: "1px solid var(--border)",
@@ -696,6 +705,7 @@ export default function Home() {
             ) : (
               <>
                 <div
+                  className="home-leaderboard-heading"
                   style={{
                     display: "grid",
                     gridTemplateColumns: "42px 1fr 80px 90px",
@@ -716,6 +726,7 @@ export default function Home() {
                 {topTeams.map((team, i) => (
                   <div
                     key={team.id}
+                    className="home-leaderboard-row"
                     style={{
                       display: "grid",
                       gridTemplateColumns: "42px 1fr 80px 90px",

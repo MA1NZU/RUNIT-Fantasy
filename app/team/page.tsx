@@ -53,6 +53,7 @@ function PlayerCard({
 
   return (
     <div
+      className="team-player-card"
       onClick={onClick}
       style={{
         position: "relative",
@@ -469,6 +470,7 @@ function StatsModal({
 
   return (
     <div
+      className="team-stats-modal"
       style={{
         position: "fixed",
         inset: 0,
@@ -482,6 +484,7 @@ function StatsModal({
       onClick={onClose}
     >
       <div
+        className="team-stats-modal-content"
         style={{
           position: "relative",
           overflow: "hidden",
@@ -516,6 +519,7 @@ function StatsModal({
         </button>
 
         <div
+          className="team-stats-modal-header"
           style={{
             display: "flex",
             alignItems: "center",
@@ -587,6 +591,7 @@ function StatsModal({
           }}
         >
           <div
+            className="team-stats-row"
             style={{
               display: "grid",
               gridTemplateColumns: "1fr 70px 70px",
@@ -624,6 +629,7 @@ function StatsModal({
               rows.map((r, i) => (
                 <div
                   key={i}
+                  className="team-stats-row"
                   style={{
                     display: "grid",
                     gridTemplateColumns: "1fr 70px 70px",
@@ -888,8 +894,9 @@ function TeamContent() {
   }
 
   return (
-    <main style={{ maxWidth: "1120px", margin: "0 auto", paddingBottom: "3rem" }}>
+    <main className="page-container team-page" style={{ maxWidth: "1120px", margin: "0 auto", paddingBottom: "3rem" }}>
       <section
+        className="page-hero team-hero"
         style={{
           position: "relative",
           overflow: "hidden",
@@ -956,7 +963,7 @@ function TeamContent() {
             <span style={{ color: "var(--blue)" }}>Team</span>
           </h1>
 
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
+          <div className="gameweek-tabs" style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
             {availableGWs.map((gw) => (
               <button
                 key={gw}
@@ -987,6 +994,7 @@ function TeamContent() {
       {currentTeam ? (
         <>
           <section
+            className="team-summary-card responsive-scroll"
             style={{
               background: "var(--surface)",
               border: "1px solid var(--border)",
@@ -997,6 +1005,7 @@ function TeamContent() {
             }}
           >
             <div
+              className="team-summary-grid"
               style={{
                 display: "grid",
                 gridTemplateColumns: "1.35fr 1fr 1fr 1fr",
@@ -1146,6 +1155,7 @@ function TeamContent() {
           </section>
 
           <section
+            className="team-squad-section"
             style={{
               background:
                 "radial-gradient(circle at 50% 0%, rgba(3,71,244,0.12), transparent 35%), var(--surface)",
@@ -1175,6 +1185,7 @@ function TeamContent() {
             </div>
 
             <div
+              className="team-squad-grid"
               style={{
                 display: "grid",
                 gridTemplateColumns: "repeat(auto-fit, minmax(155px, 1fr))",
@@ -1222,7 +1233,7 @@ function TeamContent() {
                 Bench
               </div>
 
-              <div style={{ maxWidth: "220px" }}>
+              <div className="team-bench-card" style={{ maxWidth: "220px" }}>
                 <PlayerCard
                   player={players[currentTeam.sub]}
                   points={getPoints(currentTeam.sub)}

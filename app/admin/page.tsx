@@ -954,12 +954,13 @@ export default function AdminPage() {
 
   return (
     <Shell>
-      <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
+      <div className="page-container admin-page" style={{ maxWidth: "1200px", margin: "0 auto" }}>
         <h1 style={{ fontSize: "2rem", fontWeight: 700, marginBottom: "2rem" }}>
           Admin Panel
         </h1>
 
         <div
+          className="admin-tabs"
           style={{
             display: "flex",
             gap: "0.5rem",
@@ -1090,6 +1091,7 @@ export default function AdminPage() {
               </div>
 
               <div
+                className="admin-settings-grid"
                 style={{
                   display: "grid",
                   gridTemplateColumns: "repeat(2, minmax(220px, 1fr))",
@@ -1168,6 +1170,7 @@ export default function AdminPage() {
                 sortedShopSections.map((section, index) => (
                   <div
                     key={section.title}
+                    className="admin-section-row"
                     style={{
                       background: "rgba(255,255,255,0.035)",
                       border: "1px solid var(--border)",
@@ -1247,6 +1250,7 @@ export default function AdminPage() {
             <h2 style={sectionTitleStyle}>Shop Manager</h2>
 
             <div
+              className="admin-shop-filters"
               style={{
                 background: "var(--surface)",
                 border: "1px solid var(--border)",
@@ -1390,6 +1394,7 @@ export default function AdminPage() {
               </div>
 
               <div
+                className="admin-shop-form-grid"
                 style={{
                   display: "grid",
                   gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
@@ -1456,6 +1461,7 @@ export default function AdminPage() {
               </div>
 
               <div
+                className="admin-shop-url-grid"
                 style={{
                   display: "grid",
                   gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
@@ -1536,6 +1542,7 @@ export default function AdminPage() {
             </div>
 
             <div
+              className="admin-shop-grid"
               style={{
                 display: "grid",
                 gridTemplateColumns: "repeat(auto-fill, minmax(360px, 1fr))",
@@ -1565,6 +1572,7 @@ export default function AdminPage() {
 
         {tab === "stats" && (
           <div
+            className="admin-stats-layout"
             style={{
               display: "grid",
               gridTemplateColumns: "300px 1fr",
@@ -1589,7 +1597,7 @@ export default function AdminPage() {
                 Select Player
               </div>
 
-              <div style={{ maxHeight: "600px", overflowY: "auto" }}>
+              <div className="admin-player-selector" style={{ maxHeight: "600px", overflowY: "auto" }}>
                 {players.map((p) => (
                   <div
                     key={p.id}
@@ -1669,6 +1677,7 @@ export default function AdminPage() {
                   </div>
 
                   <div
+                    className="admin-stats-grid"
                     style={{
                       display: "grid",
                       gridTemplateColumns: "repeat(3, 1fr)",
@@ -1909,6 +1918,7 @@ export default function AdminPage() {
                 </div>
 
                 <div
+                  className="admin-manager-inputs"
                   style={{
                     display: "grid",
                     gridTemplateColumns:
@@ -2028,6 +2038,7 @@ export default function AdminPage() {
             {players.map((p) => (
               <div
                 key={p.id}
+                className="admin-player-row"
                 style={{
                   background: "var(--surface)",
                   border: "1px solid var(--border)",
@@ -2139,6 +2150,7 @@ function LockRow({
 }) {
   return (
     <div
+      className="admin-lock-row"
       style={{
         display: "flex",
         justifyContent: "space-between",
@@ -2208,6 +2220,7 @@ function ShopItemCard({
 }) {
   return (
     <div
+      className="admin-shop-item-card"
       style={{
         background: "var(--surface)",
         border: "1px solid var(--border)",
@@ -2291,6 +2304,7 @@ function ShopItemCard({
       </div>
 
       <div
+        className="admin-shop-item-fields"
         style={{
           display: "grid",
           gridTemplateColumns: "1.4fr 1fr 0.7fr",
@@ -2338,6 +2352,7 @@ function ShopItemCard({
       </div>
 
       <div
+        className="admin-shop-item-pair"
         style={{
           display: "grid",
           gridTemplateColumns: "1fr 1fr",
@@ -2364,6 +2379,7 @@ function ShopItemCard({
       </div>
 
       <div
+        className="admin-shop-item-pair"
         style={{
           display: "grid",
           gridTemplateColumns: "1fr 1fr",

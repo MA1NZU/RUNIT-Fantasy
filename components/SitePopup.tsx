@@ -334,6 +334,7 @@ export default function SitePopup() {
 
   return (
     <div
+      className="site-popup-overlay"
       style={{
         position: "fixed",
         inset: 0,
@@ -346,6 +347,10 @@ export default function SitePopup() {
       }}
     >
       <div
+        className="site-popup-card"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="site-popup-title"
         style={{
           width: "100%",
           maxWidth: "460px",
@@ -401,6 +406,7 @@ export default function SitePopup() {
         </div>
 
         <h2
+          id="site-popup-title"
           style={{
             fontSize: "1.65rem",
             fontWeight: 900,
@@ -510,6 +516,7 @@ export default function SitePopup() {
         )}
 
         <div
+          className="site-popup-actions"
           style={{
             display: "flex",
             gap: "0.75rem",

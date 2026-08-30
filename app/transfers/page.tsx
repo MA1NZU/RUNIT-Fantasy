@@ -71,6 +71,7 @@ function PlayerCard({
 
   return (
     <div
+      className={`transfer-player-card${compact ? " is-compact" : ""}`}
       style={{
         position: "relative",
         overflow: "hidden",
@@ -392,6 +393,7 @@ function EmptySlot({
 }) {
   return (
     <div
+      className="transfer-empty-slot"
       onClick={onClick}
       style={{
         minHeight: "250px",
@@ -476,6 +478,7 @@ function CountdownTimer({ deadline }: { deadline: string }) {
 
   return (
     <div
+      className="transfer-countdown"
       style={{
         background: "rgba(3,71,244,0.12)",
         border: "1px solid rgba(107,159,255,0.45)",
@@ -889,6 +892,7 @@ export default function TransfersPage() {
   return (
     <Shell>
       <main
+        className="page-container transfers-page"
         style={{
           maxWidth: "1120px",
           margin: "0 auto",
@@ -896,6 +900,7 @@ export default function TransfersPage() {
         }}
       >
         <section
+          className="page-hero transfers-hero"
           style={{
             position: "relative",
             overflow: "hidden",
@@ -967,6 +972,7 @@ export default function TransfersPage() {
         </section>
 
         <section
+          className="transfer-summary-card responsive-scroll"
           style={{
             background: "var(--surface)",
             border: "1px solid var(--border)",
@@ -977,6 +983,7 @@ export default function TransfersPage() {
           }}
         >
           <div
+            className="transfer-summary-grid"
             style={{
               display: "grid",
               gridTemplateColumns: "1.2fr 1fr 1fr 1fr 1fr",
@@ -1086,6 +1093,7 @@ export default function TransfersPage() {
         </section>
 
         <section
+          className="transfer-squad-section"
           style={{
             background:
               "radial-gradient(circle at 50% 0%, rgba(3,71,244,0.12), transparent 35%), var(--surface)",
@@ -1111,6 +1119,7 @@ export default function TransfersPage() {
           </div>
 
           <div
+            className="transfer-squad-grid"
             style={{
               display: "grid",
               gridTemplateColumns: "repeat(auto-fit, minmax(155px, 1fr))",
@@ -1142,6 +1151,7 @@ export default function TransfersPage() {
         </section>
 
         <section
+          className="transfer-bench-section"
           style={{
             background: "var(--surface)",
             border: "1px solid var(--border)",
@@ -1163,7 +1173,7 @@ export default function TransfersPage() {
             Bench
           </div>
 
-          <div style={{ maxWidth: "220px" }}>
+          <div className="transfer-bench-card" style={{ maxWidth: "220px" }}>
             {sub && getPlayer(sub) ? (
               <PlayerCard
                 player={getPlayer(sub)!}
@@ -1215,6 +1225,7 @@ export default function TransfersPage() {
 
         {isModalOpen && (
           <div
+            className="transfer-modal-overlay"
             style={{
               position: "fixed",
               inset: 0,
@@ -1227,8 +1238,9 @@ export default function TransfersPage() {
             }}
           >
             <div
+              className="transfer-modal"
               style={{
-                background: "var(--background)",
+                background: "var(--surface)",
                 border: "1px solid var(--border)",
                 borderRadius: "24px",
                 width: "100%",
@@ -1240,6 +1252,7 @@ export default function TransfersPage() {
               }}
             >
               <div
+                className="transfer-modal-header"
                 style={{
                   padding: "1rem",
                   borderBottom: "1px solid var(--border)",
@@ -1288,6 +1301,7 @@ export default function TransfersPage() {
               </div>
 
               <div
+                className="transfer-modal-filters"
                 style={{
                   padding: "1rem",
                   borderBottom: "1px solid var(--border)",
@@ -1336,6 +1350,7 @@ export default function TransfersPage() {
               </div>
 
               <div
+                className="transfer-modal-results"
                 style={{
                   padding: "1rem",
                   overflowY: "auto",
