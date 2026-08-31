@@ -6,6 +6,7 @@ import { useAuth } from "@/lib/AuthContext";
 import { logout } from "@/lib/auth";
 import Link from "next/link";
 import SitePopup from "@/components/SitePopup";
+import { APP_VERSION } from "@/lib/appVersion";
 
 type NavIconName =
   | "home"
@@ -245,7 +246,10 @@ export default function Shell({ children }: { children: React.ReactNode }) {
               minWidth: "140px",
             }}
           >
-            RUNIT Fantasy
+            <span>RUNIT Fantasy</span>
+            <span className="site-version" title={`Application version ${APP_VERSION}`}>
+              {APP_VERSION}
+            </span>
           </Link>
 
           <div
