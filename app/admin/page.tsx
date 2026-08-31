@@ -29,6 +29,7 @@ type Player = {
   totalPoints: number;
   desc: string;
   ID?: string;
+  showInTransfers?: boolean;
 };
 
 type UserTeam = {
@@ -43,6 +44,7 @@ type UserTeam = {
   namez: string;
   lastGwCoinsEarned?: number;
   lastGwCoinsGameweek?: number;
+  showInLeaderboard?: boolean;
 };
 
 type Settings = {
@@ -635,6 +637,7 @@ export default function AdminPage() {
         coins: Number(m.coins || 0),
         Bank: Number(m.Bank || 0),
         freeTransfers: Number(m.freeTransfers || 0),
+        showInLeaderboard: m.showInLeaderboard !== false,
         "Updated Date": new Date().toISOString(),
       });
 
@@ -1922,7 +1925,7 @@ export default function AdminPage() {
                   style={{
                     display: "grid",
                     gridTemplateColumns:
-                      "repeat(5, minmax(100px, 1fr)) 100px",
+                      "repeat(6, minmax(100px, 1fr)) 100px",
                     gap: "0.75rem",
                     alignItems: "end",
                     overflowX: "auto",
@@ -2006,6 +2009,49 @@ export default function AdminPage() {
                     />
                   </div>
 
+                  <label
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "0.45rem",
+                      fontSize: "0.7rem",
+                    }}
+                  >
+                    Leaderboard
+                    <span
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "0.45rem",
+                        minHeight: "38px",
+                        color:
+                          m.showInLeaderboard !== false
+                            ? "var(--green)"
+                            : "var(--text-muted)",
+                        fontSize: "0.8rem",
+                        fontWeight: 700,
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={m.showInLeaderboard !== false}
+                        onChange={(e) =>
+                          updateManagerField(
+                            m.id,
+                            "showInLeaderboard",
+                            e.target.checked
+                          )
+                        }
+                        style={{
+                          width: "18px",
+                          height: "18px",
+                          accentColor: "var(--blue)",
+                        }}
+                      />
+                      {m.showInLeaderboard !== false ? "Shown" : "Hidden"}
+                    </span>
+                  </label>
+
                   <button
                     onClick={() => handleSaveManager(m)}
                     disabled={saving === m.id}
@@ -2045,7 +2091,7 @@ export default function AdminPage() {
                   borderRadius: "8px",
                   padding: "0.75rem 1rem",
                   display: "grid",
-                  gridTemplateColumns: "1.5fr 0.7fr 2fr auto",
+                  gridTemplateColumns: "1.5fr 0.7fr 2fr minmax(132px, 0.9fr) auto",
                   gap: "0.75rem",
                   alignItems: "center",
                 }}
@@ -2091,6 +2137,51 @@ export default function AdminPage() {
                   style={inputStyle}
                 />
 
+                <label
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "0.45rem",
+                    fontSize: "0.7rem",
+                  }}
+                >
+                  Transfers
+                  <span
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.45rem",
+                      minHeight: "38px",
+                      color:
+                        p.showInTransfers !== false
+                          ? "var(--green)"
+                          : "var(--text-muted)",
+                      fontSize: "0.8rem",
+                      fontWeight: 700,
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={p.showInTransfers !== false}
+                      onChange={(e) =>
+                        setPlayers((prev) =>
+                          prev.map((x) =>
+                            x.id === p.id
+                              ? { ...x, showInTransfers: e.target.checked }
+                              : x
+                          )
+                        )
+                      }
+                      style={{
+                        width: "18px",
+                        height: "18px",
+                        accentColor: "var(--blue)",
+                      }}
+                    />
+                    {p.showInTransfers !== false ? "Shown" : "Hidden"}
+                  </span>
+                </label>
+
                 <button
                   onClick={async () => {
                     setSaving(p.id);
@@ -2099,6 +2190,7 @@ export default function AdminPage() {
                       await updateDoc(doc(db, "players", p.id), {
                         price: p.price,
                         desc: p.desc,
+                        showInTransfers: p.showInTransfers !== false,
                       });
 
                       await syncCurrentGameweekScores();
