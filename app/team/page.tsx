@@ -1015,6 +1015,7 @@ function TeamContent() {
               }}
             >
               <div
+                className="team-summary-gw-points"
                 style={{
                   background: "rgba(255,193,7,0.08)",
                   border: "1px solid rgba(255,193,7,0.25)",
