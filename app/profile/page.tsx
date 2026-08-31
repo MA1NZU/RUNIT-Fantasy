@@ -9,7 +9,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 
 type ShopItem = { ID: string; itemName: string; itemType: string; previewImage: string; songUrl?: string; titleText?: string; titleColor?: string; };
-type UserTeam = { id: string; manager: string; totalPoints: number; gameweekPoints: number; coins: number; equippedAvatar?: string; equippedBanner?: string; equippedSong?: string; equippedTitle?: string; ownerEmail: string; };
+type UserTeam = { id: string; manager: string; totalPoints: number; gameweekPoints: number; coins: number; equippedAvatar?: string; equippedBanner?: string; equippedSong?: string; equippedTitle?: string; ownerEmail: string; showInLeaderboard?: boolean; };
 
 declare global { interface Window { onYouTubeIframeAPIReady: () => void; YT: any; } }
 
@@ -50,7 +50,10 @@ function ProfileContent() {
         setNewName(teamData.manager);
 
         const allTeamsSnap = await getDocs(collection(db, "userTeams"));
-        const allTeams = allTeamsSnap.docs.map(d => d.data() as UserTeam).sort((a, b) => (b.totalPoints || 0) - (a.totalPoints || 0));
+        const allTeams = allTeamsSnap.docs
+          .map(d => d.data() as UserTeam)
+          .filter(team => team.showInLeaderboard !== false)
+          .sort((a, b) => (b.totalPoints || 0) - (a.totalPoints || 0));
         const userIndex = allTeams.findIndex(t => t.ownerEmail === targetEmail);
         if (userIndex !== -1) setRank(userIndex + 1);
 
