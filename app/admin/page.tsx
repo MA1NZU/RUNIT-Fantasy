@@ -179,7 +179,7 @@ export default function AdminPage() {
     "all" | ShopItem["itemType"]
   >("all");
   const [shopSortBy, setShopSortBy] = useState<
-    "type" | "name" | "price" | "section" | "rarity"
+    "type" | "name" | "price" | "section" | "rarity" | "visible"
   >("type");
 
   useEffect(() => {
@@ -948,6 +948,15 @@ export default function AdminPage() {
         return String(a.itemName || "").localeCompare(String(b.itemName || ""));
       }
 
+      if (shopSortBy === "visible") {
+        const visibilityCompare =
+          Number(a.isVisible === false) - Number(b.isVisible === false);
+
+        if (visibilityCompare !== 0) return visibilityCompare;
+
+        return String(a.itemName || "").localeCompare(String(b.itemName || ""));
+      }
+
       return 0;
     });
 
@@ -1313,6 +1322,7 @@ export default function AdminPage() {
                         | "price"
                         | "section"
                         | "rarity"
+                        | "visible"
                     )
                   }
                   style={inputStyle}
@@ -1322,6 +1332,7 @@ export default function AdminPage() {
                   <option value="price">Price</option>
                   <option value="section">Section</option>
                   <option value="rarity">Rarity</option>
+                  <option value="visible">Visible First</option>
                 </select>
               </div>
 
