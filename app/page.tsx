@@ -165,7 +165,6 @@ export default function Home() {
   const currentGW = settings?.currentGameweek ?? 7;
   const nextGW = currentGW + 1;
   const leader = topTeams[0];
-  const podiumTeams = topTeams.slice(0, 3);
   const deadlineText = formatDeadline(settings?.deadline);
   const timeLeft = getTimeLeft(settings?.deadline, now);
 
@@ -820,105 +819,8 @@ export default function Home() {
             )}
           </div>
 
-          {/* SIDE PANELS */}
+          {/* QUICK ACTIONS */}
           <div style={{ display: "grid", gap: "1rem" }}>
-            <div
-              className="home-table-race"
-              style={{
-                background: "var(--surface)",
-                border: "1px solid var(--border)",
-                borderRadius: "20px",
-                padding: "1rem",
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  gap: "1rem",
-                  fontWeight: 900,
-                  marginBottom: "1rem",
-                }}
-              >
-                <div>Table Race</div>
-                <span
-                  style={{
-                    color: "var(--text-muted)",
-                    fontSize: "0.75rem",
-                    fontWeight: 700,
-                    textTransform: "uppercase",
-                    letterSpacing: "1px",
-                  }}
-                >
-                  Top 3
-                </span>
-              </div>
-
-              {loading ? (
-                <div style={{ color: "var(--text-muted)" }}>
-                  Loading podium...
-                </div>
-              ) : podiumTeams.length === 0 ? (
-                <div style={{ color: "var(--text-muted)" }}>No podium yet.</div>
-              ) : (
-                <div style={{ display: "grid", gap: "0.65rem" }}>
-                  {podiumTeams.map((team, i) => (
-                    <div
-                      key={team.id}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "0.75rem",
-                        background: "rgba(255,255,255,0.035)",
-                        border: "1px solid var(--border)",
-                        borderRadius: "16px",
-                        padding: "0.8rem",
-                      }}
-                    >
-                      <div
-                        style={{
-                          width: "40px",
-                          height: "40px",
-                          borderRadius: "14px",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          background: "rgba(255,255,255,0.055)",
-                          fontSize: "1.15rem",
-                        }}
-                      >
-                        {i === 0 ? "1" : i === 1 ? "2" : "3"}
-                      </div>
-
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div
-                          style={{
-                            fontWeight: 900,
-                            whiteSpace: "nowrap",
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                          }}
-                        >
-                          {team.manager}
-                        </div>
-
-                        <div
-                          style={{
-                            color: "var(--text-muted)",
-                            fontSize: "0.75rem",
-                            marginTop: "0.2rem",
-                          }}
-                        >
-                          {team.totalPoints} total · {team.gameweekPoints} GW
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
             <div
               style={{
                 background: "var(--surface)",
