@@ -96,8 +96,26 @@ textarea:focus-visible {
 }
 
 .site-brand {
+  display: inline-flex;
   flex-shrink: 0;
+  align-items: center;
+  gap: 0.45rem;
   text-decoration: none;
+}
+
+.site-version {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.35rem;
+  padding: 0.08rem 0.38rem;
+  border: 1px solid rgba(155, 248, 0, 0.38);
+  border-radius: 999px;
+  background: rgba(155, 248, 0, 0.1);
+  color: var(--accent);
+  font-size: 0.62rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  line-height: 1;
 }
 
 .mobile-menu-toggle,
@@ -986,7 +1004,7 @@ textarea:focus-visible {
   }
 }
 
-/* Icon-first navigation for phone-sized screens. */
+/* Icon-first navigation for compact screens. */
 .mobile-nav-sheet-title,
 .mobile-bottom-nav {
   display: none;
@@ -998,7 +1016,7 @@ textarea:focus-visible {
   flex: 0 0 auto;
 }
 
-@media (max-width: 760px) {
+@media (max-width: 900px) {
   .site-nav-bar {
     justify-content: center;
   }
@@ -1118,5 +1136,72 @@ textarea:focus-visible {
 
   .mobile-nav-more-links {
     grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Phone dashboard refinements (v4). */
+@media (max-width: 760px) {
+  /* Team and Transfers summaries: main score/bank on row one, three details below. */
+  .team-summary-grid,
+  .transfer-summary-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+
+  .team-summary-gw-points,
+  .transfer-summary-bank {
+    grid-column: 1 / -1;
+  }
+
+  .transfer-summary-budget {
+    display: none !important;
+  }
+
+  /* Keep player cards compact and two-wide throughout phone layouts. */
+  .team-squad-grid,
+  .transfer-squad-grid,
+  .transfer-modal-results {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 0.5rem !important;
+  }
+
+  /* The current-GW score is always visible in phone leaderboard rows. */
+  .leaderboard-table-row:not(.leaderboard-table-heading) > :nth-child(3) {
+    display: flex !important;
+  }
+}
+
+@media (max-width: 480px) {
+  /* Keep both GW and total scores visible in compact standings. */
+  .home-leaderboard-row {
+    grid-template-columns: 30px minmax(0, 1fr) minmax(38px, auto) minmax(38px, auto) !important;
+    gap: 0.45rem !important;
+  }
+
+  .leaderboard-table-row:not(.leaderboard-table-heading) {
+    grid-template-columns: 34px minmax(0, 1fr) minmax(40px, auto) minmax(40px, auto) !important;
+    gap: 0.45rem !important;
+  }
+
+  .home-leaderboard-row > :nth-child(3),
+  .home-leaderboard-row > :last-child,
+  .leaderboard-table-row:not(.leaderboard-table-heading) > :nth-child(3),
+  .leaderboard-table-row:not(.leaderboard-table-heading) > :last-child {
+    display: flex !important;
+    flex-direction: column;
+    align-items: flex-end;
+    font-size: 1.05rem !important;
+    line-height: 1.1;
+    white-space: nowrap;
+  }
+
+  .home-leaderboard-row > :nth-child(3)::before,
+  .leaderboard-table-row:not(.leaderboard-table-heading) > :nth-child(3)::before {
+    content: "GW Pts";
+    margin-bottom: 0.15rem;
+    color: var(--text-muted);
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
   }
 }
