@@ -25,6 +25,7 @@ type Player = {
   desc: string;
   image?: string;
   ID?: string;
+  showInTransfers?: boolean;
 };
 
 type GWTeam = {
@@ -588,9 +589,12 @@ export default function TransfersPage() {
         setPlayerMap(map);
 
         setAllPlayers(
-          list.sort(
-            (a, b) => Number(b.totalPoints ?? 0) - Number(a.totalPoints ?? 0)
-          )
+          list
+            .filter((player) => player.showInTransfers !== false)
+            .sort(
+              (a, b) =>
+                Number(b.totalPoints ?? 0) - Number(a.totalPoints ?? 0)
+            )
         );
 
         const userTeamSnap = await getDocs(
@@ -686,6 +690,11 @@ export default function TransfersPage() {
 
   const handlePlayerSelect = (p: Player) => {
     setError("");
+
+    if (p.showInTransfers === false) {
+      setError("This player is not currently available for transfers.");
+      return;
+    }
 
     if (allSelected.includes(p.id)) return;
 
@@ -993,6 +1002,7 @@ export default function TransfersPage() {
             }}
           >
             <div
+              className="transfer-summary-bank"
               style={{
                 background:
                   remaining < 0
@@ -1056,6 +1066,9 @@ export default function TransfersPage() {
             ].map((stat) => (
               <div
                 key={stat.label}
+                className={`transfer-summary-stat${
+                  stat.label === "Budget" ? " transfer-summary-budget" : ""
+                }`}
                 style={{
                   background: "rgba(255,255,255,0.035)",
                   border: "1px solid var(--border)",
@@ -1425,7 +1438,7 @@ export default function TransfersPage() {
                       padding: "2rem",
                     }}
                   >
-                    No players found.
+                    No available players found.
                   </div>
                 )}
               </div>
