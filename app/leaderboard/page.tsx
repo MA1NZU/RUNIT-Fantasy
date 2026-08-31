@@ -12,6 +12,7 @@ type Team = {
   ownerEmail: string;
   gameweekPoints: number;
   totalPoints: number;
+  showInLeaderboard?: boolean;
 };
 
 type Settings = {
@@ -70,18 +71,22 @@ export default function Leaderboard() {
           }
         });
 
-        const loadedTeams: Team[] = userTeamsSnap.docs.map((d) => {
-          const data = d.data();
-          const email = String(data.ownerEmail || "").toLowerCase();
+        const loadedTeams: Team[] = userTeamsSnap.docs
+          .map((d) => {
+            const data = d.data();
+            const email = String(data.ownerEmail || "").toLowerCase();
 
-          return {
-            id: d.id,
-            manager: data.manager || data.title || "Unknown Manager",
-            ownerEmail: data.ownerEmail || "",
-            totalPoints: Number(data.totalPoints || 0),
-            gameweekPoints: gwPointsMap[email] ?? Number(data.gameweekPoints || 0),
-          };
-        });
+            return {
+              id: d.id,
+              manager: data.manager || data.title || "Unknown Manager",
+              ownerEmail: data.ownerEmail || "",
+              totalPoints: Number(data.totalPoints || 0),
+              gameweekPoints:
+                gwPointsMap[email] ?? Number(data.gameweekPoints || 0),
+              showInLeaderboard: data.showInLeaderboard !== false,
+            };
+          })
+          .filter((team) => team.showInLeaderboard);
 
         setTeams(loadedTeams);
       } catch (err) {
@@ -507,6 +512,7 @@ export default function Leaderboard() {
           </div>
 
           <div
+            className="leaderboard-current-gameweek"
             style={{
               position: "relative",
               overflow: "hidden",
