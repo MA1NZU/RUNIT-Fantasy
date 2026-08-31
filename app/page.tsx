@@ -7,7 +7,6 @@ import {
   getDocs,
   orderBy,
   query,
-  limit,
   where,
 } from "firebase/firestore";
 import { useAuth } from "@/lib/AuthContext";
@@ -19,6 +18,7 @@ type Team = {
   ownerEmail?: string;
   gameweekPoints: number;
   totalPoints: number;
+  showInLeaderboard?: boolean;
 };
 
 type Settings = {
@@ -90,11 +90,7 @@ export default function Home() {
       try {
         const [teamsSnap, settingsSnap] = await Promise.all([
           getDocs(
-            query(
-              collection(db, "userTeams"),
-              orderBy("totalPoints", "desc"),
-              limit(5)
-            )
+            query(collection(db, "userTeams"), orderBy("totalPoints", "desc"))
           ),
           getDocs(collection(db, "settings")),
         ]);
@@ -125,19 +121,23 @@ export default function Home() {
           }
         });
 
-        const teams = teamsSnap.docs.map((d) => {
-          const data = d.data();
-          const email = String(data.ownerEmail || "").toLowerCase();
+        const teams = teamsSnap.docs
+          .map((d) => {
+            const data = d.data();
+            const email = String(data.ownerEmail || "").toLowerCase();
 
-          return {
-            id: d.id,
-            manager: data.manager || data.title || "Unknown Manager",
-            ownerEmail: data.ownerEmail || "",
-            totalPoints: Number(data.totalPoints || 0),
-            gameweekPoints:
-              currentGwPointsByEmail[email] ?? Number(data.gameweekPoints || 0),
-          } as Team;
-        });
+            return {
+              id: d.id,
+              manager: data.manager || data.title || "Unknown Manager",
+              ownerEmail: data.ownerEmail || "",
+              totalPoints: Number(data.totalPoints || 0),
+              gameweekPoints:
+                currentGwPointsByEmail[email] ?? Number(data.gameweekPoints || 0),
+              showInLeaderboard: data.showInLeaderboard !== false,
+            } as Team;
+          })
+          .filter((team) => team.showInLeaderboard !== false)
+          .slice(0, 5);
 
         if (!mounted) return;
 
@@ -823,6 +823,7 @@ export default function Home() {
           {/* SIDE PANELS */}
           <div style={{ display: "grid", gap: "1rem" }}>
             <div
+              className="home-table-race"
               style={{
                 background: "var(--surface)",
                 border: "1px solid var(--border)",
