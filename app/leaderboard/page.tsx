@@ -511,54 +511,7 @@ export default function Leaderboard() {
             </div>
           </div>
 
-          <div
-            className="leaderboard-current-gameweek"
-            style={{
-              position: "relative",
-              overflow: "hidden",
-              background: "var(--surface)",
-              border: "1px solid var(--border)",
-              borderRadius: "18px",
-              padding: "1rem",
-            }}
-          >
-            <div
-              style={{
-                position: "absolute",
-                width: "90px",
-                height: "90px",
-                right: "-45px",
-                top: "-45px",
-                background: "rgba(3, 71, 244, 0.18)",
-                borderRadius: "999px",
-              }}
-            />
 
-            <div
-              style={{
-                position: "relative",
-                zIndex: 1,
-                fontSize: "1.65rem",
-                fontWeight: 900,
-                letterSpacing: "-0.04em",
-                color: "var(--text)",
-              }}
-            >
-              GW{currentGW}
-            </div>
-
-            <div
-              style={{
-                position: "relative",
-                zIndex: 1,
-                color: "var(--text-muted)",
-                fontSize: "0.75rem",
-                marginTop: "0.2rem",
-              }}
-            >
-              Current Gameweek
-            </div>
-          </div>
         </section>
 
         {/* STANDINGS TABLE */}
