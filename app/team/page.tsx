@@ -33,6 +33,11 @@ type GWTeam = {
   ownerEmail: string;
 };
 
+type Settings = {
+  currentGameweek: number;
+  lockTeamLeaderboard?: boolean;
+};
+
 function PlayerCard({
   player,
   points,
@@ -721,6 +726,7 @@ function TeamContent() {
   const [currentGW, setCurrentGW] = useState<number>(7);
   const [selectedGW, setSelectedGW] = useState<number>(7);
   const [loading, setLoading] = useState(true);
+  const [isLocked, setIsLocked] = useState(false);
 
   const [selectedStatPlayerId, setSelectedStatPlayerId] = useState<
     string | null
@@ -731,6 +737,7 @@ function TeamContent() {
 
     const loadData = async () => {
       setLoading(true);
+      setIsLocked(false);
       setGwTeams([]);
 
       try {
@@ -739,9 +746,17 @@ function TeamContent() {
         let activeGW = 7;
 
         if (!settingsSnap.empty) {
-          activeGW = Number(settingsSnap.docs[0].data().currentGameweek || 7);
+          const settings = settingsSnap.docs[0].data() as Settings;
+
+          activeGW = Number(settings.currentGameweek || 7);
           setCurrentGW(activeGW);
           setSelectedGW(activeGW);
+
+          if (settings.lockTeamLeaderboard) {
+            setIsLocked(true);
+            setLoading(false);
+            return;
+          }
         }
 
         const pSnap = await getDocs(collection(db, "players"));
@@ -889,6 +904,67 @@ function TeamContent() {
         }}
       >
         Loading Squad...
+      </div>
+    );
+  }
+
+  if (isLocked) {
+    return (
+      <div
+        style={{
+          maxWidth: "760px",
+          margin: "4rem auto",
+          position: "relative",
+          overflow: "hidden",
+          border: "1px solid var(--border)",
+          borderRadius: "28px",
+          padding: "2.5rem",
+          background:
+            "radial-gradient(circle at 20% 10%, rgba(3, 71, 244, 0.3), transparent 35%), radial-gradient(circle at 90% 20%, rgba(255, 193, 7, 0.14), transparent 30%), linear-gradient(135deg, rgba(255,255,255,0.075), rgba(255,255,255,0.02))",
+          textAlign: "center",
+        }}
+      >
+        <div
+          style={{
+            width: "64px",
+            height: "64px",
+            borderRadius: "22px",
+            background: "rgba(255,255,255,0.05)",
+            border: "1px solid rgba(255,255,255,0.1)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            margin: "0 auto 1.2rem",
+            fontSize: "2rem",
+          }}
+        >
+          🔒
+        </div>
+
+        <h1
+          style={{
+            fontSize: "clamp(2rem, 5vw, 3.2rem)",
+            lineHeight: 1,
+            letterSpacing: "-0.05em",
+            fontWeight: 900,
+            marginBottom: "0.75rem",
+          }}
+        >
+          {isOwnTeam ? "My Team is" : "Team Page is"}{" "}
+          <span style={{ color: "var(--blue)" }}>Locked</span>
+        </h1>
+
+        <p
+          style={{
+            color: "var(--text-muted)",
+            maxWidth: "460px",
+            margin: "0 auto",
+            lineHeight: 1.7,
+          }}
+        >
+          Access to team pages is currently restricted by the admin. Check
+          back again soon.
+        </p>
       </div>
     );
   }
