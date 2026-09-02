@@ -61,6 +61,17 @@ textarea {
   font: inherit;
 }
 
+/* Keep native select menus readable in dark mode, including their option list. */
+select {
+  color-scheme: dark;
+}
+
+select option,
+select optgroup {
+  background-color: var(--surface);
+  color: var(--text);
+}
+
 button,
 a,
 input,
