@@ -26,7 +26,7 @@ type Settings = {
   deadline: string;
 };
 
-const TOTAL_MANAGERS = 13;
+const TOTAL_MANAGERS = 8;
 
 function getTimeLeft(deadline?: string, now = Date.now()) {
   if (!deadline) return "No deadline set";
