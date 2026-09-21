@@ -7,6 +7,8 @@ import { logout } from "@/lib/auth";
 import Link from "next/link";
 import SitePopup from "@/components/SitePopup";
 import { APP_VERSION } from "@/lib/appVersion";
+import { collection, getDocs } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 
 type NavIconName =
   | "home"
@@ -24,6 +26,10 @@ type NavLink = {
   href: string;
   label: string;
   icon: NavIconName;
+};
+
+type NavigationSettings = {
+  hiddenPages?: unknown;
 };
 
 const NAV: NavLink[] = [
@@ -135,12 +141,55 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [hiddenPages, setHiddenPages] = useState<string[]>([]);
+  const [pageVisibilityLoaded, setPageVisibilityLoaded] = useState(false);
 
   useEffect(() => {
     if (!loading && !user && pathname !== "/login") {
       router.replace("/login");
     }
   }, [user, loading, pathname, router]);
+
+  useEffect(() => {
+    let active = true;
+
+    const loadPageVisibility = async () => {
+      if (!user) {
+        if (active) {
+          setHiddenPages([]);
+          setPageVisibilityLoaded(true);
+        }
+        return;
+      }
+
+      setPageVisibilityLoaded(false);
+
+      try {
+        const settingsSnap = await getDocs(collection(db, "settings"));
+        const settings = !settingsSnap.empty
+          ? (settingsSnap.docs[0].data() as NavigationSettings)
+          : null;
+        const configuredHiddenPages = Array.isArray(settings?.hiddenPages)
+          ? settings.hiddenPages.filter(
+              (page): page is string => typeof page === "string"
+            )
+          : [];
+
+        if (active) setHiddenPages(configuredHiddenPages);
+      } catch (error) {
+        console.error("Failed to load page visibility settings:", error);
+        if (active) setHiddenPages([]);
+      } finally {
+        if (active) setPageVisibilityLoaded(true);
+      }
+    };
+
+    loadPageVisibility();
+
+    return () => {
+      active = false;
+    };
+  }, [user]);
 
   useEffect(() => {
     setMenuOpen(false);
@@ -157,6 +206,26 @@ export default function Shell({ children }: { children: React.ReactNode }) {
 
     return () => window.removeEventListener("keydown", closeOnEscape);
   }, [menuOpen]);
+
+  const isAdmin = user?.email === ADMIN_EMAIL;
+  const currentPageIsHidden = !isAdmin && hiddenPages.includes(pathname);
+
+  useEffect(() => {
+    if (
+      !loading &&
+      pageVisibilityLoaded &&
+      currentPageIsHidden &&
+      pathname !== "/"
+    ) {
+      router.replace("/");
+    }
+  }, [
+    currentPageIsHidden,
+    loading,
+    pageVisibilityLoaded,
+    pathname,
+    router,
+  ]);
 
   const handleLogout = () => {
     setMenuOpen(false);
@@ -201,10 +270,32 @@ export default function Shell({ children }: { children: React.ReactNode }) {
     return <>{children}</>;
   }
 
-  const links =
-    user?.email === ADMIN_EMAIL
-      ? [...NAV, { href: "/admin", label: "Admin", icon: "admin" as const }]
-      : NAV;
+  if (pageVisibilityLoaded && currentPageIsHidden) {
+    return (
+      <div
+        className="app-state"
+        style={{
+          minHeight: "100vh",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          background: "var(--bg)",
+        }}
+      >
+        <p style={{ color: "var(--text-muted)" }}>Redirecting...</p>
+      </div>
+    );
+  }
+
+  const navigationLinks = isAdmin
+    ? NAV
+    : NAV.filter((link) => !hiddenPages.includes(link.href));
+  const links = isAdmin
+    ? [
+        ...navigationLinks,
+        { href: "/admin", label: "Admin", icon: "admin" as const },
+      ]
+    : navigationLinks;
   const primaryMobileLinks = links.filter((link) =>
     PRIMARY_MOBILE_HREFS.has(link.href)
   );
@@ -256,7 +347,10 @@ export default function Shell({ children }: { children: React.ReactNode }) {
             }}
           >
             <span>RUNIT Fantasy</span>
-            <span className="site-version" title={`Application version ${APP_VERSION}`}>
+            <span
+              className="site-version"
+              title={`Application version ${APP_VERSION}`}
+            >
               {APP_VERSION}
             </span>
           </Link>
@@ -377,19 +471,21 @@ export default function Shell({ children }: { children: React.ReactNode }) {
           );
         })}
 
-        <button
-          type="button"
-          className={`mobile-bottom-nav-item mobile-bottom-nav-more${
-            menuOpen || isMoreActive ? " is-active" : ""
-          }`}
-          aria-label="More pages"
-          aria-expanded={menuOpen}
-          aria-controls="mobile-navigation"
-          title="More pages"
-          onClick={() => setMenuOpen((open) => !open)}
-        >
-          <NavigationIcon icon="more" />
-        </button>
+        {moreMobileLinks.length > 0 && (
+          <button
+            type="button"
+            className={`mobile-bottom-nav-item mobile-bottom-nav-more${
+              menuOpen || isMoreActive ? " is-active" : ""
+            }`}
+            aria-label="More pages"
+            aria-expanded={menuOpen}
+            aria-controls="mobile-navigation"
+            title="More pages"
+            onClick={() => setMenuOpen((open) => !open)}
+          >
+            <NavigationIcon icon="more" />
+          </button>
+        )}
       </nav>
 
       <div className="app-shell-content">{children}</div>
