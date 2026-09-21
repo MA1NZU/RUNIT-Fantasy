@@ -11,6 +11,7 @@ import { APP_VERSION } from "@/lib/appVersion";
 type NavIconName =
   | "home"
   | "leaderboard"
+  | "fixtures"
   | "team"
   | "transfers"
   | "shop"
@@ -28,6 +29,7 @@ type NavLink = {
 const NAV: NavLink[] = [
   { href: "/", label: "Home", icon: "home" },
   { href: "/leaderboard", label: "Leaderboard", icon: "leaderboard" },
+  { href: "/fixtures", label: "Fixtures", icon: "fixtures" },
   { href: "/team", label: "My Team", icon: "team" },
   { href: "/transfers", label: "Transfers", icon: "transfers" },
   { href: "/shop", label: "Shop", icon: "shop" },
@@ -67,6 +69,13 @@ function NavigationIcon({ icon }: { icon: NavIconName }) {
         <svg {...commonProps}>
           <path d="M8 4h8v5a4 4 0 0 1-8 0Z" />
           <path d="M8 6H5v1a4 4 0 0 0 3 3.87M16 6h3v1a4 4 0 0 1-3 3.87M12 13v4M9 21h6M8 17h8" />
+        </svg>
+      );
+    case "fixtures":
+      return (
+        <svg {...commonProps}>
+          <rect x="4" y="5" width="16" height="15" rx="2" />
+          <path d="M8 3v4M16 3v4M4 10h16M8 14h2M14 14h2M8 17h2M14 17h2" />
         </svg>
       );
     case "team":
