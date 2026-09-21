@@ -10,6 +10,8 @@ type Player = {
   ID?: string;
   name: string;
   game: string;
+  // Admin → Players uses this existing field for hidden players.
+  showInTransfers?: boolean;
 };
 
 type Settings = {
@@ -90,9 +92,7 @@ export default function FixturesPage() {
             (playerDoc) =>
               ({ id: playerDoc.id, ...playerDoc.data() } as Player)
           )
-          .sort((a, b) =>
-            String(a.name || "").localeCompare(String(b.name || ""))
-          );
+          .sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
 
         const playerIdByKey: Record<string, string> = {};
         const startingScores: Record<string, PlayerScore> = {};
@@ -196,17 +196,21 @@ export default function FixturesPage() {
   const standings = useMemo<PlayerStanding[]>(() => {
     const totals: Record<string, PlayerStanding> = {};
 
-    players.forEach((player) => {
-      totals[player.id] = {
-        player,
-        played: 0,
-        wins: 0,
-        draws: 0,
-        losses: 0,
-        score: Number(scores[player.id]?.total || 0),
-        points: 0,
-      };
-    });
+    // Keep Admin-hidden players out of the public Player Standings table.
+    // Existing records without the field remain visible for backwards compatibility.
+    players
+      .filter((player) => player.showInTransfers !== false)
+      .forEach((player) => {
+        totals[player.id] = {
+          player,
+          played: 0,
+          wins: 0,
+          draws: 0,
+          losses: 0,
+          score: Number(scores[player.id]?.total || 0),
+          points: 0,
+        };
+      });
 
     fixtureResults.forEach((fixture) => {
       if (!fixture.completed) return;
@@ -432,8 +436,7 @@ export default function FixturesPage() {
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns:
-                    "42px minmax(180px, 1fr) repeat(4, 52px) 78px 58px",
+                  gridTemplateColumns: "42px minmax(180px, 1fr) repeat(4, 52px) 78px 58px",
                   gap: "0.45rem",
                   alignItems: "center",
                   padding: "0 0.6rem 0.65rem",
@@ -460,8 +463,7 @@ export default function FixturesPage() {
                   key={standing.player.id}
                   style={{
                     display: "grid",
-                    gridTemplateColumns:
-                      "42px minmax(180px, 1fr) repeat(4, 52px) 78px 58px",
+                    gridTemplateColumns: "42px minmax(180px, 1fr) repeat(4, 52px) 78px 58px",
                     gap: "0.45rem",
                     alignItems: "center",
                     padding: "0.8rem 0.6rem",
@@ -483,8 +485,7 @@ export default function FixturesPage() {
                         index === 0
                           ? "rgba(255,193,7,0.16)"
                           : "rgba(255,255,255,0.06)",
-                      color:
-                        index === 0 ? "var(--accent)" : "var(--text-muted)",
+                      color: index === 0 ? "var(--accent)" : "var(--text-muted)",
                       fontWeight: 900,
                     }}
                   >
@@ -566,8 +567,7 @@ export default function FixturesPage() {
                   marginTop: "0.2rem",
                 }}
               >
-                Fixtures become final after both players&apos; gameweek stats are
-                saved.
+                Fixtures become final after both players' gameweek stats are saved.
               </div>
             </div>
 
@@ -645,8 +645,7 @@ export default function FixturesPage() {
                           key={fixture.id}
                           style={{
                             display: "grid",
-                            gridTemplateColumns:
-                              "minmax(0, 1fr) auto minmax(0, 1fr)",
+                            gridTemplateColumns: "minmax(0, 1fr) auto minmax(0, 1fr)",
                             gap: "0.75rem",
                             alignItems: "center",
                             padding: "0.85rem",
@@ -677,9 +676,7 @@ export default function FixturesPage() {
                             </div>
                           </div>
 
-                          <div
-                            style={{ textAlign: "center", minWidth: "78px" }}
-                          >
+                          <div style={{ textAlign: "center", minWidth: "78px" }}>
                             {fixture.completed ? (
                               <>
                                 <div
@@ -689,8 +686,7 @@ export default function FixturesPage() {
                                     fontSize: "1.1rem",
                                   }}
                                 >
-                                  {fixture.playerOneScore} –{" "}
-                                  {fixture.playerTwoScore}
+                                  {fixture.playerOneScore} – {fixture.playerTwoScore}
                                 </div>
                                 <div
                                   style={{
