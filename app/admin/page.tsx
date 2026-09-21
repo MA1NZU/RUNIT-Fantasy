@@ -18,6 +18,16 @@ import {
 import { useAuth } from "@/lib/AuthContext";
 import { useRouter } from "next/navigation";
 import Shell from "@/app/shell";
+import {
+  LIMITED_CARD_RARITIES,
+  LimitedCard,
+  getLimitedCardImageUrl,
+  getLimitedCardRarityColor,
+  limitedCardBoostDelta,
+  limitedCardPowerupText,
+  limitedCardStatLabel,
+  limitedCardStatOptions,
+} from "@/lib/limitedCards";
 
 const ADMIN_EMAIL = "yahyaayman2006@gmail.com";
 
@@ -95,6 +105,7 @@ type Tab =
   | "stats"
   | "managers"
   | "shop"
+  | "cards"
   | "sections"
   | "settings"
   | "locks";
@@ -116,6 +127,22 @@ const defaultNewItem: Partial<ShopItem> = {
   section: "General",
   isVisible: true,
   songUrl: "",
+  showNewTag: false,
+  showLeavingTodayTag: false,
+};
+
+const defaultNewCard: Partial<LimitedCard> = {
+  rarity: "rare",
+  image: "",
+  accentColor: "",
+  shopPrice: 0,
+  transferPrice: 0,
+  playerId: "",
+  boostStat: "kills",
+  boostValue: 1.5,
+  powerupText: "",
+  stock: 1,
+  isVisible: true,
   showNewTag: false,
   showLeavingTodayTag: false,
 };
@@ -184,6 +211,7 @@ export default function AdminPage() {
   const [managers, setManagers] = useState<UserTeam[]>([]);
   const [shopItems, setShopItems] = useState<ShopItem[]>([]);
   const [shopSections, setShopSections] = useState<ShopSection[]>([]);
+  const [limitedCards, setLimitedCards] = useState<LimitedCard[]>([]);
   const [settings, setSettings] = useState<Settings | null>(null);
   const [fixtures, setFixtures] = useState<PlayerFixture[]>([]);
   const [fixtureGameweek, setFixtureGameweek] = useState(7);
@@ -198,6 +226,10 @@ export default function AdminPage() {
   const [calcStats, setCalcStats] = useState<Record<string, string>>({});
   const [newItem, setNewItem] = useState<Partial<ShopItem>>({
     ...defaultNewItem,
+  });
+
+  const [newCard, setNewCard] = useState<Partial<LimitedCard>>({
+    ...defaultNewCard,
   });
 
   const [shopSearch, setShopSearch] = useState("");
@@ -219,15 +251,23 @@ export default function AdminPage() {
       setLoading(true);
 
       try {
-        const [pSnap, mSnap, sSnap, shopSnap, sectionsSnap, fixturesSnap] =
-          await Promise.all([
-            getDocs(collection(db, "players")),
-            getDocs(collection(db, "userTeams")),
-            getDocs(collection(db, "settings")),
-            getDocs(collection(db, "shopItems")),
-            getDocs(collection(db, "shopSections")),
-            getDocs(collection(db, "playerFixtures")),
-          ]);
+        const [
+          pSnap,
+          mSnap,
+          sSnap,
+          shopSnap,
+          sectionsSnap,
+          fixturesSnap,
+          limitedCardsSnap,
+        ] = await Promise.all([
+          getDocs(collection(db, "players")),
+          getDocs(collection(db, "userTeams")),
+          getDocs(collection(db, "settings")),
+          getDocs(collection(db, "shopItems")),
+          getDocs(collection(db, "shopSections")),
+          getDocs(collection(db, "playerFixtures")),
+          getDocs(collection(db, "limitedCards")),
+        ]);
 
         let activeGW = 7;
 
@@ -248,6 +288,12 @@ export default function AdminPage() {
         );
 
         setShopItems(loadedShopItems);
+
+        setLimitedCards(
+          limitedCardsSnap.docs
+            .map((d) => ({ id: d.id, ...d.data() } as LimitedCard))
+            .sort((a, b) => (a.cardName || "").localeCompare(b.cardName || ""))
+        );
 
         const sectionMap: Record<string, ShopSection> = {};
 
@@ -404,23 +450,31 @@ export default function AdminPage() {
     const now = new Date().toISOString();
 
     try {
-      const [playersSnap, statsSnap, gwTeamsSnap, userTeamsSnap] =
-        await Promise.all([
-          getDocs(collection(db, "players")),
-          getDocs(
-            query(
-              collection(db, "playerMatchStats"),
-              where("gameweek", "==", currentGameweek)
-            )
-          ),
-          getDocs(
-            query(
-              collection(db, "gameweekTeams"),
-              where("gameweek", "==", currentGameweek)
-            )
-          ),
-          getDocs(collection(db, "userTeams")),
-        ]);
+      const [
+        playersSnap,
+        statsSnap,
+        gwTeamsSnap,
+        userTeamsSnap,
+        limitedCardsSnap,
+        userLimitedCardsSnap,
+      ] = await Promise.all([
+        getDocs(collection(db, "players")),
+        getDocs(
+          query(
+            collection(db, "playerMatchStats"),
+            where("gameweek", "==", currentGameweek)
+          )
+        ),
+        getDocs(
+          query(
+            collection(db, "gameweekTeams"),
+            where("gameweek", "==", currentGameweek)
+          )
+        ),
+        getDocs(collection(db, "userTeams")),
+        getDocs(collection(db, "limitedCards")),
+        getDocs(collection(db, "userLimitedCards")),
+      ]);
 
       const aliasToCanonical = new Map<string, string>();
       const playerAliasGroups: string[][] = [];
@@ -498,7 +552,6 @@ export default function AdminPage() {
         const bKey = String(b || "");
 
         if (!aKey || !bKey) return false;
-
         if (aKey === bKey) return true;
 
         const aCanonical = aliasToCanonical.get(aKey) || aKey;
@@ -519,6 +572,51 @@ export default function AdminPage() {
 
         userTeamsByEmail[email].push(userTeamDoc);
       });
+
+      // Limited cards: the catalogue plus every copy attached to this
+      // gameweek's squads.
+      const limitedCardCatalogById = new Map<string, any>();
+
+      limitedCardsSnap.docs.forEach((cardDoc) => {
+        const cardData = cardDoc.data();
+
+        limitedCardCatalogById.set(cardDoc.id, cardData);
+
+        const dataId = String(cardData.ID || "");
+
+        if (dataId) limitedCardCatalogById.set(dataId, cardData);
+      });
+
+      const gameByPlayerId = new Map<string, string>();
+
+      playersSnap.docs.forEach((playerDoc) => {
+        gameByPlayerId.set(playerDoc.id, String(playerDoc.data().game || ""));
+      });
+
+      const statsByCanonical = new Map<string, any>();
+
+      statsSnap.docs.forEach((statDoc) => {
+        const data = statDoc.data();
+        const alias = String(data.player || data.Title || "");
+        const canonical = aliasToCanonical.get(alias) || alias;
+
+        if (canonical) statsByCanonical.set(canonical, data);
+      });
+
+      const attachedLimitedCards = userLimitedCardsSnap.docs.map(
+        (userCardDoc) => {
+          const data = userCardDoc.data();
+
+          return {
+            id: userCardDoc.id,
+            ref: userCardDoc.ref,
+            ownerEmail: String(data.ownerEmail || "").toLowerCase(),
+            cardId: String(data.cardId || ""),
+            status: String(data.status || "owned"),
+            gameweek: Number(data.gameweek || 0),
+          };
+        }
+      );
 
       const batch = writeBatch(db);
       let operationCount = 0;
@@ -541,8 +639,59 @@ export default function AdminPage() {
           team.player4,
         ].filter(Boolean);
 
+        const teamOwnerEmail = String(team.ownerEmail || "").toLowerCase();
+
+        // Limited cards attached to this squad boost the linked player's
+        // chosen stat. Cards whose player is not in the Starting IV keep
+        // waiting and are not consumed.
+        const mainCanonicalIds = new Set(
+          mainPlayerIds
+            .map((playerId) => aliasToCanonical.get(String(playerId || "")))
+            .filter(Boolean)
+        );
+        const boostByPlayerId: Record<string, number> = {};
+        const consumedCardRefs: any[] = [];
+
+        attachedLimitedCards.forEach((userCard) => {
+          const attachedByTeam =
+            Array.isArray(team.limitedCards) &&
+            team.limitedCards.includes(userCard.id);
+          const attachedByRecord =
+            userCard.status === "active" &&
+            userCard.gameweek === currentGameweek &&
+            !!teamOwnerEmail &&
+            userCard.ownerEmail === teamOwnerEmail;
+
+          if (!attachedByTeam && !attachedByRecord) return;
+
+          const card = limitedCardCatalogById.get(userCard.cardId);
+
+          if (!card) return;
+
+          const boostPlayerId = String(card.playerId || "");
+
+          if (!boostPlayerId || !mainCanonicalIds.has(boostPlayerId)) return;
+
+          const stats = statsByCanonical.get(boostPlayerId);
+          const game = String(
+            (stats && stats.game) || gameByPlayerId.get(boostPlayerId) || ""
+          );
+          const delta = limitedCardBoostDelta(game, card, stats);
+
+          boostByPlayerId[boostPlayerId] =
+            (boostByPlayerId[boostPlayerId] || 0) + delta;
+
+          if (userCard.status === "active") {
+            consumedCardRefs.push(userCard.ref);
+          }
+        });
+
         const newGwPoints = mainPlayerIds.reduce((total, playerId) => {
-          const playerPoints = getPlayerPoints(playerId);
+          const canonical =
+            aliasToCanonical.get(String(playerId || "")) ||
+            String(playerId || "");
+          const boost = boostByPlayerId[canonical] || 0;
+          const playerPoints = getPlayerPoints(playerId) + boost;
 
           if (samePlayer(playerId, team.captain)) {
             return total + playerPoints * 2;
@@ -554,36 +703,48 @@ export default function AdminPage() {
         const oldGwPoints = Number(team.gwPoints || 0);
         const difference = newGwPoints - oldGwPoints;
 
-        if (difference === 0) return;
+        if (difference === 0 && consumedCardRefs.length === 0) return;
 
-        batch.update(teamDoc.ref, {
-          gwPoints: newGwPoints,
-          "Updated Date": now,
-        });
+        if (difference !== 0) {
+          batch.update(teamDoc.ref, {
+            gwPoints: newGwPoints,
+            "Updated Date": now,
+          });
 
-        operationCount += 1;
+          operationCount += 1;
+        }
 
-        const ownerEmail = String(team.ownerEmail || "").toLowerCase();
-
-        if (!ownerEmail) return;
-
-        const matchingUserTeams = userTeamsByEmail[ownerEmail] || [];
-
-        matchingUserTeams.forEach((userTeamDoc) => {
-          batch.update(userTeamDoc.ref, {
-            gameweekPoints: newGwPoints,
-            totalPoints: increment(difference),
+        // One-time use: the copy did its job for this gameweek.
+        consumedCardRefs.forEach((cardRef) => {
+          batch.update(cardRef, {
+            status: "used",
             "Updated Date": now,
           });
 
           operationCount += 1;
         });
 
-        managerUpdatesByEmail[ownerEmail] = {
-          newGwPoints,
-          difference:
-            (managerUpdatesByEmail[ownerEmail]?.difference || 0) + difference,
-        };
+        const ownerEmail = teamOwnerEmail;
+
+        if (difference !== 0 && ownerEmail) {
+          const matchingUserTeams = userTeamsByEmail[ownerEmail] || [];
+
+          matchingUserTeams.forEach((userTeamDoc) => {
+            batch.update(userTeamDoc.ref, {
+              gameweekPoints: newGwPoints,
+              totalPoints: increment(difference),
+              "Updated Date": now,
+            });
+
+            operationCount += 1;
+          });
+
+          managerUpdatesByEmail[ownerEmail] = {
+            newGwPoints,
+            difference:
+              (managerUpdatesByEmail[ownerEmail]?.difference || 0) + difference,
+          };
+        }
       });
 
       if (operationCount === 0) {
@@ -857,6 +1018,81 @@ export default function AdminPage() {
     setSaving(null);
   };
 
+  const handleAddLimitedCard = async () => {
+    if (!newCard.cardName) return alert("Card name required");
+    if (!newCard.playerId) return alert("Choose the player this card boosts");
+
+    setSaving("newLimitedCard");
+
+    try {
+      const id = Math.random().toString(36).slice(2, 11);
+
+      const cardData = {
+        ID: id,
+        cardName: newCard.cardName,
+        rarity: newCard.rarity || "rare",
+        image: newCard.image || "",
+        accentColor: newCard.accentColor || "",
+        shopPrice: Number(newCard.shopPrice || 0),
+        transferPrice: Number(newCard.transferPrice || 0),
+        playerId: newCard.playerId,
+        boostStat: newCard.boostStat || "kills",
+        boostValue: Number(newCard.boostValue || 1),
+        powerupText: newCard.powerupText || "",
+        stock: Math.max(0, Number(newCard.stock ?? 1)),
+        isVisible: newCard.isVisible !== false,
+        showNewTag: !!newCard.showNewTag,
+        showLeavingTodayTag: !!newCard.showLeavingTodayTag,
+        "Created Date": new Date().toISOString(),
+      };
+
+      await setDoc(doc(db, "limitedCards", id), cardData);
+
+      setLimitedCards((prev) => [
+        ...prev,
+        { id, ...cardData } as LimitedCard,
+      ]);
+
+      setNewCard({ ...defaultNewCard });
+
+      markSaved("newLimitedCard");
+    } catch (err) {
+      console.error(err);
+    }
+
+    setSaving(null);
+  };
+
+  const handleUpdateLimitedCard = async (card: LimitedCard) => {
+    setSaving(card.id);
+
+    try {
+      await updateDoc(doc(db, "limitedCards", card.id), {
+        cardName: card.cardName || "",
+        rarity: card.rarity || "rare",
+        image: card.image || "",
+        accentColor: card.accentColor || "",
+        shopPrice: Number(card.shopPrice || 0),
+        transferPrice: Number(card.transferPrice || 0),
+        playerId: card.playerId || "",
+        boostStat: card.boostStat || "kills",
+        boostValue: Number(card.boostValue || 1),
+        powerupText: card.powerupText || "",
+        stock: Math.max(0, Number(card.stock ?? 0)),
+        isVisible: card.isVisible !== false,
+        showNewTag: !!card.showNewTag,
+        showLeavingTodayTag: !!card.showLeavingTodayTag,
+        "Updated Date": new Date().toISOString(),
+      });
+
+      markSaved(card.id);
+    } catch (err) {
+      console.error(err);
+    }
+
+    setSaving(null);
+  };
+
   const handleSaveShopSections = async () => {
     setSaving("shopSections");
 
@@ -934,6 +1170,12 @@ export default function AdminPage() {
   ) => {
     setShopItems((prev) =>
       prev.map((i) => (i.id === id ? { ...i, [field]: value } : i))
+    );
+  };
+
+  const updateLimitedCardPatch = (id: string, patch: Partial<LimitedCard>) => {
+    setLimitedCards((prev) =>
+      prev.map((c) => (c.id === id ? { ...c, ...patch } : c))
     );
   };
 
@@ -1226,6 +1468,7 @@ export default function AdminPage() {
             "stats",
             "managers",
             "shop",
+            "cards",
             "sections",
             "settings",
             "locks",
@@ -1703,7 +1946,8 @@ export default function AdminPage() {
                     : "Add Item"}
                 </button>
               </div>
-                            <div
+
+              <div
                 className="admin-shop-form-grid"
                 style={{
                   display: "grid",
@@ -1877,6 +2121,126 @@ export default function AdminPage() {
                 />
               ))}
             </div>
+          </div>
+        )}
+                {tab === "cards" && (
+          <div>
+            <h2 style={sectionTitleStyle}>Limited Player Cards</h2>
+
+            <div
+              style={{
+                background:
+                  "linear-gradient(135deg, rgba(155,248,0,0.08), rgba(3,71,244,0.1)), var(--surface)",
+                border: "1px solid var(--border)",
+                borderRadius: "14px",
+                padding: "1rem",
+                marginBottom: "1rem",
+                color: "var(--text-muted)",
+                fontSize: "0.85rem",
+                lineHeight: 1.6,
+              }}
+            >
+              Design boost cards that managers buy in the shop with coins and
+              attach to the linked player on the transfers page. Each card
+              multiplies one stat&apos;s points for that player, its transfers
+              price counts against the squad budget, and the copy is consumed
+              once the gameweek it was used in is scored. Managers can buy and
+              stack multiple copies.
+            </div>
+
+            <div
+              style={{
+                background: "var(--surface)",
+                border: "1px solid var(--border)",
+                borderRadius: "14px",
+                padding: "1.25rem",
+                marginBottom: "2rem",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: "1rem",
+                  marginBottom: "1rem",
+                  flexWrap: "wrap",
+                }}
+              >
+                <div>
+                  <div style={{ fontWeight: 800, fontSize: "1rem" }}>
+                    Create Limited Card
+                  </div>
+                  <div
+                    style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}
+                  >
+                    Pick the player, the stat, and the multiplier.
+                  </div>
+                </div>
+
+                <button
+                  onClick={handleAddLimitedCard}
+                  disabled={saving === "newLimitedCard"}
+                  style={primaryButtonStyle(saved === "newLimitedCard")}
+                >
+                  {saving === "newLimitedCard"
+                    ? "Adding..."
+                    : saved === "newLimitedCard"
+                    ? "Added"
+                    : "Add Card"}
+                </button>
+              </div>
+
+              <LimitedCardFields
+                card={newCard}
+                players={players}
+                onChange={(patch) => setNewCard({ ...newCard, ...patch })}
+              />
+            </div>
+
+            {limitedCards.length === 0 ? (
+              <div
+                style={{
+                  border: "1px dashed var(--border)",
+                  borderRadius: "12px",
+                  padding: "2rem 1rem",
+                  textAlign: "center",
+                  color: "var(--text-muted)",
+                }}
+              >
+                No limited cards yet. Create the first one above.
+              </div>
+            ) : (
+              <div
+                className="admin-shop-grid"
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fill, minmax(360px, 1fr))",
+                  gap: "1rem",
+                }}
+              >
+                {limitedCards.map((card) => (
+                  <LimitedCardEditor
+                    key={card.id}
+                    card={card}
+                    players={players}
+                    saving={saving}
+                    saved={saved}
+                    onChange={updateLimitedCardPatch}
+                    onSave={handleUpdateLimitedCard}
+                    onDelete={() => {
+                      if (confirm(`Delete "${card.cardName || "card"}"?`)) {
+                        deleteDoc(doc(db, "limitedCards", card.id)).then(() =>
+                          setLimitedCards(
+                            limitedCards.filter((c) => c.id !== card.id)
+                          )
+                        );
+                      }
+                    }}
+                  />
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -3139,6 +3503,542 @@ function ShopItemCard({
             {saving === item.id
               ? "Saving..."
               : saved === item.id
+              ? "Saved"
+              : "Save"}
+          </button>
+
+          <button
+            onClick={onDelete}
+            style={{
+              background: "transparent",
+              border: "1px solid var(--border)",
+              color: "var(--red)",
+              borderRadius: "8px",
+              padding: "0.5rem 0.75rem",
+              cursor: "pointer",
+              fontWeight: 800,
+            }}
+          >
+            ✕
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LimitedCardFields({
+  card,
+  players,
+  onChange,
+}: {
+  card: Partial<LimitedCard>;
+  players: Player[];
+  onChange: (patch: Partial<LimitedCard>) => void;
+}) {
+  const linkedPlayer = players.find((p) => p.id === card.playerId);
+  const statOptions = limitedCardStatOptions(linkedPlayer?.game);
+  const statValues = statOptions.map((option) => option.value);
+  const currentStat = String(card.boostStat || "");
+  const showCurrentStat = currentStat && !statValues.includes(currentStat);
+
+  return (
+    <div>
+      <div
+        className="admin-shop-form-grid"
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+          gap: "0.85rem",
+          marginBottom: "0.85rem",
+        }}
+      >
+        <ShopTextInput
+          label="Card Name"
+          value={card.cardName || ""}
+          onChange={(value) => onChange({ cardName: value })}
+        />
+
+        <div>
+          <div style={{ fontSize: "0.7rem", marginBottom: "0.3rem" }}>
+            Linked Player
+          </div>
+          <select
+            value={card.playerId || ""}
+            onChange={(e) => {
+              const playerId = e.target.value;
+              const player = players.find((p) => p.id === playerId);
+              const nextStatValues = limitedCardStatOptions(
+                player?.game
+              ).map((option) => option.value);
+              const patch: Partial<LimitedCard> = { playerId };
+
+              if (
+                card.boostStat &&
+                !nextStatValues.includes(String(card.boostStat))
+              ) {
+                patch.boostStat = nextStatValues.includes("kills")
+                  ? "kills"
+                  : nextStatValues[0] || "kills";
+              }
+
+              onChange(patch);
+            }}
+            style={inputStyle}
+          >
+            <option value="">Choose player</option>
+            {players.map((player) => (
+              <option key={player.id} value={player.id}>
+                {player.name} · {player.game}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <div style={{ fontSize: "0.7rem", marginBottom: "0.3rem" }}>
+            Rarity
+          </div>
+          <select
+            value={card.rarity || "rare"}
+            onChange={(e) => onChange({ rarity: e.target.value })}
+            style={inputStyle}
+          >
+            {LIMITED_CARD_RARITIES.map((rarity) => (
+              <option key={rarity} value={rarity}>
+                {rarity}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <div style={{ fontSize: "0.7rem", marginBottom: "0.3rem" }}>
+            Boost Stat
+          </div>
+          <select
+            value={currentStat || statValues[0] || "kills"}
+            onChange={(e) => onChange({ boostStat: e.target.value })}
+            style={inputStyle}
+          >
+            {showCurrentStat && (
+              <option value={currentStat}>
+                {limitedCardStatLabel(currentStat)} (other game)
+              </option>
+            )}
+            {statOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <ShopTextInput
+          label="Boost Multiplier (×)"
+          type="number"
+          value={card.boostValue ?? 1.5}
+          onChange={(value) => onChange({ boostValue: Number(value) })}
+        />
+
+        <ShopTextInput
+          label="Shop Price (coins)"
+          type="number"
+          value={card.shopPrice ?? 0}
+          onChange={(value) => onChange({ shopPrice: Number(value) })}
+        />
+
+        <ShopTextInput
+          label="Transfers Price (m)"
+          type="number"
+          value={card.transferPrice ?? 0}
+          onChange={(value) => onChange({ transferPrice: Number(value) })}
+        />
+
+        <ShopTextInput
+          label="Stock (copies left)"
+          type="number"
+          value={card.stock ?? 1}
+          onChange={(value) => onChange({ stock: Number(value) })}
+        />
+      </div>
+
+      <div
+        className="admin-shop-url-grid"
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+          gap: "0.85rem",
+          marginBottom: "0.85rem",
+        }}
+      >
+        <ShopTextInput
+          label="Power-up Text (optional override)"
+          value={card.powerupText || ""}
+          onChange={(value) => onChange({ powerupText: value })}
+        />
+
+        <ShopTextInput
+          label="Image URL"
+          value={card.image || ""}
+          onChange={(value) => onChange({ image: value })}
+        />
+
+        <div>
+          <div style={{ fontSize: "0.7rem", marginBottom: "0.3rem" }}>
+            Accent Color
+          </div>
+          <input
+            type="color"
+            value={
+              card.accentColor || getLimitedCardRarityColor(card.rarity)
+            }
+            onChange={(e) => onChange({ accentColor: e.target.value })}
+            style={{
+              ...inputStyle,
+              padding: "0.3rem",
+              height: "38px",
+              cursor: "pointer",
+            }}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LimitedCardPreview({
+  card,
+  players,
+}: {
+  card: Partial<LimitedCard>;
+  players: Player[];
+}) {
+  const rarityColor = getLimitedCardRarityColor(card.rarity, card.accentColor);
+  const linkedPlayer = players.find((p) => p.id === card.playerId);
+  const imageUrl = getLimitedCardImageUrl(card.image);
+
+  return (
+    <div
+      style={{
+        width: "100%",
+        borderRadius: "16px",
+        overflow: "hidden",
+        border: `1px solid ${rarityColor}66`,
+        background: `linear-gradient(160deg, ${rarityColor}26, rgba(255,255,255,0.02)), var(--surface)`,
+        boxShadow: `0 12px 32px ${rarityColor}1f`,
+      }}
+    >
+      <div
+        style={{
+          position: "relative",
+          width: "100%",
+          aspectRatio: "4/3",
+          background: `radial-gradient(circle at 30% 20%, ${rarityColor}33, transparent 45%), #111`,
+        }}
+      >
+        {imageUrl ? (
+          <img
+            src={imageUrl}
+            alt={card.cardName || "Limited card"}
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
+              display: "block",
+            }}
+          />
+        ) : (
+          <div
+            style={{
+              width: "100%",
+              height: "100%",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: "rgba(255,255,255,0.25)",
+              fontWeight: 900,
+              fontSize: "1.8rem",
+            }}
+          >
+            {(card.cardName || "?").slice(0, 1)}
+          </div>
+        )}
+
+        <span
+          style={{
+            position: "absolute",
+            top: "0.55rem",
+            left: "0.55rem",
+            background: "rgba(0,0,0,0.55)",
+            border: `1px solid ${rarityColor}80`,
+            color: rarityColor,
+            fontSize: "0.58rem",
+            fontWeight: 900,
+            padding: "0.2rem 0.45rem",
+            borderRadius: "999px",
+            textTransform: "uppercase",
+            letterSpacing: "0.6px",
+          }}
+        >
+          {card.rarity || "rare"}
+        </span>
+      </div>
+
+      <div style={{ padding: "0.7rem" }}>
+        <div
+          style={{
+            fontWeight: 900,
+            fontSize: "0.9rem",
+            lineHeight: 1.2,
+            marginBottom: "0.3rem",
+          }}
+        >
+          {card.cardName || "Untitled Card"}
+        </div>
+
+        <div
+          style={{
+            color: "var(--text-muted)",
+            fontSize: "0.68rem",
+            marginBottom: "0.4rem",
+          }}
+        >
+          {linkedPlayer
+            ? `${linkedPlayer.name} · ${linkedPlayer.game}`
+            : "No player linked"}
+        </div>
+
+        <div
+          style={{
+            color: "var(--accent)",
+            fontSize: "0.68rem",
+            fontWeight: 800,
+            lineHeight: 1.35,
+            minHeight: "2rem",
+            marginBottom: "0.5rem",
+          }}
+        >
+          {limitedCardPowerupText({
+            boostStat: card.boostStat,
+            boostValue: card.boostValue,
+            powerupText: card.powerupText,
+          })}
+        </div>
+
+        <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap" }}>
+          <span
+            style={{
+              background: "rgba(255,193,7,0.1)",
+              border: "1px solid rgba(255,193,7,0.25)",
+              color: "var(--accent)",
+              fontSize: "0.62rem",
+              fontWeight: 900,
+              padding: "0.22rem 0.45rem",
+              borderRadius: "999px",
+            }}
+          >
+            {Number(card.shopPrice || 0).toLocaleString()} coins
+          </span>
+
+          <span
+            style={{
+              background: "rgba(3,71,244,0.12)",
+              border: "1px solid rgba(107,159,255,0.35)",
+              color: "#8bb5ff",
+              fontSize: "0.62rem",
+              fontWeight: 900,
+              padding: "0.22rem 0.45rem",
+              borderRadius: "999px",
+            }}
+          >
+            +{Number(card.transferPrice || 0).toFixed(1)}m squad cost
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LimitedCardEditor({
+  card,
+  players,
+  saving,
+  saved,
+  onChange,
+  onSave,
+  onDelete,
+}: {
+  card: LimitedCard;
+  players: Player[];
+  saving: string | null;
+  saved: string | null;
+  onChange: (id: string, patch: Partial<LimitedCard>) => void;
+  onSave: (card: LimitedCard) => void;
+  onDelete: () => void;
+}) {
+  return (
+    <div
+      className="admin-shop-item-card"
+      style={{
+        background: "var(--surface)",
+        border: "1px solid var(--border)",
+        borderRadius: "14px",
+        padding: "1rem",
+        display: "flex",
+        flexDirection: "column",
+        gap: "0.85rem",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "flex-start",
+          gap: "0.75rem",
+        }}
+      >
+        <div style={{ minWidth: 0 }}>
+          <div
+            style={{
+              fontWeight: 800,
+              fontSize: "1rem",
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+          >
+            {card.cardName || "Untitled Card"}
+          </div>
+
+          <div
+            style={{
+              color: "var(--text-muted)",
+              fontSize: "0.75rem",
+              marginTop: "0.2rem",
+            }}
+          >
+            {card.rarity || "rare"} · stock {Number(card.stock || 0)}
+            {card.isVisible === false ? " · hidden" : ""}
+          </div>
+        </div>
+
+        <div style={{ display: "flex", gap: "0.4rem", flexShrink: 0 }}>
+          {card.showNewTag && (
+            <span
+              style={{
+                background: "var(--blue)",
+                color: "#fff",
+                fontSize: "0.62rem",
+                fontWeight: 900,
+                padding: "0.22rem 0.45rem",
+                borderRadius: "999px",
+              }}
+            >
+              NEW
+            </span>
+          )}
+
+          {card.showLeavingTodayTag && (
+            <span
+              style={{
+                background: "#0f0d1b",
+                color: "var(--accent)",
+                border: "1px solid rgba(255,193,7,0.3)",
+                fontSize: "0.62rem",
+                fontWeight: 900,
+                padding: "0.22rem 0.45rem",
+                borderRadius: "999px",
+              }}
+            >
+              LEAVING
+            </span>
+          )}
+        </div>
+      </div>
+
+      <div style={{ display: "grid", justifyItems: "center" }}>
+        <div style={{ width: "min(100%, 190px)" }}>
+          <LimitedCardPreview card={card} players={players} />
+        </div>
+      </div>
+
+      <LimitedCardFields
+        card={card}
+        players={players}
+        onChange={(patch) => onChange(card.id, patch)}
+      />
+
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: "0.75rem",
+          flexWrap: "wrap",
+          borderTop: "1px solid var(--border)",
+          paddingTop: "0.85rem",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            gap: "0.85rem",
+            flexWrap: "wrap",
+            alignItems: "center",
+          }}
+        >
+          <label style={toggleLabelStyle}>
+            <input
+              type="checkbox"
+              checked={!!card.showNewTag}
+              onChange={(e) =>
+                onChange(card.id, { showNewTag: e.target.checked })
+              }
+            />
+            NEW
+          </label>
+
+          <label style={toggleLabelStyle}>
+            <input
+              type="checkbox"
+              checked={!!card.showLeavingTodayTag}
+              onChange={(e) =>
+                onChange(card.id, { showLeavingTodayTag: e.target.checked })
+              }
+            />
+            LEAVING
+          </label>
+
+          <label style={toggleLabelStyle}>
+            <input
+              type="checkbox"
+              checked={card.isVisible !== false}
+              onChange={(e) =>
+                onChange(card.id, { isVisible: e.target.checked })
+              }
+            />
+            Visible
+          </label>
+        </div>
+
+        <div style={{ display: "flex", gap: "0.5rem" }}>
+          <button
+            onClick={() => onSave(card)}
+            disabled={saving === card.id}
+            style={{
+              background: saved === card.id ? "var(--green)" : "var(--accent)",
+              color: "#000",
+              border: "none",
+              borderRadius: "8px",
+              padding: "0.5rem 0.9rem",
+              fontWeight: 800,
+              cursor: "pointer",
+            }}
+          >
+            {saving === card.id
+              ? "Saving..."
+              : saved === card.id
               ? "Saved"
               : "Save"}
           </button>
