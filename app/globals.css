@@ -1216,3 +1216,82 @@ textarea:focus-visible {
     text-transform: uppercase;
   }
 }
+
+/* Fixtures standings: keep every column visible on phones without horizontal scrolling. */
+@media (max-width: 760px) {
+  .fixtures-standings-card {
+    overflow-x: hidden !important;
+    padding: 0.7rem !important;
+  }
+
+  .fixtures-standings-table {
+    width: 100%;
+    min-width: 0 !important;
+  }
+
+  .fixtures-standings-row {
+    grid-template-columns: 22px minmax(0, 1fr) repeat(4, 17px) 31px 27px !important;
+    gap: 0.2rem !important;
+    align-items: start !important;
+    font-size: 11px;
+    line-height: 1.15;
+  }
+
+  .fixtures-standings-row > * {
+    min-width: 0;
+  }
+
+  .fixtures-standings-heading {
+    padding: 0 0.1rem 0.45rem !important;
+    font-size: 8px !important;
+    letter-spacing: 0 !important;
+    line-height: 1;
+    white-space: nowrap;
+  }
+
+  .fixtures-standings-row:not(.fixtures-standings-heading) {
+    padding: 0.45rem 0.1rem !important;
+  }
+
+  .fixtures-standings-rank {
+    width: 22px !important;
+    height: 22px !important;
+    border-radius: 7px !important;
+    font-size: 10px;
+  }
+
+  .fixtures-standings-player-name {
+    overflow: visible !important;
+    text-overflow: clip !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere;
+    font-size: 11px !important;
+    line-height: 1.15;
+  }
+
+  .fixtures-standings-player-game {
+    display: none;
+  }
+}
+
+@media (max-width: 360px) {
+  .fixtures-standings-row {
+    grid-template-columns: 20px minmax(0, 1fr) repeat(4, 16px) 29px 25px !important;
+    gap: 0.12rem !important;
+    font-size: 10px;
+  }
+
+  .fixtures-standings-heading {
+    font-size: 7px !important;
+  }
+
+  .fixtures-standings-rank {
+    width: 20px !important;
+    height: 20px !important;
+    font-size: 9px;
+  }
+
+  .fixtures-standings-player-name {
+    font-size: 10px !important;
+  }
+}
