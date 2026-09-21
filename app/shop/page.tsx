@@ -6,9 +6,9 @@ import {
   collection,
   getDocs,
   doc,
-  updateDoc,
-  addDoc,
   query,
+  runTransaction,
+  serverTimestamp,
   where,
 } from "firebase/firestore";
 import { useAuth } from "@/lib/AuthContext";
@@ -38,6 +38,13 @@ type Settings = {
   deadline?: any;
   shopRefreshAt?: any;
   lockShop?: boolean;
+};
+
+type ManagerTeam = {
+  id: string;
+  coins: number;
+  ownerEmail?: string;
+  ownerUid?: string;
 };
 
 function toDateSafe(value: any): Date | null {
@@ -147,6 +154,14 @@ const getRarityColor = (rarity?: string) => {
   }
 };
 
+function normalizeEmail(value?: string | null) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function inventoryItemId(data: Record<string, any>) {
+  return String(data.itemId || data.itemID || data.item || data.ID || "");
+}
+
 export default function ShopPage() {
   const { user } = useAuth();
 
@@ -155,73 +170,116 @@ export default function ShopPage() {
   >({});
   const [sectionOrders, setSectionOrders] = useState<Record<string, number>>({});
   const [settings, setSettings] = useState<Settings | null>(null);
-  const [userCoins, setUserCoins] = useState(0);
+  const [userCoins, setUserCoins] = useState<number | null>(null);
+  const [managerTeam, setManagerTeam] = useState<ManagerTeam | null>(null);
   const [ownedIds, setOwnedIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [buying, setBuying] = useState<string | null>(null);
   const [isLocked, setIsLocked] = useState(false);
+  const [accountReady, setAccountReady] = useState(false);
+  const [shopError, setShopError] = useState("");
+  const [accountError, setAccountError] = useState("");
 
   useEffect(() => {
-    const userEmail = user?.email;
+    let active = true;
+    const userEmail = String(user?.email || "").trim();
+    const normalizedUserEmail = normalizeEmail(userEmail);
+    const userUid = user?.uid;
 
-    if (!userEmail) return;
+    if (!userEmail || !userUid) {
+      setLoading(false);
+
+      return () => {
+        active = false;
+      };
+    }
 
     const loadShop = async () => {
       setLoading(true);
+      setIsLocked(false);
+      setSettings(null);
+      setItemsBySection({});
+      setSectionOrders({});
+      setUserCoins(null);
+      setManagerTeam(null);
+      setOwnedIds([]);
+      setAccountReady(false);
+      setShopError("");
+      setAccountError("");
 
-      try {
-        const [itemSnap, settingsSnap, teamSnap, invSnap, sectionsSnap] =
-          await Promise.all([
-            getDocs(collection(db, "shopItems")),
-            getDocs(collection(db, "settings")),
-            getDocs(
-              query(
-                collection(db, "userTeams"),
-                where("ownerEmail", "==", userEmail)
-              )
-            ),
-            getDocs(
-              query(
-                collection(db, "userInventory"),
-                where("ownerEmail", "==", userEmail)
-              )
-            ),
-            getDocs(collection(db, "shopSections")),
-          ]);
+      const [itemsResult, settingsResult, sectionsResult] =
+        await Promise.allSettled([
+          getDocs(collection(db, "shopItems")),
+          getDocs(collection(db, "settings")),
+          getDocs(collection(db, "shopSections")),
+        ]);
 
+      if (!active) return;
+
+      const publicLoadFailed =
+        itemsResult.status === "rejected" ||
+        settingsResult.status === "rejected" ||
+        sectionsResult.status === "rejected";
+
+      if (itemsResult.status === "rejected") {
+        console.error("Unable to load shop items:", itemsResult.reason);
+      }
+
+      if (settingsResult.status === "rejected") {
+        console.error("Unable to load shop settings:", settingsResult.reason);
+      }
+
+      if (sectionsResult.status === "rejected") {
+        console.error("Unable to load shop sections:", sectionsResult.reason);
+      }
+
+      if (publicLoadFailed) {
+        setShopError(
+          "Some shop data could not be loaded. Check that signed-in managers can read shopItems, shopSections, and settings in Firestore."
+        );
+      }
+
+      if (sectionsResult.status === "fulfilled") {
         const orderMap: Record<string, number> = {};
 
-        sectionsSnap.docs.forEach((d) => {
-          const data = d.data() as ShopSection;
-          const title = String(data.title || d.id || "General");
+        sectionsResult.value.docs.forEach((sectionDoc) => {
+          const data = sectionDoc.data() as ShopSection;
+          const title = String(data.title || sectionDoc.id || "General");
           orderMap[title] = Number(data.order ?? 99);
         });
 
         setSectionOrders(orderMap);
+      }
 
-        if (!settingsSnap.empty) {
-          const settingsData = settingsSnap.docs[0].data() as Settings;
-          setSettings(settingsData);
+      if (settingsResult.status === "fulfilled" && !settingsResult.value.empty) {
+        const settingsData = settingsResult.value.docs[0].data() as Settings;
+        setSettings(settingsData);
 
-          if (settingsData.lockShop) {
-            setIsLocked(true);
-            setLoading(false);
-            return;
-          }
+        if (settingsData.lockShop) {
+          setIsLocked(true);
+          setLoading(false);
+          return;
         }
+      }
 
-        const allItems = itemSnap.docs.map(
-          (d) => ({ ...d.data() } as ShopItem)
-        );
+      if (itemsResult.status === "fulfilled") {
+        const allItems = itemsResult.value.docs.map((itemDoc) => {
+          const data = itemDoc.data() as Partial<ShopItem>;
+
+          return {
+            ...data,
+            ID: String(data.ID || itemDoc.id),
+          } as ShopItem;
+        });
 
         const availableItems = allItems.filter((item) => item.isVisible !== false);
 
         const grouped = availableItems.reduce((acc, item) => {
-          const sec = item.section || "General";
+          const section = item.section || "General";
 
-          if (!acc[sec]) acc[sec] = [];
+          if (!acc[section]) acc[section] = [];
 
-          acc[sec].push(item);
+          acc[section].push(item);
 
           return acc;
         }, {} as Record<string, ShopItem[]>);
@@ -233,34 +291,170 @@ export default function ShopPage() {
         });
 
         setItemsBySection(grouped);
+      }
 
-        if (!teamSnap.empty) {
-          setUserCoins(Number(teamSnap.docs[0].data().coins || 0));
-        }
+      const [teamsByUidResult, teamsByEmailResult, inventoryByUidResult, inventoryByEmailResult] =
+        await Promise.allSettled([
+          getDocs(
+            query(collection(db, "userTeams"), where("ownerUid", "==", userUid))
+          ),
+          getDocs(
+            query(
+              collection(db, "userTeams"),
+              where("ownerEmail", "==", userEmail)
+            )
+          ),
+          getDocs(
+            query(
+              collection(db, "userInventory"),
+              where("ownerUid", "==", userUid)
+            )
+          ),
+          getDocs(
+            query(
+              collection(db, "userInventory"),
+              where("ownerEmail", "==", userEmail)
+            )
+          ),
+        ]);
+
+      if (!active) return;
+
+      const teamDocs = [
+        ...(teamsByUidResult.status === "fulfilled"
+          ? teamsByUidResult.value.docs
+          : []),
+        ...(teamsByEmailResult.status === "fulfilled"
+          ? teamsByEmailResult.value.docs
+          : []),
+      ];
+
+      const managerDoc = teamDocs.find((teamDoc) => {
+        const data = teamDoc.data();
+
+        return (
+          String(data.ownerUid || "") === userUid ||
+          normalizeEmail(data.ownerEmail) === normalizedUserEmail
+        );
+      });
+
+      const canReadManager =
+        teamsByUidResult.status === "fulfilled" ||
+        teamsByEmailResult.status === "fulfilled";
+      const canReadInventory =
+        inventoryByUidResult.status === "fulfilled" ||
+        inventoryByEmailResult.status === "fulfilled";
+
+      if (!canReadManager) {
+        console.error(
+          "Unable to load the manager account:",
+          teamsByUidResult.status === "rejected"
+            ? teamsByUidResult.reason
+            : teamsByEmailResult.status === "rejected"
+            ? teamsByEmailResult.reason
+            : "Unknown Firestore error"
+        );
+        setAccountError(
+          "Your manager record could not be read, so the shop cannot safely show or spend your coins. Publish the Firestore rules below and reload this page."
+        );
+      } else if (!managerDoc) {
+        setAccountError(
+          `No manager record matches ${userEmail}. Ask the admin to check the ownerEmail saved in userTeams.`
+        );
+      } else {
+        const data = managerDoc.data();
+        const parsedCoins = Number(data.coins || 0);
+        const coins = Number.isFinite(parsedCoins) ? parsedCoins : 0;
+
+        setManagerTeam({
+          id: managerDoc.id,
+          coins,
+          ownerEmail: String(data.ownerEmail || ""),
+          ownerUid: String(data.ownerUid || ""),
+        });
+        setUserCoins(coins);
+      }
+
+      if (!canReadInventory) {
+        console.error(
+          "Unable to load inventory:",
+          inventoryByUidResult.status === "rejected"
+            ? inventoryByUidResult.reason
+            : inventoryByEmailResult.status === "rejected"
+            ? inventoryByEmailResult.reason
+            : "Unknown Firestore error"
+        );
+        setAccountError((current) =>
+          current ||
+          "Your inventory could not be read, so purchases are disabled to prevent duplicate items. Publish the Firestore rules below and reload this page."
+        );
+      } else {
+        const inventoryDocs = new Map<string, Record<string, any>>();
+
+        [inventoryByUidResult, inventoryByEmailResult].forEach((result) => {
+          if (result.status !== "fulfilled") return;
+
+          result.value.docs.forEach((inventoryDoc) => {
+            const data = inventoryDoc.data();
+            const belongsToUser =
+              String(data.ownerUid || "") === userUid ||
+              normalizeEmail(data.ownerEmail) === normalizedUserEmail;
+
+            if (belongsToUser) inventoryDocs.set(inventoryDoc.id, data);
+          });
+        });
 
         setOwnedIds(
-          invSnap.docs
-            .map((d) => String(d.data().itemId || ""))
+          Array.from(inventoryDocs.values())
+            .map((data) => inventoryItemId(data))
             .filter(Boolean)
         );
-      } catch (err) {
-        console.error(err);
+      }
+
+      if (managerDoc && canReadInventory) {
+        setAccountReady(true);
       }
 
       setLoading(false);
     };
 
-    loadShop();
+    loadShop().catch((error) => {
+      console.error("Unable to load shop:", error);
+
+      if (active) {
+        setShopError(
+          "The shop could not be loaded. Check your connection and Firestore permissions, then reload."
+        );
+        setLoading(false);
+      }
+    });
+
+    return () => {
+      active = false;
+    };
   }, [user]);
 
   const handleBuy = async (item: ShopItem) => {
-    const userEmail = user?.email;
+    const userEmail = String(user?.email || "").trim();
+    const normalizedUserEmail = normalizeEmail(userEmail);
+    const userUid = user?.uid;
+    const price = Number(item.price || 0);
 
-    if (!userEmail) return;
+    if (!userEmail || !userUid) return;
+
+    if (!managerTeam || userCoins === null || !accountReady) {
+      alert("Your manager coins are not available yet. Reload after checking Firestore access.");
+      return;
+    }
 
     if (ownedIds.includes(item.ID)) return;
 
-    if (userCoins < item.price) {
+    if (!Number.isFinite(price) || price < 0) {
+      alert("This item has an invalid price. Ask an admin to update it.");
+      return;
+    }
+
+    if (userCoins < price) {
       alert("Not enough coins!");
       return;
     }
@@ -270,41 +464,87 @@ export default function ShopPage() {
     setBuying(item.ID);
 
     try {
-      const teamSnap = await getDocs(
-        query(collection(db, "userTeams"), where("ownerEmail", "==", userEmail))
+      const remainingCoins = await runTransaction(db, async (transaction) => {
+        const teamRef = doc(db, "userTeams", managerTeam.id);
+        const inventoryRef = doc(
+          db,
+          "userInventory",
+          `${userUid}_${encodeURIComponent(item.ID)}`
+        );
+        const [teamSnap, inventorySnap] = await Promise.all([
+          transaction.get(teamRef),
+          transaction.get(inventoryRef),
+        ]);
+
+        if (!teamSnap.exists()) {
+          throw new Error("MANAGER_NOT_FOUND");
+        }
+
+        const teamData = teamSnap.data();
+        const ownsManagerRecord =
+          String(teamData.ownerUid || "") === userUid ||
+          normalizeEmail(teamData.ownerEmail) === normalizedUserEmail;
+
+        if (!ownsManagerRecord) {
+          throw new Error("MANAGER_MISMATCH");
+        }
+
+        if (inventorySnap.exists()) {
+          throw new Error("ALREADY_OWNED");
+        }
+
+        const currentCoins = Number(teamData.coins || 0);
+
+        if (!Number.isFinite(currentCoins) || currentCoins < price) {
+          throw new Error("NOT_ENOUGH_COINS");
+        }
+
+        const nextCoins = currentCoins - price;
+
+        transaction.update(teamRef, {
+          coins: nextCoins,
+          "Updated Date": serverTimestamp(),
+        });
+
+        transaction.set(inventoryRef, {
+          ownerUid: userUid,
+          ownerEmail: userEmail,
+          itemId: item.ID,
+          itemName: item.itemName,
+          itemType: item.itemType,
+          purchaseDate: serverTimestamp(),
+          acquiredAt: serverTimestamp(),
+          equipped: false,
+          source: "shop",
+        });
+
+        return nextCoins;
+      });
+
+      setUserCoins(remainingCoins);
+      setManagerTeam((current) =>
+        current ? { ...current, coins: remainingCoins } : current
       );
-
-      if (teamSnap.empty) {
-        alert("Manager team not found.");
-        setBuying(null);
-        return;
-      }
-
-      await addDoc(collection(db, "userInventory"), {
-        ownerEmail: userEmail,
-        itemId: item.ID,
-        itemName: item.itemName,
-        itemType: item.itemType,
-        purchaseDate: new Date().toISOString(),
-        equipped: false,
-        source: "shop",
-      });
-
-      await updateDoc(doc(db, "userTeams", teamSnap.docs[0].id), {
-        coins: userCoins - item.price,
-        "Updated Date": new Date().toISOString(),
-      });
-
-      setUserCoins((prev) => prev - item.price);
-      setOwnedIds((prev) => [...prev, item.ID]);
+      setOwnedIds((current) => Array.from(new Set([...current, item.ID])));
 
       alert("Success!");
     } catch (err) {
-      console.error(err);
-      alert("Purchase failed. Please try again.");
-    }
+      const message = err instanceof Error ? err.message : "";
 
-    setBuying(null);
+      if (message === "NOT_ENOUGH_COINS") {
+        alert("Not enough coins!");
+      } else if (message === "ALREADY_OWNED") {
+        setOwnedIds((current) => Array.from(new Set([...current, item.ID])));
+        alert("You already own this item.");
+      } else if (message === "MANAGER_NOT_FOUND" || message === "MANAGER_MISMATCH") {
+        alert("Your manager record could not be verified. Ask the admin to check your ownerEmail.");
+      } else {
+        console.error("Purchase failed:", err);
+        alert("Purchase failed. Check your Firestore access and try again.");
+      }
+    } finally {
+      setBuying(null);
+    }
   };
 
   const getImageUrl = (url: string) => {
@@ -472,13 +712,51 @@ export default function ShopPage() {
                   fontSize: "0.85rem",
                 }}
               >
-                {Number(userCoins || 0).toLocaleString()} Coins
+                {userCoins === null
+                  ? "Coins unavailable"
+                  : `${userCoins.toLocaleString()} Coins`}
               </div>
 
               <ShopRefreshTimer refreshAt={settings?.shopRefreshAt} />
             </div>
           </div>
         </section>
+
+        {shopError && (
+          <div
+            role="alert"
+            style={{
+              marginBottom: "1rem",
+              background: "rgba(255,70,70,0.08)",
+              border: "1px solid rgba(255,70,70,0.3)",
+              borderRadius: "14px",
+              padding: "0.9rem 1rem",
+              color: "#ffb4b4",
+              fontWeight: 700,
+              lineHeight: 1.5,
+            }}
+          >
+            {shopError}
+          </div>
+        )}
+
+        {accountError && (
+          <div
+            role="status"
+            style={{
+              marginBottom: "1rem",
+              background: "rgba(255,193,7,0.08)",
+              border: "1px solid rgba(255,193,7,0.3)",
+              borderRadius: "14px",
+              padding: "0.9rem 1rem",
+              color: "var(--accent)",
+              fontWeight: 700,
+              lineHeight: 1.5,
+            }}
+          >
+            {accountError}
+          </div>
+        )}
 
         {sections.length === 0 ? (
           <div
@@ -557,7 +835,12 @@ export default function ShopPage() {
               >
                 {items.map((item) => {
                   const owned = ownedIds.includes(item.ID);
-                  const canAfford = userCoins >= item.price;
+                  const itemPrice = Number(item.price || 0);
+                  const canAfford =
+                    accountReady &&
+                    userCoins !== null &&
+                    Number.isFinite(itemPrice) &&
+                    userCoins >= itemPrice;
                   const isBuying = buying === item.ID;
 
                   return (
@@ -704,6 +987,11 @@ export default function ShopPage() {
                         <button
                           onClick={() => handleBuy(item)}
                           disabled={owned || !canAfford || isBuying}
+                          title={
+                            !accountReady
+                              ? "Your manager coins are unavailable. Check Firestore access and reload."
+                              : undefined
+                          }
                           style={{
                             width: "100%",
                             padding: "0.75rem",
@@ -729,7 +1017,9 @@ export default function ShopPage() {
                             ? "OWNED"
                             : isBuying
                             ? "Buying..."
-                            : `${item.price} Coins`}
+                            : !accountReady
+                            ? "COINS UNAVAILABLE"
+                            : `${itemPrice} Coins`}
                         </button>
                       </div>
                     </div>
