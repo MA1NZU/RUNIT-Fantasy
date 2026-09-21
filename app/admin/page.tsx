@@ -56,6 +56,8 @@ type Settings = {
   lockTeamLeaderboard?: boolean;
   lockTransfers?: boolean;
   lockShop?: boolean;
+  lockFixtures?: boolean;
+  hiddenPages?: string[];
 };
 
 type ShopItem = {
@@ -89,12 +91,23 @@ type PlayerFixture = {
 type Tab =
   | "players"
   | "fixtures"
+  | "pages"
   | "stats"
   | "managers"
   | "shop"
   | "sections"
   | "settings"
   | "locks";
+
+const HIDEABLE_PAGE_OPTIONS = [
+  { href: "/leaderboard", label: "Leaderboard" },
+  { href: "/fixtures", label: "Fixtures" },
+  { href: "/team", label: "My Team" },
+  { href: "/transfers", label: "Transfers" },
+  { href: "/shop", label: "Shop" },
+  { href: "/inventory", label: "Inventory" },
+  { href: "/profile", label: "Profile" },
+] as const;
 
 const defaultNewItem: Partial<ShopItem> = {
   itemType: "avatar",
@@ -485,6 +498,7 @@ export default function AdminPage() {
         const bKey = String(b || "");
 
         if (!aKey || !bKey) return false;
+
         if (aKey === bKey) return true;
 
         const aCanonical = aliasToCanonical.get(aKey) || aKey;
@@ -657,6 +671,10 @@ export default function AdminPage() {
         lockTeamLeaderboard: !!settings.lockTeamLeaderboard,
         lockTransfers: !!settings.lockTransfers,
         lockShop: !!settings.lockShop,
+        lockFixtures: !!settings.lockFixtures,
+        hiddenPages: Array.isArray(settings.hiddenPages)
+          ? settings.hiddenPages
+          : [],
       });
 
       markSaved("settings");
@@ -1166,6 +1184,20 @@ export default function AdminPage() {
     .filter((fixture) => fixture.gameweek === Number(fixtureGameweek))
     .sort((a, b) => a.id.localeCompare(b.id));
 
+  const hiddenPages = Array.isArray(settings?.hiddenPages)
+    ? settings.hiddenPages
+    : [];
+
+  const setPageHidden = (href: string, shouldHide: boolean) => {
+    if (!settings) return;
+
+    const nextHiddenPages = shouldHide
+      ? Array.from(new Set([...hiddenPages, href]))
+      : hiddenPages.filter((page) => page !== href);
+
+    setSettings({ ...settings, hiddenPages: nextHiddenPages });
+  };
+
   const playerLabel = (playerId: string) => {
     const player = players.find((item) => item.id === playerId);
     return player ? `${player.name} · ${player.game}` : "Unknown player";
@@ -1190,6 +1222,7 @@ export default function AdminPage() {
           {[
             "players",
             "fixtures",
+            "pages",
             "stats",
             "managers",
             "shop",
@@ -1247,6 +1280,15 @@ export default function AdminPage() {
                 }
               />
 
+              <LockRow
+                title="Fixtures Page"
+                desc="Restrict access to player fixtures and standings"
+                checked={!!settings.lockFixtures}
+                onChange={(checked) =>
+                  setSettings({ ...settings, lockFixtures: checked })
+                }
+              />
+
               <button
                 onClick={handleSaveSettings}
                 disabled={saving === "settings"}
@@ -1257,6 +1299,53 @@ export default function AdminPage() {
                   : saved === "settings"
                   ? "✓ Saved"
                   : "Save Lock Settings"}
+              </button>
+            </div>
+
+          </div>
+        )}
+
+        {tab === "pages" && settings && (
+          <div style={{ maxWidth: "650px" }}>
+            <h2 style={sectionTitleStyle}>Page Visibility</h2>
+
+            <div style={panelStyle}>
+              <div
+                style={{
+                  color: "var(--text-muted)",
+                  fontSize: "0.85rem",
+                  lineHeight: 1.6,
+                }}
+              >
+                Hidden pages are removed from regular users&apos; navigation and
+                direct links to them return to the home page. Admin access is
+                unchanged.
+              </div>
+
+              {HIDEABLE_PAGE_OPTIONS.map((page) => {
+                const isHidden = hiddenPages.includes(page.href);
+
+                return (
+                  <LockRow
+                    key={page.href}
+                    title={`${page.label} — ${isHidden ? "Hidden" : "Visible"}`}
+                    desc="Hide or show this page for regular users"
+                    checked={isHidden}
+                    onChange={(checked) => setPageHidden(page.href, checked)}
+                  />
+                );
+              })}
+
+              <button
+                onClick={handleSaveSettings}
+                disabled={saving === "settings"}
+                style={primaryButtonStyle(saved === "settings")}
+              >
+                {saving === "settings"
+                  ? "Saving..."
+                  : saved === "settings"
+                  ? "✓ Saved"
+                  : "Save Page Visibility"}
               </button>
             </div>
           </div>
@@ -1614,8 +1703,7 @@ export default function AdminPage() {
                     : "Add Item"}
                 </button>
               </div>
-
-              <div
+                            <div
                 className="admin-shop-form-grid"
                 style={{
                   display: "grid",
