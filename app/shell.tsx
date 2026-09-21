@@ -43,12 +43,23 @@ const NAV: NavLink[] = [
   { href: "/profile", label: "Profile", icon: "profile" },
 ];
 
-const PRIMARY_MOBILE_HREFS = new Set([
+const MOBILE_NAV_PRIORITY_HREFS = [
   "/",
   "/leaderboard",
   "/team",
   "/transfers",
-]);
+  "/fixtures",
+  "/shop",
+  "/inventory",
+  "/profile",
+  "/admin",
+] as const;
+
+const MOBILE_NAV_PRIORITY = new Map<string, number>(
+  MOBILE_NAV_PRIORITY_HREFS.map((href, index) => [href, index])
+);
+
+const MAX_MOBILE_NAV_SLOTS = 5;
 
 const ADMIN_EMAIL = "yahyaayman2006@gmail.com";
 
@@ -296,13 +307,23 @@ export default function Shell({ children }: { children: React.ReactNode }) {
         { href: "/admin", label: "Admin", icon: "admin" as const },
       ]
     : navigationLinks;
-  const primaryMobileLinks = links.filter((link) =>
-    PRIMARY_MOBILE_HREFS.has(link.href)
+  const mobileOrderedLinks = [...links].sort((a, b) => {
+    const aPriority = MOBILE_NAV_PRIORITY.get(a.href) ?? Number.MAX_SAFE_INTEGER;
+    const bPriority = MOBILE_NAV_PRIORITY.get(b.href) ?? Number.MAX_SAFE_INTEGER;
+
+    return aPriority - bPriority || a.label.localeCompare(b.label);
+  });
+  const shouldUseMoreMenu = mobileOrderedLinks.length > MAX_MOBILE_NAV_SLOTS;
+  const mobileBottomLinks = mobileOrderedLinks.slice(
+    0,
+    shouldUseMoreMenu ? MAX_MOBILE_NAV_SLOTS - 1 : MAX_MOBILE_NAV_SLOTS
   );
-  const moreMobileLinks = links.filter(
-    (link) => !PRIMARY_MOBILE_HREFS.has(link.href)
-  );
+  const moreMobileLinks = shouldUseMoreMenu
+    ? mobileOrderedLinks.slice(mobileBottomLinks.length)
+    : [];
   const isMoreActive = moreMobileLinks.some((link) => link.href === pathname);
+  const mobileBottomColumnCount =
+    mobileBottomLinks.length + (moreMobileLinks.length > 0 ? 1 : 0);
 
   const renderMobileLink = (link: NavLink) => {
     const active = pathname === link.href;
@@ -347,10 +368,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
             }}
           >
             <span>RUNIT Fantasy</span>
-            <span
-              className="site-version"
-              title={`Application version ${APP_VERSION}`}
-            >
+            <span className="site-version" title={`Application version ${APP_VERSION}`}>
               {APP_VERSION}
             </span>
           </Link>
@@ -435,13 +453,14 @@ export default function Shell({ children }: { children: React.ReactNode }) {
           className={`mobile-nav-panel${menuOpen ? " is-open" : ""}`}
           aria-hidden={!menuOpen}
         >
-          <div className="mobile-nav-sheet-title">More pages</div>
-          <div className="mobile-nav-links mobile-nav-primary-links">
-            {primaryMobileLinks.map(renderMobileLink)}
-          </div>
-          <div className="mobile-nav-links mobile-nav-more-links">
-            {moreMobileLinks.map(renderMobileLink)}
-          </div>
+          {moreMobileLinks.length > 0 && (
+            <>
+              <div className="mobile-nav-sheet-title">More pages</div>
+              <div className="mobile-nav-links mobile-nav-more-links">
+                {moreMobileLinks.map(renderMobileLink)}
+              </div>
+            </>
+          )}
 
           <div className="mobile-nav-account">
             <span>{user?.email}</span>
@@ -452,8 +471,17 @@ export default function Shell({ children }: { children: React.ReactNode }) {
         </div>
       </nav>
 
-      <nav className="mobile-bottom-nav" aria-label="Mobile navigation">
-        {primaryMobileLinks.map((link) => {
+      <nav
+        className="mobile-bottom-nav"
+        aria-label="Mobile navigation"
+        style={{
+          gridTemplateColumns: `repeat(${Math.max(
+            mobileBottomColumnCount,
+            1
+          )}, minmax(0, 1fr))`,
+        }}
+      >
+        {mobileBottomLinks.map((link) => {
           const active = pathname === link.href;
 
           return (
