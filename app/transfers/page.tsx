@@ -14,6 +14,14 @@ import {
 } from "firebase/firestore";
 import { useAuth } from "@/lib/AuthContext";
 import Shell from "@/app/shell";
+import Link from "next/link";
+import {
+  LimitedCard,
+  UserLimitedCard,
+  getLimitedCardImageUrl,
+  getLimitedCardRarityColor,
+  limitedCardPowerupText,
+} from "@/lib/limitedCards";
 
 type Player = {
   id: string;
@@ -41,6 +49,7 @@ type GWTeam = {
   transfersMade: number;
   transferPenalty: number;
   ownerEmail: string;
+  limitedCards?: string[];
 };
 
 type UserTeam = {
@@ -529,6 +538,10 @@ export default function TransfersPage() {
   const [captain, setCaptain] = useState<string>("");
   const [sub, setSub] = useState<string>("");
 
+  const [limitedCards, setLimitedCards] = useState<LimitedCard[]>([]);
+  const [userCards, setUserCards] = useState<UserLimitedCard[]>([]);
+  const [activeCardIds, setActiveCardIds] = useState<string[]>([]);
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -637,6 +650,46 @@ export default function TransfersPage() {
           setCaptain(base.captain ?? "");
           setSub(base.sub ?? "");
         }
+
+        const [limitedCardsSnap, userCardsSnap] = await Promise.all([
+          getDocs(collection(db, "limitedCards")),
+          getDocs(
+            query(
+              collection(db, "userLimitedCards"),
+              where("ownerEmail", "==", user.email)
+            )
+          ),
+        ]);
+
+        const loadedCards = limitedCardsSnap.docs
+          .map((cardDoc) => {
+            const data = cardDoc.data() as Partial<LimitedCard>;
+
+            return {
+              ...data,
+              id: cardDoc.id,
+              ID: String(data.ID || cardDoc.id),
+            } as LimitedCard;
+          })
+          .filter((card) => card.isVisible !== false)
+          .sort((a, b) => (a.cardName || "").localeCompare(b.cardName || ""));
+
+        const loadedUserCards = userCardsSnap.docs.map(
+          (userCardDoc) =>
+            ({ id: userCardDoc.id, ...userCardDoc.data() } as UserLimitedCard)
+        );
+
+        setLimitedCards(loadedCards);
+        setUserCards(loadedUserCards);
+
+        const savedCardIds =
+          next && Array.isArray(next.limitedCards)
+            ? next.limitedCards.filter((cardDocId) =>
+                loadedUserCards.some((userCard) => userCard.id === cardDocId)
+              )
+            : [];
+
+        setActiveCardIds(savedCardIds);
       } catch (err) {
         console.error(err);
         setError("Failed to load transfers.");
@@ -652,10 +705,26 @@ export default function TransfersPage() {
 
   const budget = Number(userTeam?.Bank ?? 0);
   const allSelected = [...squad, ...(sub ? [sub] : [])];
-  const totalCost = allSelected.reduce(
-    (sum, id) => sum + Number(getPlayer(id)?.price ?? 0),
+  const currentGW = nextGW - 1;
+
+  const limitedCardCatalog = (cardId: string) =>
+    limitedCards.find((card) => card.ID === cardId);
+
+  const attachedCards = activeCardIds
+    .map((cardDocId) => userCards.find((userCard) => userCard.id === cardDocId))
+    .filter((userCard): userCard is UserLimitedCard => Boolean(userCard));
+
+  const limitedCardsCost = attachedCards.reduce(
+    (sum, userCard) =>
+      sum + Number(limitedCardCatalog(userCard.cardId)?.transferPrice ?? 0),
     0
   );
+
+  const totalCost =
+    allSelected.reduce(
+      (sum, id) => sum + Number(getPlayer(id)?.price ?? 0),
+      0
+    ) + limitedCardsCost;
   const remaining = budget - totalCost;
   const squadCount = squad.length + (sub ? 1 : 0);
 
@@ -716,22 +785,94 @@ export default function TransfersPage() {
     setIsModalOpen(false);
   };
 
+  const pruneActiveCards = (nextSquad: string[]) => {
+    setActiveCardIds((prev) =>
+      prev.filter((cardDocId) => {
+        const userCard = userCards.find((c) => c.id === cardDocId);
+
+        if (!userCard) return false;
+
+        const card = limitedCardCatalog(userCard.cardId);
+
+        return card ? nextSquad.includes(card.playerId) : false;
+      })
+    );
+  };
+
+  const toggleLimitedCard = (cardDocId: string) => {
+    setError("");
+
+    const userCard = userCards.find((c) => c.id === cardDocId);
+
+    if (!userCard) return;
+
+    if (activeCardIds.includes(cardDocId)) {
+      setActiveCardIds(activeCardIds.filter((id) => id !== cardDocId));
+      return;
+    }
+
+    const card = limitedCardCatalog(userCard.cardId);
+
+    if (!card) {
+      setError("This limited card is no longer available.");
+      return;
+    }
+
+    const cardGW = Number(userCard.gameweek || 0);
+
+    if (userCard.status === "used") {
+      setError("This card has already been used.");
+      return;
+    }
+
+    if (userCard.status === "active" && cardGW >= currentGW && cardGW !== nextGW) {
+      setError(`This card is in use for GW${cardGW}.`);
+      return;
+    }
+
+    const player = getPlayer(card.playerId);
+
+    if (!squad.includes(card.playerId)) {
+      setError(
+        `${
+          player?.name || "This card's player"
+        } must be in your Starting IV to use this card.`
+      );
+      return;
+    }
+
+    if (totalCost + Number(card.transferPrice || 0) > budget) {
+      setError("Budget exceeded.");
+      return;
+    }
+
+    setActiveCardIds([...activeCardIds, cardDocId]);
+  };
+
   const removeFromSquad = (id: string) => {
     setError("");
 
-    setSquad(squad.filter((p) => p !== id));
+    const nextSquad = squad.filter((p) => p !== id);
+
+    setSquad(nextSquad);
 
     if (captain === id) setCaptain("");
+
+    pruneActiveCards(nextSquad);
   };
 
   const swapWithSub = (pid: string) => {
     setError("");
 
     if (!sub) {
-      setSquad(squad.filter((id) => id !== pid));
+      const nextSquad = squad.filter((id) => id !== pid);
+
+      setSquad(nextSquad);
       setSub(pid);
 
       if (captain === pid) setCaptain("");
+
+      pruneActiveCards(nextSquad);
 
       return;
     }
@@ -745,6 +886,8 @@ export default function TransfersPage() {
     setSub(pid);
 
     if (captain === pid) setCaptain("");
+
+    pruneActiveCards(newSquad);
   };
 
   const moveSubToSquad = () => {
@@ -774,6 +917,17 @@ export default function TransfersPage() {
       return;
     }
 
+    const invalidCard = attachedCards.find((userCard) => {
+      const card = limitedCardCatalog(userCard.cardId);
+
+      return !card || !squad.includes(card.playerId);
+    });
+
+    if (invalidCard) {
+      setError("Remove the limited card whose player left your squad.");
+      return;
+    }
+
     if (!user?.email) {
       setError("You must be signed in.");
       return;
@@ -793,6 +947,7 @@ export default function TransfersPage() {
       gwPoints: nextGWTeam?.gwPoints ?? 0,
       transfersMade,
       transferPenalty: penalty,
+      limitedCards: activeCardIds,
       "Updated Date": new Date().toISOString(),
     };
 
@@ -807,6 +962,48 @@ export default function TransfersPage() {
 
         setNextGWTeam({ id: snap.id, ...data } as GWTeam);
       }
+
+      const previouslyActive =
+        nextGWTeam && Array.isArray(nextGWTeam.limitedCards)
+          ? nextGWTeam.limitedCards
+          : [];
+      const cardsToActivate = activeCardIds.filter(
+        (cardDocId) => !previouslyActive.includes(cardDocId)
+      );
+      const cardsToRelease = previouslyActive.filter(
+        (cardDocId) => !activeCardIds.includes(cardDocId)
+      );
+
+      await Promise.all([
+        ...cardsToActivate.map((cardDocId) =>
+          updateDoc(doc(db, "userLimitedCards", cardDocId), {
+            status: "active",
+            gameweek: nextGW,
+            "Updated Date": new Date().toISOString(),
+          })
+        ),
+        ...cardsToRelease.map((cardDocId) =>
+          updateDoc(doc(db, "userLimitedCards", cardDocId), {
+            status: "owned",
+            gameweek: 0,
+            "Updated Date": new Date().toISOString(),
+          })
+        ),
+      ]);
+
+      setUserCards((prev) =>
+        prev.map((userCard) => {
+          if (cardsToActivate.includes(userCard.id)) {
+            return { ...userCard, status: "active", gameweek: nextGW };
+          }
+
+          if (cardsToRelease.includes(userCard.id)) {
+            return { ...userCard, status: "owned", gameweek: 0 };
+          }
+
+          return userCard;
+        })
+      );
 
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
@@ -1198,6 +1395,327 @@ export default function TransfersPage() {
               <EmptySlot label="Add Bench" onClick={() => setIsModalOpen(true)} />
             )}
           </div>
+        </section>
+
+        <section
+          className="transfer-limited-section"
+          style={{
+            background:
+              "radial-gradient(circle at 50% 0%, rgba(155,248,0,0.07), transparent 35%), var(--surface)",
+            border: "1px solid var(--border)",
+            borderRadius: "24px",
+            padding: "1rem",
+            marginBottom: "1rem",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: "1rem",
+              flexWrap: "wrap",
+              marginBottom: "0.35rem",
+            }}
+          >
+            <div
+              style={{
+                fontSize: "0.75rem",
+                color: "var(--text-muted)",
+                textTransform: "uppercase",
+                letterSpacing: "1px",
+                fontWeight: 900,
+              }}
+            >
+              Limited Cards
+            </div>
+
+            <div
+              style={{
+                color: "var(--text-muted)",
+                fontSize: "0.72rem",
+                background: "rgba(255,255,255,0.045)",
+                border: "1px solid rgba(255,255,255,0.08)",
+                borderRadius: "999px",
+                padding: "0.35rem 0.65rem",
+                fontWeight: 800,
+              }}
+            >
+              {attachedCards.length} active · {userCards.length} owned
+            </div>
+          </div>
+
+          <p
+            style={{
+              color: "var(--text-muted)",
+              fontSize: "0.78rem",
+              lineHeight: 1.5,
+              marginBottom: "0.85rem",
+            }}
+          >
+            Attach a card to boost its linked starter for GW{nextGW}. The
+            card&apos;s squad cost counts against your bank, its power-up
+            applies when the gameweek is scored, and the copy is then used up.
+            Cards whose player is not in your team keep waiting until you field
+            that player.
+          </p>
+
+          {userCards.length === 0 ? (
+            <div
+              style={{
+                border: "1px dashed var(--border)",
+                borderRadius: "14px",
+                padding: "1.25rem",
+                textAlign: "center",
+                color: "var(--text-muted)",
+                fontSize: "0.85rem",
+              }}
+            >
+              You don&apos;t own any limited cards yet.{" "}
+              <Link
+                href="/shop"
+                style={{ color: "var(--blue)", fontWeight: 800 }}
+              >
+                Get one in the Shop →
+              </Link>
+            </div>
+          ) : (
+            <div
+              className="shop-items-grid"
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fill, minmax(190px, 1fr))",
+                gap: "0.75rem",
+              }}
+            >
+              {userCards.map((userCard) => {
+                const card = limitedCardCatalog(userCard.cardId);
+
+                if (!card) return null;
+
+                const attached = activeCardIds.includes(userCard.id);
+                const player = getPlayer(card.playerId);
+                const rarityColor = getLimitedCardRarityColor(
+                  card.rarity,
+                  card.accentColor
+                );
+                const imageUrl = getLimitedCardImageUrl(card.image);
+                const cardGW = Number(userCard.gameweek || 0);
+                const isUsed = userCard.status === "used";
+                const isActiveThisSquad =
+                  userCard.status === "active" && cardGW === nextGW;
+                const isInUseLive =
+                  userCard.status === "active" &&
+                  !attached &&
+                  !isActiveThisSquad &&
+                  cardGW >= currentGW;
+                const playerInSquad = squad.includes(card.playerId);
+                const cardTransferPrice = Number(card.transferPrice || 0);
+                const canAffordCard =
+                  attached || totalCost + cardTransferPrice <= budget;
+
+                let actionLabel = `USE · +${cardTransferPrice.toFixed(1)}m`;
+                let actionDisabled = false;
+                let note = "";
+
+                if (isUsed) {
+                  actionLabel = cardGW ? `USED · GW${cardGW}` : "USED";
+                  actionDisabled = true;
+                } else if (attached) {
+                  actionLabel = "✓ IN SQUAD — REMOVE";
+                } else if (isInUseLive) {
+                  actionLabel = `IN USE · GW${cardGW}`;
+                  actionDisabled = true;
+                } else if (!playerInSquad) {
+                  actionLabel = `NEEDS ${player?.name || "PLAYER"}`;
+                  actionDisabled = true;
+                  note = `${
+                    player?.name || "This player"
+                  } must be in your Starting IV.`;
+                } else if (!canAffordCard) {
+                  actionLabel = "TOO EXPENSIVE";
+                  actionDisabled = true;
+                }
+
+                return (
+                  <div
+                    key={userCard.id}
+                    style={{
+                      borderRadius: "16px",
+                      overflow: "hidden",
+                      border: `1px solid ${
+                        attached ? "var(--green)" : `${rarityColor}55`
+                      }`,
+                      background: `linear-gradient(160deg, ${rarityColor}1a, rgba(255,255,255,0.015)), var(--surface)`,
+                      opacity: isUsed ? 0.55 : 1,
+                      display: "flex",
+                      flexDirection: "column",
+                    }}
+                  >
+                    <div
+                      style={{
+                        position: "relative",
+                        width: "100%",
+                        aspectRatio: "4/3",
+                        background: `radial-gradient(circle at 30% 20%, ${rarityColor}2e, transparent 45%), #111`,
+                      }}
+                    >
+                      {imageUrl ? (
+                        <img
+                          src={imageUrl}
+                          alt={card.cardName}
+                          style={{
+                            width: "100%",
+                            height: "100%",
+                            objectFit: "cover",
+                            display: "block",
+                          }}
+                        />
+                      ) : (
+                        <div
+                          style={{
+                            width: "100%",
+                            height: "100%",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            color: "rgba(255,255,255,0.25)",
+                            fontWeight: 900,
+                            fontSize: "1.6rem",
+                          }}
+                        >
+                          {(card.cardName || "?").slice(0, 1)}
+                        </div>
+                      )}
+
+                      <span
+                        style={{
+                          position: "absolute",
+                          top: "0.55rem",
+                          left: "0.55rem",
+                          background: "rgba(0,0,0,0.55)",
+                          border: `1px solid ${rarityColor}80`,
+                          color: rarityColor,
+                          fontSize: "0.58rem",
+                          fontWeight: 900,
+                          padding: "0.2rem 0.45rem",
+                          borderRadius: "999px",
+                          textTransform: "uppercase",
+                          letterSpacing: "0.6px",
+                        }}
+                      >
+                        {card.rarity || "rare"}
+                      </span>
+
+                      {attached && (
+                        <span
+                          style={{
+                            position: "absolute",
+                            top: "0.55rem",
+                            right: "0.55rem",
+                            background: "var(--green)",
+                            color: "#000",
+                            fontSize: "0.58rem",
+                            fontWeight: 900,
+                            padding: "0.2rem 0.45rem",
+                            borderRadius: "999px",
+                          }}
+                        >
+                          ACTIVE
+                        </span>
+                      )}
+                    </div>
+
+                    <div
+                      style={{
+                        padding: "0.7rem",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: "0.35rem",
+                        flex: 1,
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontWeight: 900,
+                          fontSize: "0.88rem",
+                          lineHeight: 1.2,
+                        }}
+                      >
+                        {card.cardName}
+                      </div>
+
+                      <div
+                        style={{
+                          color: "var(--text-muted)",
+                          fontSize: "0.68rem",
+                        }}
+                      >
+                        {player
+                          ? `${player.name} · ${player.game}`
+                          : "Unknown player"}
+                      </div>
+
+                      <div
+                        style={{
+                          color: "var(--accent)",
+                          fontSize: "0.66rem",
+                          fontWeight: 800,
+                          lineHeight: 1.35,
+                        }}
+                      >
+                        {limitedCardPowerupText(card)}
+                      </div>
+
+                      <div
+                        style={{
+                          color: "var(--text-muted)",
+                          fontSize: "0.64rem",
+                        }}
+                      >
+                        Squad cost +{cardTransferPrice.toFixed(1)}m
+                      </div>
+
+                      {note && (
+                        <div
+                          style={{
+                            color: "var(--text-muted)",
+                            fontSize: "0.62rem",
+                            lineHeight: 1.35,
+                          }}
+                        >
+                          {note}
+                        </div>
+                      )}
+
+                      <button
+                        onClick={() => toggleLimitedCard(userCard.id)}
+                        disabled={actionDisabled}
+                        style={{
+                          marginTop: "auto",
+                          width: "100%",
+                          padding: "0.55rem",
+                          borderRadius: "10px",
+                          border: "none",
+                          fontWeight: 900,
+                          fontSize: "0.72rem",
+                          cursor: actionDisabled ? "not-allowed" : "pointer",
+                          background: attached
+                            ? "var(--green)"
+                            : isUsed || isInUseLive
+                            ? "rgba(255,255,255,0.07)"
+                            : "var(--blue)",
+                          color: attached ? "#000" : "#fff",
+                        }}
+                      >
+                        {actionLabel}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </section>
 
         {error && (
