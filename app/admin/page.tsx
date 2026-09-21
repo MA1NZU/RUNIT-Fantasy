@@ -10,6 +10,7 @@ import {
   query,
   where,
   setDoc,
+  addDoc,
   deleteDoc,
   writeBatch,
   increment,
@@ -78,8 +79,16 @@ type ShopSection = {
   order: number;
 };
 
+type PlayerFixture = {
+  id: string;
+  gameweek: number;
+  playerOneId: string;
+  playerTwoId: string;
+};
+
 type Tab =
   | "players"
+  | "fixtures"
   | "stats"
   | "managers"
   | "shop"
@@ -163,6 +172,10 @@ export default function AdminPage() {
   const [shopItems, setShopItems] = useState<ShopItem[]>([]);
   const [shopSections, setShopSections] = useState<ShopSection[]>([]);
   const [settings, setSettings] = useState<Settings | null>(null);
+  const [fixtures, setFixtures] = useState<PlayerFixture[]>([]);
+  const [fixtureGameweek, setFixtureGameweek] = useState(7);
+  const [newFixturePlayerOne, setNewFixturePlayerOne] = useState("");
+  const [newFixturePlayerTwo, setNewFixturePlayerTwo] = useState("");
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
@@ -193,13 +206,14 @@ export default function AdminPage() {
       setLoading(true);
 
       try {
-        const [pSnap, mSnap, sSnap, shopSnap, sectionsSnap] =
+        const [pSnap, mSnap, sSnap, shopSnap, sectionsSnap, fixturesSnap] =
           await Promise.all([
             getDocs(collection(db, "players")),
             getDocs(collection(db, "userTeams")),
             getDocs(collection(db, "settings")),
             getDocs(collection(db, "shopItems")),
             getDocs(collection(db, "shopSections")),
+            getDocs(collection(db, "playerFixtures")),
           ]);
 
         let activeGW = 7;
@@ -213,6 +227,8 @@ export default function AdminPage() {
           setSettings(settingsData);
           activeGW = Number(settingsData.currentGameweek || 7);
         }
+
+        setFixtureGameweek(activeGW);
 
         const loadedShopItems = shopSnap.docs.map(
           (d) => ({ id: d.id, ...d.data() } as ShopItem)
@@ -271,6 +287,30 @@ export default function AdminPage() {
           pSnap.docs
             .map((d) => ({ id: d.id, ...d.data() } as Player))
             .sort((a, b) => (a.name || "").localeCompare(b.name || ""))
+        );
+
+        setFixtures(
+          fixturesSnap.docs
+            .map((fixtureDoc) => {
+              const data = fixtureDoc.data();
+
+              return {
+                id: fixtureDoc.id,
+                gameweek: Number(data.gameweek || 0),
+                playerOneId: String(data.playerOneId || ""),
+                playerTwoId: String(data.playerTwoId || ""),
+              } as PlayerFixture;
+            })
+            .filter(
+              (fixture) =>
+                fixture.gameweek > 0 &&
+                Boolean(fixture.playerOneId) &&
+                Boolean(fixture.playerTwoId)
+            )
+            .sort(
+              (a, b) =>
+                a.gameweek - b.gameweek || a.id.localeCompare(b.id)
+            )
         );
 
         setManagers(
@@ -879,6 +919,164 @@ export default function AdminPage() {
     );
   };
 
+  const updateFixtureField = (
+    id: string,
+    field: "gameweek" | "playerOneId" | "playerTwoId",
+    value: string | number
+  ) => {
+    setFixtures((prev) =>
+      prev.map((fixture) =>
+        fixture.id === id ? { ...fixture, [field]: value } : fixture
+      )
+    );
+  };
+
+  const getFixtureValidationError = (
+    gameweek: number,
+    playerOneId: string,
+    playerTwoId: string,
+    ignoreFixtureId?: string
+  ) => {
+    if (!Number.isInteger(gameweek) || gameweek < 1) {
+      return "Enter a valid gameweek number.";
+    }
+
+    if (!playerOneId || !playerTwoId) {
+      return "Choose both players for the fixture.";
+    }
+
+    if (playerOneId === playerTwoId) {
+      return "A player cannot face themselves.";
+    }
+
+    const playerAlreadyScheduled = fixtures.some(
+      (fixture) =>
+        fixture.id !== ignoreFixtureId &&
+        fixture.gameweek === gameweek &&
+        (fixture.playerOneId === playerOneId ||
+          fixture.playerTwoId === playerOneId ||
+          fixture.playerOneId === playerTwoId ||
+          fixture.playerTwoId === playerTwoId)
+    );
+
+    if (playerAlreadyScheduled) {
+      return "Each player can only have one fixture in the same gameweek.";
+    }
+
+    return null;
+  };
+
+  const handleAddFixture = async () => {
+    const gameweek = Number(fixtureGameweek);
+    const error = getFixtureValidationError(
+      gameweek,
+      newFixturePlayerOne,
+      newFixturePlayerTwo
+    );
+
+    if (error) {
+      alert(error);
+      return;
+    }
+
+    setSaving("newFixture");
+
+    try {
+      const now = new Date().toISOString();
+      const fixtureData = {
+        gameweek,
+        playerOneId: newFixturePlayerOne,
+        playerTwoId: newFixturePlayerTwo,
+        "Created Date": now,
+        "Updated Date": now,
+      };
+      const fixtureRef = await addDoc(
+        collection(db, "playerFixtures"),
+        fixtureData
+      );
+
+      setFixtures((prev) =>
+        [
+          ...prev,
+          {
+            id: fixtureRef.id,
+            gameweek,
+            playerOneId: newFixturePlayerOne,
+            playerTwoId: newFixturePlayerTwo,
+          },
+        ].sort(
+          (a, b) => a.gameweek - b.gameweek || a.id.localeCompare(b.id)
+        )
+      );
+      setNewFixturePlayerOne("");
+      setNewFixturePlayerTwo("");
+      markSaved("newFixture");
+    } catch (err) {
+      console.error("Failed to add fixture:", err);
+      alert("Failed to add the fixture. Check the console for details.");
+    }
+
+    setSaving(null);
+  };
+
+  const handleSaveFixture = async (fixture: PlayerFixture) => {
+    const gameweek = Number(fixture.gameweek);
+    const error = getFixtureValidationError(
+      gameweek,
+      fixture.playerOneId,
+      fixture.playerTwoId,
+      fixture.id
+    );
+
+    if (error) {
+      alert(error);
+      return;
+    }
+
+    setSaving(fixture.id);
+
+    try {
+      await updateDoc(doc(db, "playerFixtures", fixture.id), {
+        gameweek,
+        playerOneId: fixture.playerOneId,
+        playerTwoId: fixture.playerTwoId,
+        "Updated Date": new Date().toISOString(),
+      });
+
+      setFixtures((prev) =>
+        prev
+          .map((item) =>
+            item.id === fixture.id ? { ...fixture, gameweek } : item
+          )
+          .sort(
+            (a, b) => a.gameweek - b.gameweek || a.id.localeCompare(b.id)
+          )
+      );
+      markSaved(fixture.id);
+    } catch (err) {
+      console.error("Failed to save fixture:", err);
+      alert("Failed to save the fixture. Check the console for details.");
+    }
+
+    setSaving(null);
+  };
+
+  const handleDeleteFixture = async (fixture: PlayerFixture) => {
+    if (!confirm(`Delete this GW${fixture.gameweek} fixture?`)) return;
+
+    setSaving(fixture.id);
+
+    try {
+      await deleteDoc(doc(db, "playerFixtures", fixture.id));
+      setFixtures((prev) => prev.filter((item) => item.id !== fixture.id));
+    } catch (err) {
+      console.error("Failed to delete fixture:", err);
+      alert("Failed to delete the fixture. Check the console for details.");
+    }
+
+    setSaving(null);
+  };
+
   if (!user || user.email !== ADMIN_EMAIL) return null;
 
   if (loading) {
@@ -964,6 +1162,15 @@ export default function AdminPage() {
     (a, b) => Number(a.order || 99) - Number(b.order || 99)
   );
 
+  const selectedFixtures = fixtures
+    .filter((fixture) => fixture.gameweek === Number(fixtureGameweek))
+    .sort((a, b) => a.id.localeCompare(b.id));
+
+  const playerLabel = (playerId: string) => {
+    const player = players.find((item) => item.id === playerId);
+    return player ? `${player.name} · ${player.game}` : "Unknown player";
+  };
+
   return (
     <Shell>
       <div className="page-container admin-page" style={{ maxWidth: "1200px", margin: "0 auto" }}>
@@ -982,6 +1189,7 @@ export default function AdminPage() {
         >
           {[
             "players",
+            "fixtures",
             "stats",
             "managers",
             "shop",
@@ -1581,6 +1789,273 @@ export default function AdminPage() {
                 />
               ))}
             </div>
+          </div>
+        )}
+
+        {tab === "fixtures" && (
+          <div style={{ display: "grid", gap: "1rem", maxWidth: "1100px" }}>
+            <div
+              style={{
+                background:
+                  "linear-gradient(135deg, rgba(3,71,244,0.12), rgba(255,193,7,0.08)), var(--surface)",
+                border: "1px solid var(--border)",
+                borderRadius: "14px",
+                padding: "1rem",
+              }}
+            >
+              <h2 style={{ ...sectionTitleStyle, marginBottom: "0.5rem" }}>
+                Player Fixtures
+              </h2>
+              <p style={{ color: "var(--text-muted)", lineHeight: 1.6 }}>
+                Pair esports players for each gameweek. The Fixtures page
+                compares their saved gameweek scores automatically: win = 3
+                PTS, draw = 1 PTS, loss = 0 PTS.
+              </p>
+            </div>
+
+            <section style={panelStyle}>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
+                  gap: "0.75rem",
+                  alignItems: "end",
+                }}
+              >
+                <div>
+                  <div style={labelStyle}>Gameweek</div>
+                  <input
+                    type="number"
+                    min="1"
+                    value={fixtureGameweek}
+                    onChange={(event) =>
+                      setFixtureGameweek(
+                        Math.max(1, Number(event.target.value) || 1)
+                      )
+                    }
+                    style={inputStyle}
+                  />
+                </div>
+
+                <div>
+                  <div style={labelStyle}>Player One</div>
+                  <select
+                    value={newFixturePlayerOne}
+                    onChange={(event) => setNewFixturePlayerOne(event.target.value)}
+                    style={inputStyle}
+                  >
+                    <option value="">Choose player</option>
+                    {players.map((player) => (
+                      <option key={player.id} value={player.id}>
+                        {player.name} · {player.game}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <div style={labelStyle}>Player Two</div>
+                  <select
+                    value={newFixturePlayerTwo}
+                    onChange={(event) => setNewFixturePlayerTwo(event.target.value)}
+                    style={inputStyle}
+                  >
+                    <option value="">Choose player</option>
+                    {players.map((player) => (
+                      <option key={player.id} value={player.id}>
+                        {player.name} · {player.game}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <button
+                  onClick={handleAddFixture}
+                  disabled={saving === "newFixture"}
+                  style={{
+                    background:
+                      saved === "newFixture" ? "var(--green)" : "var(--accent)",
+                    color: "#000",
+                    border: "none",
+                    borderRadius: "8px",
+                    padding: "0.65rem 1rem",
+                    minHeight: "38px",
+                    fontWeight: 900,
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {saving === "newFixture"
+                    ? "Adding..."
+                    : saved === "newFixture"
+                    ? "Added"
+                    : "Add Fixture"}
+                </button>
+              </div>
+            </section>
+
+            <section style={panelStyle}>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: "1rem",
+                  flexWrap: "wrap",
+                }}
+              >
+                <div>
+                  <h2 style={{ ...sectionTitleStyle, marginBottom: "0.3rem" }}>
+                    GW{fixtureGameweek} Fixtures
+                  </h2>
+                  <p style={{ color: "var(--text-muted)", fontSize: "0.82rem" }}>
+                    Edit either player, move a fixture to another gameweek, or
+                    remove it.
+                  </p>
+                </div>
+                <div
+                  style={{
+                    color: "var(--text-muted)",
+                    fontSize: "0.8rem",
+                    fontWeight: 800,
+                  }}
+                >
+                  {selectedFixtures.length} fixture
+                  {selectedFixtures.length === 1 ? "" : "s"}
+                </div>
+              </div>
+
+              {selectedFixtures.length === 0 ? (
+                <div
+                  style={{
+                    border: "1px dashed var(--border)",
+                    borderRadius: "12px",
+                    padding: "2rem 1rem",
+                    textAlign: "center",
+                    color: "var(--text-muted)",
+                  }}
+                >
+                  No fixtures are scheduled for GW{fixtureGameweek} yet.
+                </div>
+              ) : (
+                <div style={{ display: "grid", gap: "0.75rem" }}>
+                  {selectedFixtures.map((fixture) => (
+                    <div
+                      key={fixture.id}
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "repeat(auto-fit, minmax(175px, 1fr))",
+                        gap: "0.65rem",
+                        alignItems: "end",
+                        padding: "0.85rem",
+                        border: "1px solid var(--border)",
+                        borderRadius: "12px",
+                        background: "rgba(255,255,255,0.025)",
+                      }}
+                    >
+                      <div>
+                        <div style={smallLabelStyle}>Gameweek</div>
+                        <input
+                          type="number"
+                          min="1"
+                          value={fixture.gameweek}
+                          onChange={(event) =>
+                            updateFixtureField(
+                              fixture.id,
+                              "gameweek",
+                              Math.max(1, Number(event.target.value) || 1)
+                            )
+                          }
+                          style={inputStyle}
+                        />
+                      </div>
+
+                      <div>
+                        <div style={smallLabelStyle}>Player One</div>
+                        <select
+                          value={fixture.playerOneId}
+                          onChange={(event) =>
+                            updateFixtureField(
+                              fixture.id,
+                              "playerOneId",
+                              event.target.value
+                            )
+                          }
+                          style={inputStyle}
+                        >
+                          <option value="">Choose player</option>
+                          {players.map((player) => (
+                            <option key={player.id} value={player.id}>
+                              {player.name} · {player.game}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <div style={smallLabelStyle}>Player Two</div>
+                        <select
+                          value={fixture.playerTwoId}
+                          onChange={(event) =>
+                            updateFixtureField(
+                              fixture.id,
+                              "playerTwoId",
+                              event.target.value
+                            )
+                          }
+                          style={inputStyle}
+                        >
+                          <option value="">Choose player</option>
+                          {players.map((player) => (
+                            <option key={player.id} value={player.id}>
+                              {player.name} · {player.game}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <button
+                        onClick={() => handleSaveFixture(fixture)}
+                        disabled={saving === fixture.id}
+                        style={{
+                          background:
+                            saved === fixture.id ? "var(--green)" : "var(--accent)",
+                          color: "#000",
+                          border: "none",
+                          borderRadius: "8px",
+                          padding: "0.6rem 0.85rem",
+                          fontWeight: 900,
+                          cursor: "pointer",
+                        }}
+                      >
+                        {saving === fixture.id
+                          ? "Saving..."
+                          : saved === fixture.id
+                          ? "Saved"
+                          : "Save"}
+                      </button>
+
+                      <button
+                        onClick={() => handleDeleteFixture(fixture)}
+                        disabled={saving === fixture.id}
+                        title={`Delete ${playerLabel(fixture.playerOneId)} vs ${playerLabel(fixture.playerTwoId)}`}
+                        style={{
+                          background: "transparent",
+                          color: "var(--red)",
+                          border: "1px solid var(--border)",
+                          borderRadius: "8px",
+                          padding: "0.6rem 0.75rem",
+                          fontWeight: 900,
+                          cursor: "pointer",
+                        }}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
           </div>
         )}
 
