@@ -297,7 +297,7 @@ export default function FixturesPage() {
                 background: "var(--accent)",
               }}
             />
-            Head-to-head player league · GW{currentGameweek}
+            H2H player league · GW{currentGameweek}
           </div>
 
           <h1
@@ -319,8 +319,7 @@ export default function FixturesPage() {
               lineHeight: 1.7,
             }}
           >
-            Each scored fixture compares both players&apos; gameweek score. A win
-            earns 3 PTS, a draw earns 1 PTS, and a loss earns 0 PTS.
+            
           </p>
         </section>
 
@@ -355,7 +354,7 @@ export default function FixturesPage() {
                   marginTop: "0.2rem",
                 }}
               >
-                Sorted by PTS, then SCORE.
+                
               </div>
             </div>
 
@@ -369,7 +368,7 @@ export default function FixturesPage() {
                 fontWeight: 800,
               }}
             >
-              <span>PL Played · SCORE Total player points</span>
+              <span> </span>
             </div>
           </div>
 
