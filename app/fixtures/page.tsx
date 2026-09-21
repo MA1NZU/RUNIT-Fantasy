@@ -395,6 +395,7 @@ export default function FixturesPage() {
         </section>
 
         <section
+          className="fixtures-standings-card"
           style={{
             background: "var(--surface)",
             border: "1px solid var(--border)",
@@ -432,8 +433,9 @@ export default function FixturesPage() {
               No players found yet.
             </div>
           ) : (
-            <div style={{ minWidth: "720px" }}>
+            <div className="fixtures-standings-table" style={{ minWidth: "720px" }}>
               <div
+                className="fixtures-standings-row fixtures-standings-heading"
                 style={{
                   display: "grid",
                   gridTemplateColumns: "42px minmax(180px, 1fr) repeat(4, 52px) 78px 58px",
@@ -461,6 +463,7 @@ export default function FixturesPage() {
               {standings.map((standing, index) => (
                 <div
                   key={standing.player.id}
+                  className="fixtures-standings-row"
                   style={{
                     display: "grid",
                     gridTemplateColumns: "42px minmax(180px, 1fr) repeat(4, 52px) 78px 58px",
@@ -475,6 +478,7 @@ export default function FixturesPage() {
                   }}
                 >
                   <div
+                    className="fixtures-standings-rank"
                     style={{
                       width: "30px",
                       height: "30px",
@@ -491,8 +495,9 @@ export default function FixturesPage() {
                   >
                     {index + 1}
                   </div>
-                  <div style={{ minWidth: 0 }}>
+                  <div className="fixtures-standings-player" style={{ minWidth: 0 }}>
                     <div
+                      className="fixtures-standings-player-name"
                       style={{
                         fontWeight: 800,
                         overflow: "hidden",
@@ -503,6 +508,7 @@ export default function FixturesPage() {
                       {standing.player.name}
                     </div>
                     <div
+                      className="fixtures-standings-player-game"
                       style={{
                         color: "var(--text-muted)",
                         fontSize: "0.7rem",
@@ -613,7 +619,8 @@ export default function FixturesPage() {
                 borderRadius: "16px",
               }}
             >
-              No fixtures have been scheduled yet.
+              No fixtures have been scheduled yet. An admin can create them in
+              Admin → Fixtures.
             </div>
           ) : (
             Object.keys(fixturesByGameweek)
