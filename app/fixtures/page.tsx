@@ -613,8 +613,7 @@ export default function FixturesPage() {
                 borderRadius: "16px",
               }}
             >
-              No fixtures have been scheduled yet. An admin can create them in
-              Admin → Fixtures.
+              No fixtures have been scheduled yet.
             </div>
           ) : (
             Object.keys(fixturesByGameweek)
