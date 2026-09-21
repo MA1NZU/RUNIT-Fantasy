@@ -13,6 +13,12 @@ import {
 } from "firebase/firestore";
 import { useAuth } from "@/lib/AuthContext";
 import Shell from "@/app/shell";
+import {
+  LimitedCard,
+  getLimitedCardImageUrl,
+  getLimitedCardRarityColor,
+  limitedCardPowerupText,
+} from "@/lib/limitedCards";
 
 type ShopItem = {
   ID: string;
@@ -175,6 +181,8 @@ export default function ShopPage() {
   const [ownedIds, setOwnedIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [buying, setBuying] = useState<string | null>(null);
+  const [limitedCards, setLimitedCards] = useState<LimitedCard[]>([]);
+  const [buyingCard, setBuyingCard] = useState<string | null>(null);
   const [isLocked, setIsLocked] = useState(false);
   const [accountReady, setAccountReady] = useState(false);
   const [shopError, setShopError] = useState("");
@@ -207,11 +215,12 @@ export default function ShopPage() {
       setShopError("");
       setAccountError("");
 
-      const [itemsResult, settingsResult, sectionsResult] =
+      const [itemsResult, settingsResult, sectionsResult, cardsResult] =
         await Promise.allSettled([
           getDocs(collection(db, "shopItems")),
           getDocs(collection(db, "settings")),
           getDocs(collection(db, "shopSections")),
+          getDocs(collection(db, "limitedCards")),
         ]);
 
       if (!active) return;
@@ -219,7 +228,8 @@ export default function ShopPage() {
       const publicLoadFailed =
         itemsResult.status === "rejected" ||
         settingsResult.status === "rejected" ||
-        sectionsResult.status === "rejected";
+        sectionsResult.status === "rejected" ||
+        cardsResult.status === "rejected";
 
       if (itemsResult.status === "rejected") {
         console.error("Unable to load shop items:", itemsResult.reason);
@@ -233,9 +243,13 @@ export default function ShopPage() {
         console.error("Unable to load shop sections:", sectionsResult.reason);
       }
 
+      if (cardsResult.status === "rejected") {
+        console.error("Unable to load limited cards:", cardsResult.reason);
+      }
+
       if (publicLoadFailed) {
         setShopError(
-          "Some shop data could not be loaded. Check that signed-in managers can read shopItems, shopSections, and settings in Firestore."
+          "Some shop data could not be loaded. Check that signed-in managers can read shopItems, shopSections, limitedCards, and settings in Firestore."
         );
       }
 
@@ -249,6 +263,23 @@ export default function ShopPage() {
         });
 
         setSectionOrders(orderMap);
+      }
+
+      if (cardsResult.status === "fulfilled") {
+        setLimitedCards(
+          cardsResult.value.docs
+            .map((cardDoc) => {
+              const data = cardDoc.data() as Partial<LimitedCard>;
+
+              return {
+                ...data,
+                id: cardDoc.id,
+                ID: String(data.ID || cardDoc.id),
+              } as LimitedCard;
+            })
+            .filter((card) => card.isVisible !== false)
+            .sort((a, b) => (a.cardName || "").localeCompare(b.cardName || ""))
+        );
       }
 
       if (settingsResult.status === "fulfilled" && !settingsResult.value.empty) {
@@ -547,6 +578,163 @@ export default function ShopPage() {
     }
   };
 
+  const handleBuyCard = async (card: LimitedCard) => {
+    const userEmail = String(user?.email || "").trim();
+    const normalizedUserEmail = normalizeEmail(userEmail);
+    const userUid = user?.uid;
+    const price = Number(card.shopPrice || 0);
+
+    if (!userEmail || !userUid) return;
+
+    if (!managerTeam || userCoins === null || !accountReady) {
+      alert(
+        "Your manager coins are not available yet. Reload after checking Firestore access."
+      );
+      return;
+    }
+
+    if (!Number.isFinite(price) || price < 0) {
+      alert("This card has an invalid price. Ask an admin to update it.");
+      return;
+    }
+
+    if (Number(card.stock || 0) <= 0) {
+      alert("This card is sold out.");
+      return;
+    }
+
+    if (userCoins < price) {
+      alert("Not enough coins!");
+      return;
+    }
+
+    if (
+      !confirm(
+        `Buy ${card.cardName} for ${price} coins?\n\nYou can buy multiple copies. Activate each copy once on the transfers page.`
+      )
+    )
+      return;
+
+    setBuyingCard(card.ID);
+
+    try {
+      const remainingCoins = await runTransaction(db, async (transaction) => {
+        const teamRef = doc(db, "userTeams", managerTeam.id);
+        const cardRef = doc(db, "limitedCards", card.ID);
+        const [teamSnap, cardSnap] = await Promise.all([
+          transaction.get(teamRef),
+          transaction.get(cardRef),
+        ]);
+
+        if (!teamSnap.exists()) {
+          throw new Error("MANAGER_NOT_FOUND");
+        }
+
+        const teamData = teamSnap.data();
+        const ownsManagerRecord =
+          String(teamData.ownerUid || "") === userUid ||
+          normalizeEmail(teamData.ownerEmail) === normalizedUserEmail;
+
+        if (!ownsManagerRecord) {
+          throw new Error("MANAGER_MISMATCH");
+        }
+
+        if (!cardSnap.exists()) {
+          throw new Error("CARD_NOT_FOUND");
+        }
+
+        const cardData = cardSnap.data();
+
+        if (cardData.isVisible === false) {
+          throw new Error("CARD_NOT_AVAILABLE");
+        }
+
+        const stock = Number(cardData.stock || 0);
+
+        if (stock <= 0) {
+          throw new Error("SOLD_OUT");
+        }
+
+        const currentCoins = Number(teamData.coins || 0);
+
+        if (!Number.isFinite(currentCoins) || currentCoins < price) {
+          throw new Error("NOT_ENOUGH_COINS");
+        }
+
+        const nextCoins = currentCoins - price;
+
+        transaction.update(cardRef, {
+          stock: stock - 1,
+          "Updated Date": serverTimestamp(),
+        });
+
+        transaction.update(teamRef, {
+          coins: nextCoins,
+          "Updated Date": serverTimestamp(),
+        });
+
+        const userCardId = `${userUid}_${card.ID}_${Date.now().toString(
+          36
+        )}${Math.random().toString(36).slice(2, 6)}`;
+
+        transaction.set(doc(db, "userLimitedCards", userCardId), {
+          ownerUid: userUid,
+          ownerEmail: userEmail,
+          cardId: card.ID,
+          status: "owned",
+          gameweek: 0,
+          purchaseDate: serverTimestamp(),
+          acquiredAt: serverTimestamp(),
+          source: "shop",
+        });
+
+        return nextCoins;
+      });
+
+      setUserCoins(remainingCoins);
+      setManagerTeam((current) =>
+        current ? { ...current, coins: remainingCoins } : current
+      );
+      setLimitedCards((current) =>
+        current.map((c) =>
+          c.ID === card.ID
+            ? { ...c, stock: Math.max(0, Number(c.stock || 0) - 1) }
+            : c
+        )
+      );
+
+      alert("Card purchased! Activate it on the transfers page.");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "";
+
+      if (message === "NOT_ENOUGH_COINS") {
+        alert("Not enough coins!");
+      } else if (message === "SOLD_OUT") {
+        setLimitedCards((current) =>
+          current.map((c) => (c.ID === card.ID ? { ...c, stock: 0 } : c))
+        );
+        alert("This card just sold out.");
+      } else if (
+        message === "CARD_NOT_FOUND" ||
+        message === "CARD_NOT_AVAILABLE"
+      ) {
+        alert("This card is no longer available.");
+      } else if (
+        message === "MANAGER_NOT_FOUND" ||
+        message === "MANAGER_MISMATCH"
+      ) {
+        alert(
+          "Your manager record could not be verified. Ask the admin to check your ownerEmail."
+        );
+      } else {
+        console.error("Card purchase failed:", err);
+        alert("Purchase failed. Check your Firestore access and try again.");
+      }
+    } finally {
+      setBuyingCard(null);
+    }
+  };
+
   const getImageUrl = (url: string) => {
     if (!url) return "";
 
@@ -756,6 +944,75 @@ export default function ShopPage() {
           >
             {accountError}
           </div>
+        )}
+
+        {limitedCards.length > 0 && (
+          <section style={{ marginBottom: "3rem" }}>
+            <div
+              className="shop-section-header"
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                gap: "1rem",
+                marginBottom: "1rem",
+                flexWrap: "wrap",
+              }}
+            >
+              <div>
+                <div
+                  style={{
+                    fontSize: "0.75rem",
+                    color: "var(--text-muted)",
+                    textTransform: "uppercase",
+                    letterSpacing: "1px",
+                    fontWeight: 900,
+                    marginBottom: "0.25rem",
+                  }}
+                >
+                  Section
+                </div>
+
+                <h2 style={{ fontSize: "1.35rem", fontWeight: 900, margin: 0 }}>
+                  Limited Cards
+                </h2>
+              </div>
+
+              <div
+                style={{
+                  color: "var(--text-muted)",
+                  fontSize: "0.8rem",
+                  background: "rgba(255,255,255,0.045)",
+                  border: "1px solid rgba(255,255,255,0.08)",
+                  borderRadius: "999px",
+                  padding: "0.45rem 0.7rem",
+                  fontWeight: 800,
+                }}
+              >
+                {limitedCards.length} card{limitedCards.length === 1 ? "" : "s"}
+              </div>
+            </div>
+
+            <div
+              className="shop-items-grid"
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
+                gap: "1.25rem",
+              }}
+            >
+              {limitedCards.map((card) => (
+                <LimitedCardShopTile
+                  key={card.ID}
+                  card={card}
+                  accountReady={accountReady}
+                  userCoins={userCoins}
+                  isBuying={buyingCard === card.ID}
+                  onBuy={handleBuyCard}
+                />
+              ))}
+            </div>
+          </section>
         )}
 
         {sections.length === 0 ? (
@@ -1031,5 +1288,265 @@ export default function ShopPage() {
         )}
       </div>
     </Shell>
+  );
+}
+
+function LimitedCardShopTile({
+  card,
+  accountReady,
+  userCoins,
+  isBuying,
+  onBuy,
+}: {
+  card: LimitedCard;
+  accountReady: boolean;
+  userCoins: number | null;
+  isBuying: boolean;
+  onBuy: (card: LimitedCard) => void;
+}) {
+  const rarityColor = getLimitedCardRarityColor(card.rarity, card.accentColor);
+  const imageUrl = getLimitedCardImageUrl(card.image);
+  const price = Number(card.shopPrice || 0);
+  const stock = Number(card.stock || 0);
+  const soldOut = stock <= 0;
+  const canAfford =
+    accountReady &&
+    userCoins !== null &&
+    Number.isFinite(price) &&
+    userCoins >= price;
+  const disabled = soldOut || !accountReady || !canAfford || isBuying;
+
+  return (
+    <div
+      style={{
+        position: "relative",
+        overflow: "hidden",
+        background: `linear-gradient(160deg, ${rarityColor}24, rgba(255,255,255,0.015)), var(--surface)`,
+        border: `1px solid ${rarityColor}66`,
+        borderRadius: "20px",
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
+      <div
+        style={{
+          position: "absolute",
+          top: "0.75rem",
+          left: "0.75rem",
+          display: "flex",
+          gap: "0.35rem",
+          zIndex: 3,
+          flexWrap: "wrap",
+        }}
+      >
+        {card.showNewTag && (
+          <span
+            style={{
+              background: "var(--blue)",
+              color: "#fff",
+              fontSize: "0.62rem",
+              fontWeight: 900,
+              padding: "0.2rem 0.45rem",
+              borderRadius: "999px",
+            }}
+          >
+            NEW
+          </span>
+        )}
+
+        {card.showLeavingTodayTag && (
+          <span
+            style={{
+              background: "#0f0d1b",
+              color: "var(--accent)",
+              border: "1px solid rgba(255,193,7,0.3)",
+              fontSize: "0.62rem",
+              fontWeight: 900,
+              padding: "0.2rem 0.45rem",
+              borderRadius: "999px",
+            }}
+          >
+            LEAVING TODAY
+          </span>
+        )}
+      </div>
+
+      <div
+        style={{
+          width: "100%",
+          aspectRatio: "4/3",
+          background: `radial-gradient(circle at 30% 20%, ${rarityColor}30, transparent 45%), #111`,
+          borderBottom: "1px solid var(--border)",
+        }}
+      >
+        {imageUrl ? (
+          <img
+            src={imageUrl}
+            alt={card.cardName}
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
+              display: "block",
+            }}
+          />
+        ) : (
+          <div
+            style={{
+              width: "100%",
+              height: "100%",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: "rgba(255,255,255,0.22)",
+              fontWeight: 900,
+              fontSize: "2rem",
+            }}
+          >
+            {card.cardName?.slice(0, 1) || "?"}
+          </div>
+        )}
+      </div>
+
+      <div
+        style={{
+          padding: "1rem",
+          display: "flex",
+          flexDirection: "column",
+          gap: "0.4rem",
+          flex: 1,
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "0.6rem",
+          }}
+        >
+          <div
+            style={{
+              fontSize: "0.62rem",
+              fontWeight: 900,
+              textTransform: "uppercase",
+              letterSpacing: "0.7px",
+              color: "#8bb5ff",
+            }}
+          >
+            Limited Card
+          </div>
+
+          <div
+            style={{
+              fontSize: "0.62rem",
+              color: rarityColor,
+              fontWeight: 900,
+              textTransform: "uppercase",
+              letterSpacing: "0.7px",
+            }}
+          >
+            {card.rarity || "rare"}
+          </div>
+        </div>
+
+        <div style={{ fontWeight: 900, fontSize: "1rem", lineHeight: 1.2 }}>
+          {card.cardName}
+        </div>
+
+        <div
+          style={{
+            color: "var(--accent)",
+            fontSize: "0.7rem",
+            fontWeight: 800,
+            lineHeight: 1.4,
+          }}
+        >
+          {limitedCardPowerupText(card)}
+        </div>
+
+        <div
+          style={{
+            color: "var(--text-muted)",
+            fontSize: "0.68rem",
+            fontWeight: 700,
+          }}
+        >
+          One-time use · attach to its player in Transfers
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            gap: "0.4rem",
+            flexWrap: "wrap",
+            marginTop: "0.15rem",
+          }}
+        >
+          <span
+            style={{
+              background: "rgba(3,71,244,0.12)",
+              border: "1px solid rgba(107,159,255,0.35)",
+              color: "#8bb5ff",
+              fontSize: "0.62rem",
+              fontWeight: 900,
+              padding: "0.22rem 0.45rem",
+              borderRadius: "999px",
+            }}
+          >
+            Squad cost +{Number(card.transferPrice || 0).toFixed(1)}m
+          </span>
+
+          <span
+            style={{
+              background: "rgba(255,255,255,0.045)",
+              border: "1px solid rgba(255,255,255,0.08)",
+              color: soldOut ? "var(--red)" : "var(--text-muted)",
+              fontSize: "0.62rem",
+              fontWeight: 900,
+              padding: "0.22rem 0.45rem",
+              borderRadius: "999px",
+            }}
+          >
+            {soldOut ? "Sold out" : `${stock} left`}
+          </span>
+        </div>
+
+        <button
+          onClick={() => onBuy(card)}
+          disabled={disabled}
+          title={
+            !accountReady
+              ? "Your manager coins are unavailable. Check Firestore access and reload."
+              : undefined
+          }
+          style={{
+            marginTop: "auto",
+            width: "100%",
+            padding: "0.75rem",
+            borderRadius: "12px",
+            border: "none",
+            fontWeight: 900,
+            cursor: disabled ? "not-allowed" : "pointer",
+            background: soldOut
+              ? "var(--border)"
+              : !canAfford
+              ? "rgba(255,255,255,0.08)"
+              : "var(--blue)",
+            color: soldOut || !canAfford ? "var(--text-muted)" : "#fff",
+          }}
+        >
+          {soldOut
+            ? "SOLD OUT"
+            : isBuying
+            ? "Buying..."
+            : !accountReady
+            ? "COINS UNAVAILABLE"
+            : !canAfford
+            ? "NOT ENOUGH COINS"
+            : `Buy · ${price.toLocaleString()} Coins`}
+        </button>
+      </div>
+    </div>
   );
 }
