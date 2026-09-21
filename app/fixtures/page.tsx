@@ -12,6 +12,11 @@ type Player = {
   game: string;
 };
 
+type Settings = {
+  currentGameweek?: number;
+  lockFixtures?: boolean;
+};
+
 type PlayerFixture = {
   id: string;
   gameweek: number;
@@ -52,32 +57,42 @@ export default function FixturesPage() {
   const [currentGameweek, setCurrentGameweek] = useState(7);
   const [selectedGameweek, setSelectedGameweek] = useState("all");
   const [loading, setLoading] = useState(true);
+  const [isLocked, setIsLocked] = useState(false);
 
   useEffect(() => {
     const loadFixtures = async () => {
       setLoading(true);
 
       try {
-        const [playersSnap, fixturesSnap, statsSnap, settingsSnap] =
-          await Promise.all([
-            getDocs(collection(db, "players")),
-            getDocs(collection(db, "playerFixtures")),
-            getDocs(collection(db, "playerMatchStats")),
-            getDocs(collection(db, "settings")),
-          ]);
+        const settingsSnap = await getDocs(collection(db, "settings"));
 
         if (!settingsSnap.empty) {
-          setCurrentGameweek(
-            Number(settingsSnap.docs[0].data().currentGameweek || 7)
-          );
+          const settingsData = settingsSnap.docs[0].data() as Settings;
+
+          setCurrentGameweek(Number(settingsData.currentGameweek || 7));
+
+          if (settingsData.lockFixtures) {
+            setIsLocked(true);
+            return;
+          }
         }
+
+        setIsLocked(false);
+
+        const [playersSnap, fixturesSnap, statsSnap] = await Promise.all([
+          getDocs(collection(db, "players")),
+          getDocs(collection(db, "playerFixtures")),
+          getDocs(collection(db, "playerMatchStats")),
+        ]);
 
         const loadedPlayers = playersSnap.docs
           .map(
             (playerDoc) =>
               ({ id: playerDoc.id, ...playerDoc.data() } as Player)
           )
-          .sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
+          .sort((a, b) =>
+            String(a.name || "").localeCompare(String(b.name || ""))
+          );
 
         const playerIdByKey: Record<string, string> = {};
         const startingScores: Record<string, PlayerScore> = {};
@@ -255,6 +270,68 @@ export default function FixturesPage() {
     );
   }
 
+  if (isLocked) {
+    return (
+      <Shell>
+        <div
+          style={{
+            maxWidth: "760px",
+            margin: "4rem auto",
+            position: "relative",
+            overflow: "hidden",
+            border: "1px solid var(--border)",
+            borderRadius: "28px",
+            padding: "2.5rem",
+            background:
+              "radial-gradient(circle at 20% 10%, rgba(3, 71, 244, 0.3), transparent 35%), radial-gradient(circle at 90% 20%, rgba(255, 193, 7, 0.14), transparent 30%), linear-gradient(135deg, rgba(255,255,255,0.075), rgba(255,255,255,0.02))",
+            textAlign: "center",
+          }}
+        >
+          <div
+            style={{
+              width: "64px",
+              height: "64px",
+              borderRadius: "22px",
+              background: "rgba(255,255,255,0.05)",
+              border: "1px solid rgba(255,255,255,0.1)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              margin: "0 auto 1.2rem",
+              fontSize: "2rem",
+            }}
+          >
+            🔒
+          </div>
+
+          <h1
+            style={{
+              fontSize: "clamp(2rem, 5vw, 3.2rem)",
+              lineHeight: 1,
+              letterSpacing: "-0.05em",
+              fontWeight: 900,
+              marginBottom: "0.75rem",
+            }}
+          >
+            Fixtures are <span style={{ color: "var(--blue)" }}>Locked</span>
+          </h1>
+
+          <p
+            style={{
+              color: "var(--text-muted)",
+              maxWidth: "460px",
+              margin: "0 auto",
+              lineHeight: 1.7,
+            }}
+          >
+            Access to player fixtures and standings is currently restricted by
+            the admin. Check back again soon.
+          </p>
+        </div>
+      </Shell>
+    );
+  }
+
   return (
     <Shell>
       <main
@@ -297,7 +374,7 @@ export default function FixturesPage() {
                 background: "var(--accent)",
               }}
             />
-            H2H player league · GW{currentGameweek}
+            Head-to-head player league · GW{currentGameweek}
           </div>
 
           <h1
@@ -311,16 +388,6 @@ export default function FixturesPage() {
           >
             Player <span style={{ color: "var(--blue)" }}>Fixtures</span>
           </h1>
-
-          <p
-            style={{
-              maxWidth: "650px",
-              color: "var(--text-muted)",
-              lineHeight: 1.7,
-            }}
-          >
-            
-          </p>
         </section>
 
         <section
@@ -347,28 +414,6 @@ export default function FixturesPage() {
               <div style={{ fontSize: "1.15rem", fontWeight: 900 }}>
                 Player Standings
               </div>
-              <div
-                style={{
-                  color: "var(--text-muted)",
-                  fontSize: "0.78rem",
-                  marginTop: "0.2rem",
-                }}
-              >
-                
-              </div>
-            </div>
-
-            <div
-              style={{
-                display: "flex",
-                gap: "0.75rem",
-                alignItems: "center",
-                color: "var(--text-muted)",
-                fontSize: "0.75rem",
-                fontWeight: 800,
-              }}
-            >
-              <span> </span>
             </div>
           </div>
 
@@ -387,7 +432,8 @@ export default function FixturesPage() {
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "42px minmax(180px, 1fr) repeat(4, 52px) 78px 58px",
+                  gridTemplateColumns:
+                    "42px minmax(180px, 1fr) repeat(4, 52px) 78px 58px",
                   gap: "0.45rem",
                   alignItems: "center",
                   padding: "0 0.6rem 0.65rem",
@@ -414,7 +460,8 @@ export default function FixturesPage() {
                   key={standing.player.id}
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "42px minmax(180px, 1fr) repeat(4, 52px) 78px 58px",
+                    gridTemplateColumns:
+                      "42px minmax(180px, 1fr) repeat(4, 52px) 78px 58px",
                     gap: "0.45rem",
                     alignItems: "center",
                     padding: "0.8rem 0.6rem",
@@ -436,7 +483,8 @@ export default function FixturesPage() {
                         index === 0
                           ? "rgba(255,193,7,0.16)"
                           : "rgba(255,255,255,0.06)",
-                      color: index === 0 ? "var(--accent)" : "var(--text-muted)",
+                      color:
+                        index === 0 ? "var(--accent)" : "var(--text-muted)",
                       fontWeight: 900,
                     }}
                   >
@@ -518,7 +566,8 @@ export default function FixturesPage() {
                   marginTop: "0.2rem",
                 }}
               >
-                Fixtures become final after both players' gameweek stats are saved.
+                Fixtures become final after both players&apos; gameweek stats are
+                saved.
               </div>
             </div>
 
@@ -596,7 +645,8 @@ export default function FixturesPage() {
                           key={fixture.id}
                           style={{
                             display: "grid",
-                            gridTemplateColumns: "minmax(0, 1fr) auto minmax(0, 1fr)",
+                            gridTemplateColumns:
+                              "minmax(0, 1fr) auto minmax(0, 1fr)",
                             gap: "0.75rem",
                             alignItems: "center",
                             padding: "0.85rem",
@@ -627,7 +677,9 @@ export default function FixturesPage() {
                             </div>
                           </div>
 
-                          <div style={{ textAlign: "center", minWidth: "78px" }}>
+                          <div
+                            style={{ textAlign: "center", minWidth: "78px" }}
+                          >
                             {fixture.completed ? (
                               <>
                                 <div
@@ -637,7 +689,8 @@ export default function FixturesPage() {
                                     fontSize: "1.1rem",
                                   }}
                                 >
-                                  {fixture.playerOneScore} – {fixture.playerTwoScore}
+                                  {fixture.playerOneScore} –{" "}
+                                  {fixture.playerTwoScore}
                                 </div>
                                 <div
                                   style={{
