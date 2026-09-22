@@ -756,7 +756,7 @@ export default function ShopPage() {
 
     if (
       !confirm(
-        `Buy ${card.cardName} for ${price} coins?\n\nYou can buy multiple copies. Activate each copy once on the transfers page.`
+        `Buy ${card.cardName} for ${price} coins?\n\nYou can buy multiple copies. Field each one from the transfers player market.`
       )
     )
       return;
@@ -849,7 +849,7 @@ export default function ShopPage() {
         )
       );
 
-      alert("Card purchased! Activate it on the transfers page.");
+      alert("Card purchased! Field him from the transfers player market.");
     } catch (err) {
       const message = err instanceof Error ? err.message : "";
 
@@ -1715,7 +1715,7 @@ function LimitedCardShopTile({
             fontWeight: 700,
           }}
         >
-          One-time use · attach to its player in Transfers
+          One-time use · field him from the Transfers player market
         </div>
 
         <div
