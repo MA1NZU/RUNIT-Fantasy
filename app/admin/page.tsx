@@ -276,9 +276,17 @@ export default function AdminPage() {
             id: sSnap.docs[0].id,
             ...sSnap.docs[0].data(),
           } as Settings;
+          const rawGW = settingsData.currentGameweek;
+          const parsedGW = Number(rawGW);
 
           setSettings(settingsData);
-          activeGW = Number(settingsData.currentGameweek || 7);
+          // Gameweek 0 is a valid pre-season state.
+          activeGW =
+            rawGW !== undefined &&
+            rawGW !== null &&
+            Number.isFinite(parsedGW)
+              ? parsedGW
+              : 7;
         }
 
         setFixtureGameweek(activeGW);
@@ -444,7 +452,13 @@ export default function AdminPage() {
   };
 
   const syncCurrentGameweekScores = async () => {
-    if (!settings?.currentGameweek) return;
+    if (
+      !settings ||
+      settings.currentGameweek === undefined ||
+      settings.currentGameweek === null
+    ) {
+      return;
+    }
 
     const currentGameweek = Number(settings.currentGameweek);
     const now = new Date().toISOString();
@@ -1660,7 +1674,10 @@ export default function AdminPage() {
                     onClick={() =>
                       setSettings({
                         ...settings,
-                        currentGameweek: settings.currentGameweek - 1,
+                        currentGameweek: Math.max(
+                          0,
+                          settings.currentGameweek - 1
+                        ),
                       })
                     }
                     style={smallButtonStyle}
@@ -2192,11 +2209,13 @@ export default function AdminPage() {
               }}
             >
               Design boost cards that managers buy in the shop with coins and
-              attach to the linked player on the transfers page. Each card
-              multiplies one stat&apos;s points for that player, its transfers
-              price counts against the squad budget, and the copy is consumed
-              once the gameweek it was used in is scored. Managers can buy and
-              stack multiple copies.
+              field from the player market on the transfers page — the
+              special version replaces the player&apos;s normal card in the
+              squad. Each card multiplies one stat&apos;s points for that
+              player, its transfers price replaces the player&apos;s price in
+              the squad budget, and the copy is consumed once the gameweek it
+              was used in is scored. Only one version of a player can be
+              fielded at a time.
             </div>
 
             <div
