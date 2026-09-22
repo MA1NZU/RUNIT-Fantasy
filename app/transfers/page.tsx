@@ -830,6 +830,21 @@ export default function TransfersPage() {
       return;
     }
 
+    const duplicateActiveCopy = activeCardIds.some((activeId) => {
+      if (activeId === cardDocId) return false;
+
+      const activeCopy = userCards.find((c) => c.id === activeId);
+
+      return Boolean(activeCopy && activeCopy.cardId === userCard.cardId);
+    });
+
+    if (duplicateActiveCopy) {
+      setError(
+        `${card.cardName} is already active for GW${nextGW}. Only one copy of the same card can be active per gameweek.`
+      );
+      return;
+    }
+
     const player = getPlayer(card.playerId);
 
     if (!squad.includes(card.playerId)) {
@@ -925,6 +940,21 @@ export default function TransfersPage() {
 
     if (invalidCard) {
       setError("Remove the limited card whose player left your squad.");
+      return;
+    }
+
+    const seenCardIds = new Set<string>();
+    const duplicateCard = attachedCards.find((userCard) => {
+      const copyCardId = String(userCard.cardId || "");
+
+      if (seenCardIds.has(copyCardId)) return true;
+
+      seenCardIds.add(copyCardId);
+      return false;
+    });
+
+    if (duplicateCard) {
+      setError("Only one copy of the same card can be active per gameweek.");
       return;
     }
 
@@ -1454,10 +1484,12 @@ export default function TransfersPage() {
             }}
           >
             Attach a card to boost its linked starter for GW{nextGW}. The
-            card&apos;s squad cost counts against your bank, its power-up
-            applies when the gameweek is scored, and the copy is then used up.
-            Cards whose player is not in your team keep waiting until you field
-            that player.
+            card&apos;s squad cost counts against your bank for this gameweek
+            only, its power-up applies when the gameweek is scored, and the
+            copy is then used up. You can activate only one copy of the same
+            card per gameweek — different cards on the same player still
+            stack. Cards whose player is not in your team keep waiting until
+            you field that player.
           </p>
 
           {userCards.length === 0 ? (
@@ -1509,6 +1541,12 @@ export default function TransfersPage() {
                   !attached &&
                   !isActiveThisSquad &&
                   cardGW >= currentGW;
+                const duplicateActiveCopy = userCards.some(
+                  (other) =>
+                    other.id !== userCard.id &&
+                    other.cardId === userCard.cardId &&
+                    activeCardIds.includes(other.id)
+                );
                 const playerInSquad = squad.includes(card.playerId);
                 const cardTransferPrice = Number(card.transferPrice || 0);
                 const canAffordCard =
@@ -1526,6 +1564,10 @@ export default function TransfersPage() {
                 } else if (isInUseLive) {
                   actionLabel = `IN USE · GW${cardGW}`;
                   actionDisabled = true;
+                } else if (duplicateActiveCopy) {
+                  actionLabel = "ALREADY ACTIVE";
+                  actionDisabled = true;
+                  note = "Only one copy of this card can be active per gameweek.";
                 } else if (!playerInSquad) {
                   actionLabel = `NEEDS ${player?.name || "PLAYER"}`;
                   actionDisabled = true;
@@ -1702,7 +1744,7 @@ export default function TransfersPage() {
                           cursor: actionDisabled ? "not-allowed" : "pointer",
                           background: attached
                             ? "var(--green)"
-                            : isUsed || isInUseLive
+                            : isUsed || isInUseLive || duplicateActiveCopy
                             ? "rgba(255,255,255,0.07)"
                             : "var(--blue)",
                           color: attached ? "#000" : "#fff",
