@@ -67,8 +67,8 @@ function PlayerCard({
   onSub,
   onRemove,
   compact = false,
-  versionName,
   versionColor,
+  versionImage,
   versionPrice,
 }: {
   player: Player;
@@ -78,12 +78,12 @@ function PlayerCard({
   onSub?: () => void;
   onRemove?: () => void;
   compact?: boolean;
-  versionName?: string;
   versionColor?: string;
+  versionImage?: string;
   versionPrice?: number;
 }) {
   const isUnfit = player.desc && player.desc !== "Fit to play";
-  const hasVersion = Boolean(versionName && versionColor);
+  const hasVersion = Boolean(versionColor);
   const versionColorValue = versionColor || "#22c55e";
 
   return (
@@ -181,26 +181,6 @@ function PlayerCard({
             BENCH
           </span>
         )}
-
-        {hasVersion && (
-          <span
-            style={{
-              background: `${versionColorValue}2e`,
-              color: versionColorValue,
-              border: `1px solid ${versionColorValue}80`,
-              fontSize: "0.58rem",
-              fontWeight: 900,
-              padding: "0.22rem 0.45rem",
-              borderRadius: "999px",
-              maxWidth: "110px",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}
-          >
-            ⚡ {versionName}
-          </span>
-        )}
       </div>
 
       <div
@@ -217,9 +197,9 @@ function PlayerCard({
           border: "1px solid rgba(255,255,255,0.08)",
         }}
       >
-        {player.image ? (
+        {versionImage || player.image ? (
           <img
-            src={player.image}
+            src={versionImage || player.image}
             alt={player.name}
             style={{
               width: "100%",
@@ -429,19 +409,15 @@ function PlayerCard({
 function SpecialVersionTile({
   player,
   card,
-  copy,
   state,
   affordable,
-  priceDelta,
   onField,
   onUnfield,
 }: {
   player: Player;
   card: LimitedCard;
-  copy: UserLimitedCard;
   state: "fielded" | "inUse" | "available";
   affordable: boolean;
-  priceDelta: number;
   onField: () => void;
   onUnfield: () => void;
 }) {
@@ -449,7 +425,6 @@ function SpecialVersionTile({
   const imageUrl = getLimitedCardImageUrl(card.image);
   const fielded = state === "fielded";
   const inUse = state === "inUse";
-  const cardGW = Number(copy.gameweek || 0);
   const versionPrice = Number(card.transferPrice || 0);
   const clickable = fielded || (!inUse && affordable);
 
@@ -571,20 +546,6 @@ function SpecialVersionTile({
 
       <div
         style={{
-          color: "var(--text-muted)",
-          fontSize: "0.62rem",
-          fontWeight: 800,
-          whiteSpace: "nowrap",
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          marginBottom: "0.1rem",
-        }}
-      >
-        {player.name} · {player.game}
-      </div>
-
-      <div
-        style={{
           fontWeight: 900,
           fontSize: "0.82rem",
           lineHeight: 1.2,
@@ -638,47 +599,6 @@ function SpecialVersionTile({
             million
           </span>
         </div>
-
-        <div
-          style={{
-            color: priceDelta <= 0 ? "var(--green)" : "var(--text-muted)",
-            fontSize: "0.58rem",
-            fontWeight: 800,
-            textAlign: "right",
-          }}
-        >
-          {priceDelta === 0
-            ? "same as normal"
-            : priceDelta > 0
-            ? `+${priceDelta.toFixed(1)}m vs normal`
-            : `${Math.abs(priceDelta).toFixed(1)}m cheaper`}
-        </div>
-      </div>
-
-      <div
-        style={{
-          marginTop: "0.4rem",
-          width: "100%",
-          padding: "0.4rem 0",
-          borderRadius: "10px",
-          textAlign: "center",
-          fontSize: "0.62rem",
-          fontWeight: 900,
-          background: fielded
-            ? "var(--green)"
-            : inUse || !affordable
-            ? "rgba(255,255,255,0.06)"
-            : "var(--blue)",
-          color: fielded ? "#000" : "#fff",
-        }}
-      >
-        {fielded
-          ? "FIELDED — TAP FOR NORMAL CARD"
-          : inUse
-          ? `IN USE · GW${cardGW}`
-          : !affordable
-          ? "TOO EXPENSIVE"
-          : "FIELD THIS VERSION"}
       </div>
     </div>
   );
@@ -1765,13 +1685,17 @@ export default function TransfersPage() {
                   key={pid}
                   player={p}
                   isCaptain={captain === pid}
-                  versionName={versionCard?.cardName}
                   versionColor={
                     versionCard
                       ? getLimitedCardRarityColor(
                           versionCard.rarity,
                           versionCard.accentColor
                         )
+                      : undefined
+                  }
+                  versionImage={
+                    versionCard
+                      ? getLimitedCardImageUrl(versionCard.image)
                       : undefined
                   }
                   versionPrice={
@@ -2088,17 +2012,14 @@ export default function TransfersPage() {
                         const versionAffordable =
                           copyState === "fielded" ||
                           totalCost - currentSlotCost + versionPrice <= budget;
-                        const priceDelta = versionPrice - Number(p.price || 0);
 
                         return (
                           <SpecialVersionTile
                             key={userCard.id}
                             player={p}
                             card={versionCard}
-                            copy={userCard}
                             state={copyState}
                             affordable={versionAffordable}
-                            priceDelta={priceDelta}
                             onField={() => fieldVersion(userCard)}
                             onUnfield={() => unfieldVersion(userCard)}
                           />
