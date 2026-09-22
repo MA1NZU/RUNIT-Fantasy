@@ -2193,7 +2193,7 @@ export default function AdminPage() {
         )}
                 {tab === "cards" && (
           <div>
-            <h2 style={sectionTitleStyle}>Limited Player Cards</h2>
+            <h2 style={sectionTitleStyle}>Mastery Cards</h2>
 
             <div
               style={{
@@ -2239,7 +2239,7 @@ export default function AdminPage() {
               >
                 <div>
                   <div style={{ fontWeight: 800, fontSize: "1rem" }}>
-                    Create Limited Card
+                    Create Mastery Card
                   </div>
                   <div
                     style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}
@@ -2278,7 +2278,7 @@ export default function AdminPage() {
                   color: "var(--text-muted)",
                 }}
               >
-                No limited cards yet. Create the first one above.
+                No mastery cards yet. Create the first one above.
               </div>
             ) : (
               <div
@@ -3810,7 +3810,7 @@ function LimitedCardPreview({
         {imageUrl ? (
           <img
             src={imageUrl}
-            alt={card.cardName || "Limited card"}
+            alt={card.cardName || "Mastery card"}
             style={{
               width: "100%",
               height: "100%",
