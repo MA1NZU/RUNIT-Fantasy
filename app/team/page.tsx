@@ -6,6 +6,12 @@ import { collection, getDocs, query, where, orderBy } from "firebase/firestore";
 import { useAuth } from "@/lib/AuthContext";
 import Shell from "@/app/shell";
 import { useSearchParams } from "next/navigation";
+import {
+  LimitedCard,
+  UserLimitedCard,
+  getLimitedCardRarityColor,
+  limitedCardBoostDelta,
+} from "@/lib/limitedCards";
 
 type Player = {
   id: string;
@@ -16,6 +22,17 @@ type Player = {
   desc: string;
   image?: string;
   ID?: string;
+};
+
+type LimitedCardBoostEntry = {
+  playerId: string;
+  cardId: string;
+  cardName: string;
+  rarity: string;
+  accentColor: string;
+  boostStat: string;
+  boostValue: number;
+  delta: number;
 };
 
 type GWTeam = {
@@ -30,6 +47,8 @@ type GWTeam = {
   gwPoints: number;
   transfersMade: number;
   transferPenalty: number;
+  limitedCards?: string[];
+  limitedCardBoosts?: LimitedCardBoostEntry[];
   ownerEmail: string;
 };
 
@@ -43,6 +62,7 @@ function PlayerCard({
   points,
   isCaptain,
   slot,
+  boostCards,
   onClick,
 }: {
   player: Player;
@@ -50,11 +70,22 @@ function PlayerCard({
   isCaptain?: boolean;
   isSub?: boolean;
   slot?: string;
+  boostCards?: LimitedCardBoostEntry[];
   onClick?: () => void;
 }) {
   const description = player.desc || "Fit to play";
   const isUnfit = description !== "Fit to play";
-  const shownPoints = isCaptain ? points * 2 : points;
+  const boostList = Array.isArray(boostCards) ? boostCards : [];
+  const boostTotal = boostList.reduce(
+    (sum, entry) => sum + Number(entry.delta || 0),
+    0
+  );
+  const hasBoostCards = boostList.length > 0;
+  const mainBoostColor = hasBoostCards
+    ? getLimitedCardRarityColor(boostList[0].rarity, boostList[0].accentColor)
+    : "#22c55e";
+  const boostedPoints = points + boostTotal;
+  const shownPoints = isCaptain ? boostedPoints * 2 : boostedPoints;
 
   return (
     <div
@@ -63,16 +94,21 @@ function PlayerCard({
       style={{
         position: "relative",
         overflow: "hidden",
-        background: isCaptain
+        background: hasBoostCards
+          ? `linear-gradient(145deg, ${mainBoostColor}33, rgba(255,255,255,0.02)), var(--surface)`
+          : isCaptain
           ? "linear-gradient(145deg, rgba(3,71,244,0.18), rgba(255,193,7,0.07)), var(--surface)"
           : "linear-gradient(145deg, rgba(255,255,255,0.04), rgba(255,255,255,0.015)), var(--surface)",
         border: `1px solid ${
           isUnfit
             ? "var(--red)"
+            : hasBoostCards
+            ? `${mainBoostColor}cc`
             : isCaptain
             ? "rgba(107,159,255,0.75)"
             : "var(--border)"
         }`,
+        boxShadow: hasBoostCards ? `0 0 20px ${mainBoostColor}55` : "none",
         borderRadius: "20px",
         padding: "0.75rem",
         cursor: "pointer",
@@ -142,6 +178,34 @@ function PlayerCard({
             CAPTAIN
           </span>
         )}
+
+        {boostList.map((entry, index) => {
+          const color = getLimitedCardRarityColor(
+            entry.rarity,
+            entry.accentColor
+          );
+
+          return (
+            <span
+              key={`${entry.cardId}-${index}`}
+              style={{
+                background: `${color}2e`,
+                color,
+                border: `1px solid ${color}80`,
+                fontSize: "0.62rem",
+                fontWeight: 900,
+                padding: "0.2rem 0.45rem",
+                borderRadius: "999px",
+                maxWidth: "120px",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              ⚡ {entry.cardName || "Boost"}
+            </span>
+          );
+        })}
       </div>
 
       <div
@@ -271,6 +335,20 @@ function PlayerCard({
             {shownPoints}
           </div>
 
+          {boostTotal !== 0 && (
+            <div
+              style={{
+                fontSize: "0.62rem",
+                fontWeight: 900,
+                color: boostTotal > 0 ? "var(--green)" : "var(--red)",
+                marginTop: "0.2rem",
+                whiteSpace: "nowrap",
+              }}
+            >
+              ⚡ {boostTotal > 0 ? `+${boostTotal}` : boostTotal} boost
+            </div>
+          )}
+
           <div
             style={{
               fontSize: "0.62rem",
@@ -291,14 +369,17 @@ function StatsModal({
   player,
   stats,
   isCaptain,
+  boostCards,
   onClose,
 }: {
   player: Player;
   stats: any;
   isCaptain: boolean;
+  boostCards?: LimitedCardBoostEntry[];
   onClose: () => void;
 }) {
   const s = (key: string) => Number(stats[key] || 0);
+  const boostList = Array.isArray(boostCards) ? boostCards : [];
 
   const getBreakdown = () => {
     const rows: { label: string; val: any; pts: number }[] = [];
@@ -471,7 +552,12 @@ function StatsModal({
 
   const rows = getBreakdown();
   const totalRaw = rows.reduce((acc, r) => acc + r.pts, 0);
-  const totalShown = isCaptain ? totalRaw * 2 : totalRaw;
+  const boostTotal = boostList.reduce(
+    (acc, entry) => acc + Number(entry.delta || 0),
+    0
+  );
+  const totalWithBoost = totalRaw + boostTotal;
+  const totalShown = isCaptain ? totalWithBoost * 2 : totalWithBoost;
 
   return (
     <div
@@ -669,6 +755,79 @@ function StatsModal({
                 </div>
               ))
             )}
+
+            {boostList.length > 0 && (
+              <div>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 70px 70px",
+                    fontSize: "0.68rem",
+                    color: "var(--accent)",
+                    fontWeight: 900,
+                    textTransform: "uppercase",
+                    padding: "0.8rem 0.9rem 0.4rem",
+                    borderTop: "1px solid var(--border)",
+                    marginTop: "0.4rem",
+                  }}
+                >
+                  <span>⚡ Limited Card Boost</span>
+                  <span style={{ textAlign: "right" }}>Mult</span>
+                  <span style={{ textAlign: "right" }}>Pts</span>
+                </div>
+
+                {boostList.map((entry, i) => {
+                  const color = getLimitedCardRarityColor(
+                    entry.rarity,
+                    entry.accentColor
+                  );
+
+                  return (
+                    <div
+                      key={`boost-${entry.cardId}-${i}`}
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "1fr 70px 70px",
+                        padding: "0.7rem 0.9rem",
+                        borderBottom:
+                          i === boostList.length - 1
+                            ? "none"
+                            : "1px solid var(--border)",
+                        fontSize: "0.9rem",
+                      }}
+                    >
+                      <span style={{ fontWeight: 700, color }}>
+                        {entry.cardName || "Limited card"}
+                      </span>
+
+                      <span
+                        style={{
+                          textAlign: "right",
+                          color: "var(--text-muted)",
+                        }}
+                      >
+                        {Number(entry.boostValue ?? 1)}×
+                      </span>
+
+                      <span
+                        style={{
+                          textAlign: "right",
+                          fontWeight: 900,
+                          color:
+                            Number(entry.delta || 0) >= 0
+                              ? "var(--green)"
+                              : "var(--red)",
+                        }}
+                      >
+                        {Number(entry.delta || 0) > 0
+                          ? `+${entry.delta}`
+                          : entry.delta}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
 
@@ -722,6 +881,10 @@ function TeamContent() {
   const [players, setPlayers] = useState<Record<string, Player>>({});
   const [gwTeams, setGwTeams] = useState<GWTeam[]>([]);
   const [matchStats, setMatchStats] = useState<Record<string, any>>({});
+  const [limitedCardCatalog, setLimitedCardCatalog] = useState<
+    Record<string, LimitedCard>
+  >({});
+  const [userCardCopies, setUserCardCopies] = useState<UserLimitedCard[]>([]);
 
   const [currentGW, setCurrentGW] = useState<number>(7);
   const [selectedGW, setSelectedGW] = useState<number>(7);
@@ -788,6 +951,47 @@ function TeamContent() {
         );
 
         setGwTeams(teams);
+
+        const cardsSnap = await getDocs(collection(db, "limitedCards"));
+        const cardMap: Record<string, LimitedCard> = {};
+
+        cardsSnap.docs.forEach((d) => {
+          const data = d.data() as Partial<LimitedCard>;
+          const card = {
+            ...data,
+            id: d.id,
+            ID: String(data.ID || d.id),
+          } as LimitedCard;
+
+          cardMap[d.id] = card;
+
+          if (data.ID) {
+            cardMap[String(data.ID)] = card;
+          }
+        });
+
+        setLimitedCardCatalog(cardMap);
+
+        // Card copies are owner-only in the Firestore rules, so this only
+        // loads for your own team (or when the admin views a team). Other
+        // managers' teams rely on the limitedCardBoosts record the admin
+        // sync writes onto the gameweek team doc.
+        try {
+          const copiesSnap = await getDocs(
+            query(
+              collection(db, "userLimitedCards"),
+              where("ownerEmail", "==", targetEmail)
+            )
+          );
+
+          setUserCardCopies(
+            copiesSnap.docs.map(
+              (d) => ({ id: d.id, ...d.data() } as UserLimitedCard)
+            )
+          );
+        } catch {
+          setUserCardCopies([]);
+        }
       } catch (err) {
         console.error(err);
       }
@@ -848,15 +1052,33 @@ function TeamContent() {
       ].filter(Boolean)
     : [];
 
+  const getStatsFor = (id: string) => {
+    const p = players[id];
+
+    if (!p) return undefined;
+
+    return (
+      matchStats[p.name] ||
+      (p.ID ? matchStats[p.ID] : undefined) ||
+      matchStats[p.id]
+    );
+  };
+
+  const samePlayerRef = (a: string, b: string) => {
+    if (!a || !b) return false;
+    if (a === b) return true;
+
+    const p = players[a];
+
+    return Boolean(p && (p.ID === b || p.name === b));
+  };
+
   const getPoints = (id: string) => {
     const p = players[id];
 
     if (!p) return 0;
 
-    const stats =
-      matchStats[p.name] ||
-      (p.ID ? matchStats[p.ID] : undefined) ||
-      matchStats[p.id];
+    const stats = getStatsFor(id);
 
     if (stats?.gwPoints !== undefined) {
       return Number(stats.gwPoints || 0);
@@ -864,6 +1086,72 @@ function TeamContent() {
 
     return selectedGW === currentGW ? Number(p.points || 0) : 0;
   };
+
+  // Limited cards attached to this gameweek's squad. After the admin
+  // syncs scores the team doc carries limitedCardBoosts — the exact boosts
+  // that were applied. Before that (own team only) the boost is computed
+  // from the attached copies with the same math the admin sync uses.
+  const boostsForPlayer = (pid: string): LimitedCardBoostEntry[] => {
+    if (!currentTeam) return [];
+
+    if (Array.isArray(currentTeam.limitedCardBoosts)) {
+      return currentTeam.limitedCardBoosts.filter((entry) =>
+        samePlayerRef(pid, String(entry.playerId || ""))
+      );
+    }
+
+    const attached = userCardCopies.filter((copy) => {
+      const inTeam =
+        Array.isArray(currentTeam.limitedCards) &&
+        currentTeam.limitedCards.includes(copy.id);
+      const byRecord =
+        copy.status === "active" &&
+        Number(copy.gameweek || 0) === currentTeam.gameweek;
+
+      return inTeam || byRecord;
+    });
+
+    const seenCardIds = new Set<string>();
+    const entries: LimitedCardBoostEntry[] = [];
+
+    attached.forEach((copy) => {
+      const card = limitedCardCatalog[String(copy.cardId || "")];
+
+      if (!card) return;
+
+      const boostPlayerId = String(card.playerId || "");
+
+      if (!boostPlayerId || !samePlayerRef(pid, boostPlayerId)) return;
+      if (seenCardIds.has(copy.cardId)) return;
+
+      seenCardIds.add(copy.cardId);
+
+      const stats = getStatsFor(pid);
+      const game = String(
+        (stats && stats.game) || players[pid]?.game || ""
+      );
+      const delta = limitedCardBoostDelta(game, card, stats);
+
+      entries.push({
+        playerId: boostPlayerId,
+        cardId: String(copy.cardId || ""),
+        cardName: String(card.cardName || ""),
+        rarity: String(card.rarity || ""),
+        accentColor: String(card.accentColor || ""),
+        boostStat: String(card.boostStat || ""),
+        boostValue: Number(card.boostValue ?? 1),
+        delta,
+      });
+    });
+
+    return entries;
+  };
+
+  const getBoostTotal = (pid: string) =>
+    boostsForPlayer(pid).reduce(
+      (sum, entry) => sum + Number(entry.delta || 0),
+      0
+    );
 
   const calculateTeamGWPoints = (team: GWTeam) => {
     const mainPlayerIds = [
@@ -874,7 +1162,7 @@ function TeamContent() {
     ].filter(Boolean);
 
     return mainPlayerIds.reduce((total, pid) => {
-      const points = getPoints(pid);
+      const points = getPoints(pid) + getBoostTotal(pid);
 
       if (team.captain === pid) {
         return total + points * 2;
@@ -886,7 +1174,7 @@ function TeamContent() {
 
   const calculatedGWPoints = currentTeam ? calculateTeamGWPoints(currentTeam) : 0;
   const storedGWPoints = Number(currentTeam?.gwPoints || 0);
-  const displayGWPoints = calculatedGWPoints || storedGWPoints;
+  const displayGWPoints = storedGWPoints || calculatedGWPoints;
 
   const squadValue = playerIds.reduce((sum, pid) => {
     const p = players[pid];
@@ -1246,6 +1534,11 @@ function TeamContent() {
             <div
               style={{
                 marginBottom: "1rem",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: "0.75rem",
+                flexWrap: "wrap",
               }}
             >
               <div
@@ -1259,6 +1552,18 @@ function TeamContent() {
               >
                 Starting IV
               </div>
+
+              {playerIds.some((pid) => boostsForPlayer(pid).length > 0) && (
+                <div
+                  style={{
+                    fontSize: "0.7rem",
+                    color: "var(--accent)",
+                    fontWeight: 800,
+                  }}
+                >
+                  ⚡ Limited card boost active
+                </div>
+              )}
             </div>
 
             <div
@@ -1281,6 +1586,7 @@ function TeamContent() {
                     points={getPoints(pid)}
                     isCaptain={currentTeam.captain === pid}
                     slot={`P${i + 1}`}
+                    boostCards={boostsForPlayer(pid)}
                     onClick={() => setSelectedStatPlayerId(pid)}
                   />
                 );
@@ -1348,6 +1654,11 @@ function TeamContent() {
             {}
           }
           isCaptain={currentTeam?.captain === selectedStatPlayerId}
+          boostCards={
+            selectedStatPlayerId
+              ? boostsForPlayer(selectedStatPlayerId)
+              : []
+          }
           onClose={() => setSelectedStatPlayerId(null)}
         />
       )}
