@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { db } from "@/lib/firebase";
 import {
   collection,
@@ -14,7 +14,6 @@ import {
 } from "firebase/firestore";
 import { useAuth } from "@/lib/AuthContext";
 import Shell from "@/app/shell";
-import Link from "next/link";
 import {
   LimitedCard,
   UserLimitedCard,
@@ -68,6 +67,9 @@ function PlayerCard({
   onSub,
   onRemove,
   compact = false,
+  versionName,
+  versionColor,
+  versionPrice,
 }: {
   player: Player;
   isCaptain?: boolean;
@@ -76,8 +78,13 @@ function PlayerCard({
   onSub?: () => void;
   onRemove?: () => void;
   compact?: boolean;
+  versionName?: string;
+  versionColor?: string;
+  versionPrice?: number;
 }) {
   const isUnfit = player.desc && player.desc !== "Fit to play";
+  const hasVersion = Boolean(versionName && versionColor);
+  const versionColorValue = versionColor || "#22c55e";
 
   return (
     <div
@@ -85,16 +92,21 @@ function PlayerCard({
       style={{
         position: "relative",
         overflow: "hidden",
-        background: isCaptain
+        background: hasVersion
+          ? `linear-gradient(145deg, ${versionColorValue}33, rgba(255,255,255,0.015)), var(--surface)`
+          : isCaptain
           ? "linear-gradient(145deg, rgba(3,71,244,0.18), rgba(255,193,7,0.06)), var(--surface)"
           : "linear-gradient(145deg, rgba(255,255,255,0.045), rgba(255,255,255,0.015)), var(--surface)",
         border: `1px solid ${
           isUnfit
             ? "var(--red)"
+            : hasVersion
+            ? `${versionColorValue}cc`
             : isCaptain
             ? "rgba(107,159,255,0.7)"
             : "var(--border)"
         }`,
+        boxShadow: hasVersion ? `0 0 18px ${versionColorValue}4d` : "none",
         borderRadius: compact ? "16px" : "20px",
         padding: compact ? "0.55rem" : "0.75rem",
         display: "flex",
@@ -167,6 +179,26 @@ function PlayerCard({
             }}
           >
             BENCH
+          </span>
+        )}
+
+        {hasVersion && (
+          <span
+            style={{
+              background: `${versionColorValue}2e`,
+              color: versionColorValue,
+              border: `1px solid ${versionColorValue}80`,
+              fontSize: "0.58rem",
+              fontWeight: 900,
+              padding: "0.22rem 0.45rem",
+              borderRadius: "999px",
+              maxWidth: "110px",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            ⚡ {versionName}
           </span>
         )}
       </div>
@@ -298,7 +330,7 @@ function PlayerCard({
               lineHeight: 1,
             }}
           >
-            {Number(player.price || 0).toFixed(1)}
+            {(versionPrice ?? Number(player.price || 0)).toFixed(1)}
           </div>
 
           <div
@@ -390,6 +422,264 @@ function PlayerCard({
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+function SpecialVersionTile({
+  player,
+  card,
+  copy,
+  state,
+  affordable,
+  priceDelta,
+  onField,
+  onUnfield,
+}: {
+  player: Player;
+  card: LimitedCard;
+  copy: UserLimitedCard;
+  state: "fielded" | "inUse" | "available";
+  affordable: boolean;
+  priceDelta: number;
+  onField: () => void;
+  onUnfield: () => void;
+}) {
+  const rarityColor = getLimitedCardRarityColor(card.rarity, card.accentColor);
+  const imageUrl = getLimitedCardImageUrl(card.image);
+  const fielded = state === "fielded";
+  const inUse = state === "inUse";
+  const cardGW = Number(copy.gameweek || 0);
+  const versionPrice = Number(card.transferPrice || 0);
+  const clickable = fielded || (!inUse && affordable);
+
+  return (
+    <div
+      onClick={() => {
+        if (fielded) {
+          onUnfield();
+          return;
+        }
+
+        if (inUse || !affordable) return;
+
+        onField();
+      }}
+      style={{
+        position: "relative",
+        overflow: "hidden",
+        borderRadius: "16px",
+        border: `1px solid ${fielded ? "var(--green)" : `${rarityColor}88`}`,
+        background: `linear-gradient(160deg, ${rarityColor}26, rgba(255,255,255,0.015)), var(--surface)`,
+        boxShadow: fielded ? "none" : `0 0 14px ${rarityColor}30`,
+        opacity: inUse ? 0.55 : 1,
+        cursor: clickable ? "pointer" : "not-allowed",
+        padding: "0.55rem",
+        display: "flex",
+        flexDirection: "column",
+        minHeight: "190px",
+      }}
+    >
+      <div
+        style={{
+          position: "relative",
+          width: "100%",
+          aspectRatio: "1/1",
+          borderRadius: "12px",
+          overflow: "hidden",
+          border: `1px solid ${rarityColor}55`,
+          background: `radial-gradient(circle at 30% 20%, ${rarityColor}30, transparent 45%), #111`,
+          marginBottom: "0.55rem",
+        }}
+      >
+        {imageUrl ? (
+          <img
+            src={imageUrl}
+            alt={card.cardName}
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
+              display: "block",
+            }}
+          />
+        ) : player.image ? (
+          <img
+            src={player.image}
+            alt={player.name}
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
+              display: "block",
+            }}
+          />
+        ) : (
+          <div
+            style={{
+              width: "100%",
+              height: "100%",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: "rgba(255,255,255,0.25)",
+              fontWeight: 900,
+              fontSize: "1.5rem",
+            }}
+          >
+            {(card.cardName || "?").slice(0, 2).toUpperCase()}
+          </div>
+        )}
+
+        <span
+          style={{
+            position: "absolute",
+            top: "0.5rem",
+            left: "0.5rem",
+            background: "rgba(0,0,0,0.55)",
+            border: `1px solid ${rarityColor}80`,
+            color: rarityColor,
+            fontSize: "0.55rem",
+            fontWeight: 900,
+            padding: "0.18rem 0.4rem",
+            borderRadius: "999px",
+            textTransform: "uppercase",
+            letterSpacing: "0.6px",
+          }}
+        >
+          {card.rarity || "rare"}
+        </span>
+
+        {fielded && (
+          <span
+            style={{
+              position: "absolute",
+              top: "0.5rem",
+              right: "0.5rem",
+              background: "var(--green)",
+              color: "#000",
+              fontSize: "0.55rem",
+              fontWeight: 900,
+              padding: "0.18rem 0.4rem",
+              borderRadius: "999px",
+            }}
+          >
+            FIELDED
+          </span>
+        )}
+      </div>
+
+      <div
+        style={{
+          color: "var(--text-muted)",
+          fontSize: "0.62rem",
+          fontWeight: 800,
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          marginBottom: "0.1rem",
+        }}
+      >
+        {player.name} · {player.game}
+      </div>
+
+      <div
+        style={{
+          fontWeight: 900,
+          fontSize: "0.82rem",
+          lineHeight: 1.2,
+          marginBottom: "0.2rem",
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+        }}
+      >
+        {card.cardName}
+      </div>
+
+      <div
+        style={{
+          color: "var(--accent)",
+          fontSize: "0.62rem",
+          fontWeight: 800,
+          lineHeight: 1.3,
+          marginBottom: "0.35rem",
+        }}
+      >
+        {limitedCardPowerupText(card)}
+      </div>
+
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: "0.4rem",
+          marginTop: "auto",
+        }}
+      >
+        <div
+          style={{
+            color: "var(--accent)",
+            fontSize: "0.95rem",
+            fontWeight: 900,
+            lineHeight: 1,
+          }}
+        >
+          {versionPrice.toFixed(1)}
+          <span
+            style={{
+              color: "var(--text-muted)",
+              fontSize: "0.55rem",
+              fontWeight: 800,
+              marginLeft: "0.2rem",
+            }}
+          >
+            million
+          </span>
+        </div>
+
+        <div
+          style={{
+            color: priceDelta <= 0 ? "var(--green)" : "var(--text-muted)",
+            fontSize: "0.58rem",
+            fontWeight: 800,
+            textAlign: "right",
+          }}
+        >
+          {priceDelta === 0
+            ? "same as normal"
+            : priceDelta > 0
+            ? `+${priceDelta.toFixed(1)}m vs normal`
+            : `${Math.abs(priceDelta).toFixed(1)}m cheaper`}
+        </div>
+      </div>
+
+      <div
+        style={{
+          marginTop: "0.4rem",
+          width: "100%",
+          padding: "0.4rem 0",
+          borderRadius: "10px",
+          textAlign: "center",
+          fontSize: "0.62rem",
+          fontWeight: 900,
+          background: fielded
+            ? "var(--green)"
+            : inUse || !affordable
+            ? "rgba(255,255,255,0.06)"
+            : "var(--blue)",
+          color: fielded ? "#000" : "#fff",
+        }}
+      >
+        {fielded
+          ? "FIELDED — TAP FOR NORMAL CARD"
+          : inUse
+          ? `IN USE · GW${cardGW}`
+          : !affordable
+          ? "TOO EXPENSIVE"
+          : "FIELD THIS VERSION"}
+      </div>
     </div>
   );
 }
@@ -568,8 +858,18 @@ export default function TransfersPage() {
 
         if (!settingsSnap.empty) {
           const s = settingsSnap.docs[0].data();
+          const rawGW = s.currentGameweek;
+          const parsedGW = Number(rawGW);
 
-          activeNextGW = Number(s.currentGameweek || 7) + 1;
+          // Gameweek 0 is a valid pre-season state — only fall back when
+          // the setting is missing or not a number.
+          activeNextGW =
+            rawGW !== undefined &&
+            rawGW !== null &&
+            rawGW !== "" &&
+            Number.isFinite(parsedGW)
+              ? parsedGW + 1
+              : 8;
 
           setNextGW(activeNextGW);
           setDeadline(s.deadline || "");
@@ -714,17 +1014,33 @@ export default function TransfersPage() {
     .map((cardDocId) => userCards.find((userCard) => userCard.id === cardDocId))
     .filter((userCard): userCard is UserLimitedCard => Boolean(userCard));
 
-  const limitedCardsCost = attachedCards.reduce(
-    (sum, userCard) =>
-      sum + Number(limitedCardCatalog(userCard.cardId)?.transferPrice ?? 0),
-    0
-  );
+  // A fielded special version replaces the player's normal card, so its
+  // transfers price replaces the player's price in the squad budget.
+  const fieldedVersionForPlayer = (
+    playerId: string
+  ): UserLimitedCard | null => {
+    const found = attachedCards.find((userCard) => {
+      const card = limitedCardCatalog(userCard.cardId);
 
-  const totalCost =
-    allSelected.reduce(
-      (sum, id) => sum + Number(getPlayer(id)?.price ?? 0),
-      0
-    ) + limitedCardsCost;
+      return card ? card.playerId === playerId : false;
+    });
+
+    return found ?? null;
+  };
+
+  const slotCost = (id: string) => {
+    const player = getPlayer(id);
+    const basePrice = Number(player?.price ?? 0);
+    const fielded = fieldedVersionForPlayer(id);
+
+    if (!fielded) return basePrice;
+
+    const card = limitedCardCatalog(fielded.cardId);
+
+    return Number(card?.transferPrice ?? basePrice);
+  };
+
+  const totalCost = allSelected.reduce((sum, id) => sum + slotCost(id), 0);
   const remaining = budget - totalCost;
   const squadCount = squad.length + (sub ? 1 : 0);
 
@@ -751,7 +1067,18 @@ export default function TransfersPage() {
   ).sort();
 
   const filteredPlayers = allPlayers.filter((p) => {
-    const matchesSearch = p.name.toLowerCase().includes(search.toLowerCase());
+    const searchLower = search.toLowerCase();
+    const matchesSearch =
+      p.name.toLowerCase().includes(searchLower) ||
+      userCards.some((userCard) => {
+        const card = limitedCardCatalog(userCard.cardId);
+
+        return (
+          !!card &&
+          card.playerId === p.id &&
+          String(card.cardName || "").toLowerCase().includes(searchLower)
+        );
+      });
     const matchesGame = gameFilter === "all" || p.game === gameFilter;
 
     return matchesSearch && matchesGame;
@@ -799,69 +1126,126 @@ export default function TransfersPage() {
     );
   };
 
-  const toggleLimitedCard = (cardDocId: string) => {
-    setError("");
+  // State of an owned copy in the player market: "fielded" (in this
+  // squad), "inUse" (locked while mid-use in another gameweek),
+  // "available", or "used" (consumed — hidden from the market).
+  const versionState = (
+    userCard: UserLimitedCard
+  ): "fielded" | "inUse" | "available" | "used" => {
+    if (activeCardIds.includes(userCard.id)) return "fielded";
+    if (userCard.status === "used") return "used";
 
-    const userCard = userCards.find((c) => c.id === cardDocId);
+    const cardGW = Number(userCard.gameweek || 0);
 
-    if (!userCard) return;
-
-    if (activeCardIds.includes(cardDocId)) {
-      setActiveCardIds(activeCardIds.filter((id) => id !== cardDocId));
-      return;
+    if (
+      userCard.status === "active" &&
+      cardGW >= currentGW &&
+      cardGW !== nextGW
+    ) {
+      return "inUse";
     }
+
+    return "available";
+  };
+
+  const marketVersionsForPlayer = (playerId: string): UserLimitedCard[] =>
+    userCards.filter((userCard) => {
+      if (versionState(userCard) === "used") return false;
+
+      const card = limitedCardCatalog(userCard.cardId);
+
+      return card ? card.playerId === playerId : false;
+    });
+
+  const fieldVersion = (userCard: UserLimitedCard) => {
+    setError("");
 
     const card = limitedCardCatalog(userCard.cardId);
 
     if (!card) {
-      setError("This limited card is no longer available.");
-      return;
-    }
-
-    const cardGW = Number(userCard.gameweek || 0);
-
-    if (userCard.status === "used") {
-      setError("This card has already been used.");
-      return;
-    }
-
-    if (userCard.status === "active" && cardGW >= currentGW && cardGW !== nextGW) {
-      setError(`This card is in use for GW${cardGW}.`);
-      return;
-    }
-
-    const duplicateActiveCopy = activeCardIds.some((activeId) => {
-      if (activeId === cardDocId) return false;
-
-      const activeCopy = userCards.find((c) => c.id === activeId);
-
-      return Boolean(activeCopy && activeCopy.cardId === userCard.cardId);
-    });
-
-    if (duplicateActiveCopy) {
-      setError(
-        `${card.cardName} is already active for GW${nextGW}. Only one copy of the same card can be active per gameweek.`
-      );
+      setError("This card version is no longer available.");
       return;
     }
 
     const player = getPlayer(card.playerId);
+    const versionPrice = Number(card.transferPrice || 0);
 
-    if (!squad.includes(card.playerId)) {
-      setError(
-        `${
-          player?.name || "This card's player"
-        } must be in your Starting IV to use this card.`
-      );
+    if (player?.showInTransfers === false) {
+      setError("This player is not currently available for transfers.");
       return;
     }
 
-    if (totalCost + Number(card.transferPrice || 0) > budget) {
+    // One version of a player at a time — any other fielded version of
+    // the same player is swapped back to his normal card.
+    const otherVersionIds = activeCardIds.filter((activeId) => {
+      if (activeId === userCard.id) return false;
+
+      const other = userCards.find((c) => c.id === activeId);
+      const otherCard = other ? limitedCardCatalog(other.cardId) : null;
+
+      return otherCard ? otherCard.playerId === card.playerId : false;
+    });
+
+    const nextActiveIds = [
+      ...activeCardIds.filter(
+        (id) => !otherVersionIds.includes(id) && id !== userCard.id
+      ),
+      userCard.id,
+    ];
+
+    const isStarter = squad.includes(card.playerId);
+    const currentSlotCost = isStarter ? slotCost(card.playerId) : 0;
+    const newTotalCost = totalCost - currentSlotCost + versionPrice;
+
+    if (newTotalCost > budget) {
       setError("Budget exceeded.");
       return;
     }
 
-    setActiveCardIds([...activeCardIds, cardDocId]);
+    if (!isStarter) {
+      if (sub === card.playerId) {
+        setError("He is on your bench — move him into your Starting IV first.");
+        return;
+      }
+
+      if (squad.length >= 4) {
+        setError(
+          "Your Starting IV is full — special versions must be in your Starting IV."
+        );
+        return;
+      }
+
+      setSquad([...squad, card.playerId]);
+
+      if (!captain) {
+        setCaptain(card.playerId);
+      }
+    }
+
+    setActiveCardIds(nextActiveIds);
+    setIsModalOpen(false);
+  };
+
+  const unfieldVersion = (userCard: UserLimitedCard) => {
+    setError("");
+
+    const card = limitedCardCatalog(userCard.cardId);
+
+    if (card) {
+      const player = getPlayer(card.playerId);
+      const basePrice = Number(player?.price ?? 0);
+      const versionPrice = Number(card.transferPrice || 0);
+      const newTotalCost = totalCost - versionPrice + basePrice;
+
+      if (newTotalCost > budget) {
+        setError(
+          "Budget exceeded — his normal card is more expensive. Remove another player first."
+        );
+        return;
+      }
+    }
+
+    setActiveCardIds(activeCardIds.filter((id) => id !== userCard.id));
   };
 
   const removeFromSquad = (id: string) => {
@@ -939,22 +1323,24 @@ export default function TransfersPage() {
     });
 
     if (invalidCard) {
-      setError("Remove the limited card whose player left your squad.");
+      setError("Remove the special version whose player left your Starting IV.");
       return;
     }
 
-    const seenCardIds = new Set<string>();
-    const duplicateCard = attachedCards.find((userCard) => {
-      const copyCardId = String(userCard.cardId || "");
+    const seenVersionPlayers = new Set<string>();
+    const doubleVersion = attachedCards.find((userCard) => {
+      const card = limitedCardCatalog(userCard.cardId);
+      const versionPlayerId = String(card?.playerId || "");
 
-      if (seenCardIds.has(copyCardId)) return true;
+      if (!versionPlayerId) return false;
+      if (seenVersionPlayers.has(versionPlayerId)) return true;
 
-      seenCardIds.add(copyCardId);
+      seenVersionPlayers.add(versionPlayerId);
       return false;
     });
 
-    if (duplicateCard) {
-      setError("Only one copy of the same card can be active per gameweek.");
+    if (doubleVersion) {
+      setError("Only one special version of a player can be fielded at a time.");
       return;
     }
 
@@ -1369,12 +1755,30 @@ export default function TransfersPage() {
             {[0, 1, 2, 3].map((i) => {
               const pid = squad[i];
               const p = pid ? getPlayer(pid) : null;
+              const fieldedVersion = pid ? fieldedVersionForPlayer(pid) : null;
+              const versionCard = fieldedVersion
+                ? limitedCardCatalog(fieldedVersion.cardId)
+                : null;
 
               return p ? (
                 <PlayerCard
                   key={pid}
                   player={p}
                   isCaptain={captain === pid}
+                  versionName={versionCard?.cardName}
+                  versionColor={
+                    versionCard
+                      ? getLimitedCardRarityColor(
+                          versionCard.rarity,
+                          versionCard.accentColor
+                        )
+                      : undefined
+                  }
+                  versionPrice={
+                    versionCard
+                      ? Number(versionCard.transferPrice || 0)
+                      : undefined
+                  }
                   onCaptain={() => setCaptain(pid === captain ? "" : pid)}
                   onSub={() => swapWithSub(pid)}
                   onRemove={() => removeFromSquad(pid)}
@@ -1425,339 +1829,6 @@ export default function TransfersPage() {
               <EmptySlot label="Add Bench" onClick={() => setIsModalOpen(true)} />
             )}
           </div>
-        </section>
-
-        <section
-          className="transfer-limited-section"
-          style={{
-            background:
-              "radial-gradient(circle at 50% 0%, rgba(155,248,0,0.07), transparent 35%), var(--surface)",
-            border: "1px solid var(--border)",
-            borderRadius: "24px",
-            padding: "1rem",
-            marginBottom: "1rem",
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              gap: "1rem",
-              flexWrap: "wrap",
-              marginBottom: "0.35rem",
-            }}
-          >
-            <div
-              style={{
-                fontSize: "0.75rem",
-                color: "var(--text-muted)",
-                textTransform: "uppercase",
-                letterSpacing: "1px",
-                fontWeight: 900,
-              }}
-            >
-              Limited Cards
-            </div>
-
-            <div
-              style={{
-                color: "var(--text-muted)",
-                fontSize: "0.72rem",
-                background: "rgba(255,255,255,0.045)",
-                border: "1px solid rgba(255,255,255,0.08)",
-                borderRadius: "999px",
-                padding: "0.35rem 0.65rem",
-                fontWeight: 800,
-              }}
-            >
-              {attachedCards.length} active · {userCards.length} owned
-            </div>
-          </div>
-
-          <p
-            style={{
-              color: "var(--text-muted)",
-              fontSize: "0.78rem",
-              lineHeight: 1.5,
-              marginBottom: "0.85rem",
-            }}
-          >
-            Attach a card to boost its linked starter for GW{nextGW}. The
-            card&apos;s squad cost counts against your bank for this gameweek
-            only, its power-up applies when the gameweek is scored, and the
-            copy is then used up. You can activate only one copy of the same
-            card per gameweek — different cards on the same player still
-            stack. Cards whose player is not in your team keep waiting until
-            you field that player.
-          </p>
-
-          {userCards.length === 0 ? (
-            <div
-              style={{
-                border: "1px dashed var(--border)",
-                borderRadius: "14px",
-                padding: "1.25rem",
-                textAlign: "center",
-                color: "var(--text-muted)",
-                fontSize: "0.85rem",
-              }}
-            >
-              You don&apos;t own any limited cards yet.{" "}
-              <Link
-                href="/shop"
-                style={{ color: "var(--blue)", fontWeight: 800 }}
-              >
-                Get one in the Shop →
-              </Link>
-            </div>
-          ) : (
-            <div
-              className="shop-items-grid"
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fill, minmax(190px, 1fr))",
-                gap: "0.75rem",
-              }}
-            >
-              {userCards.map((userCard) => {
-                const card = limitedCardCatalog(userCard.cardId);
-
-                if (!card) return null;
-
-                const attached = activeCardIds.includes(userCard.id);
-                const player = getPlayer(card.playerId);
-                const rarityColor = getLimitedCardRarityColor(
-                  card.rarity,
-                  card.accentColor
-                );
-                const imageUrl = getLimitedCardImageUrl(card.image);
-                const cardGW = Number(userCard.gameweek || 0);
-                const isUsed = userCard.status === "used";
-                const isActiveThisSquad =
-                  userCard.status === "active" && cardGW === nextGW;
-                const isInUseLive =
-                  userCard.status === "active" &&
-                  !attached &&
-                  !isActiveThisSquad &&
-                  cardGW >= currentGW;
-                const duplicateActiveCopy = userCards.some(
-                  (other) =>
-                    other.id !== userCard.id &&
-                    other.cardId === userCard.cardId &&
-                    activeCardIds.includes(other.id)
-                );
-                const playerInSquad = squad.includes(card.playerId);
-                const cardTransferPrice = Number(card.transferPrice || 0);
-                const canAffordCard =
-                  attached || totalCost + cardTransferPrice <= budget;
-
-                let actionLabel = `USE · +${cardTransferPrice.toFixed(1)}m`;
-                let actionDisabled = false;
-                let note = "";
-
-                if (isUsed) {
-                  actionLabel = cardGW ? `USED · GW${cardGW}` : "USED";
-                  actionDisabled = true;
-                } else if (attached) {
-                  actionLabel = "✓ IN SQUAD — REMOVE";
-                } else if (isInUseLive) {
-                  actionLabel = `IN USE · GW${cardGW}`;
-                  actionDisabled = true;
-                } else if (duplicateActiveCopy) {
-                  actionLabel = "ALREADY ACTIVE";
-                  actionDisabled = true;
-                  note = "Only one copy of this card can be active per gameweek.";
-                } else if (!playerInSquad) {
-                  actionLabel = `NEEDS ${player?.name || "PLAYER"}`;
-                  actionDisabled = true;
-                  note = `${
-                    player?.name || "This player"
-                  } must be in your Starting IV.`;
-                } else if (!canAffordCard) {
-                  actionLabel = "TOO EXPENSIVE";
-                  actionDisabled = true;
-                }
-
-                return (
-                  <div
-                    key={userCard.id}
-                    style={{
-                      borderRadius: "16px",
-                      overflow: "hidden",
-                      border: `1px solid ${
-                        attached ? "var(--green)" : `${rarityColor}55`
-                      }`,
-                      background: `linear-gradient(160deg, ${rarityColor}1a, rgba(255,255,255,0.015)), var(--surface)`,
-                      opacity: isUsed ? 0.55 : 1,
-                      display: "flex",
-                      flexDirection: "column",
-                    }}
-                  >
-                    <div
-                      style={{
-                        position: "relative",
-                        width: "100%",
-                        aspectRatio: "4/3",
-                        background: `radial-gradient(circle at 30% 20%, ${rarityColor}2e, transparent 45%), #111`,
-                      }}
-                    >
-                      {imageUrl ? (
-                        <img
-                          src={imageUrl}
-                          alt={card.cardName}
-                          style={{
-                            width: "100%",
-                            height: "100%",
-                            objectFit: "cover",
-                            display: "block",
-                          }}
-                        />
-                      ) : (
-                        <div
-                          style={{
-                            width: "100%",
-                            height: "100%",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            color: "rgba(255,255,255,0.25)",
-                            fontWeight: 900,
-                            fontSize: "1.6rem",
-                          }}
-                        >
-                          {(card.cardName || "?").slice(0, 1)}
-                        </div>
-                      )}
-
-                      <span
-                        style={{
-                          position: "absolute",
-                          top: "0.55rem",
-                          left: "0.55rem",
-                          background: "rgba(0,0,0,0.55)",
-                          border: `1px solid ${rarityColor}80`,
-                          color: rarityColor,
-                          fontSize: "0.58rem",
-                          fontWeight: 900,
-                          padding: "0.2rem 0.45rem",
-                          borderRadius: "999px",
-                          textTransform: "uppercase",
-                          letterSpacing: "0.6px",
-                        }}
-                      >
-                        {card.rarity || "rare"}
-                      </span>
-
-                      {attached && (
-                        <span
-                          style={{
-                            position: "absolute",
-                            top: "0.55rem",
-                            right: "0.55rem",
-                            background: "var(--green)",
-                            color: "#000",
-                            fontSize: "0.58rem",
-                            fontWeight: 900,
-                            padding: "0.2rem 0.45rem",
-                            borderRadius: "999px",
-                          }}
-                        >
-                          ACTIVE
-                        </span>
-                      )}
-                    </div>
-
-                    <div
-                      style={{
-                        padding: "0.7rem",
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: "0.35rem",
-                        flex: 1,
-                      }}
-                    >
-                      <div
-                        style={{
-                          fontWeight: 900,
-                          fontSize: "0.88rem",
-                          lineHeight: 1.2,
-                        }}
-                      >
-                        {card.cardName}
-                      </div>
-
-                      <div
-                        style={{
-                          color: "var(--text-muted)",
-                          fontSize: "0.68rem",
-                        }}
-                      >
-                        {player
-                          ? `${player.name} · ${player.game}`
-                          : "Unknown player"}
-                      </div>
-
-                      <div
-                        style={{
-                          color: "var(--accent)",
-                          fontSize: "0.66rem",
-                          fontWeight: 800,
-                          lineHeight: 1.35,
-                        }}
-                      >
-                        {limitedCardPowerupText(card)}
-                      </div>
-
-                      <div
-                        style={{
-                          color: "var(--text-muted)",
-                          fontSize: "0.64rem",
-                        }}
-                      >
-                        Squad cost +{cardTransferPrice.toFixed(1)}m
-                      </div>
-
-                      {note && (
-                        <div
-                          style={{
-                            color: "var(--text-muted)",
-                            fontSize: "0.62rem",
-                            lineHeight: 1.35,
-                          }}
-                        >
-                          {note}
-                        </div>
-                      )}
-
-                      <button
-                        onClick={() => toggleLimitedCard(userCard.id)}
-                        disabled={actionDisabled}
-                        style={{
-                          marginTop: "auto",
-                          width: "100%",
-                          padding: "0.55rem",
-                          borderRadius: "10px",
-                          border: "none",
-                          fontWeight: 900,
-                          fontSize: "0.72rem",
-                          cursor: actionDisabled ? "not-allowed" : "pointer",
-                          background: attached
-                            ? "var(--green)"
-                            : isUsed || isInUseLive || duplicateActiveCopy
-                            ? "rgba(255,255,255,0.07)"
-                            : "var(--blue)",
-                          color: attached ? "#000" : "#fff",
-                        }}
-                      >
-                        {actionLabel}
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
         </section>
 
         {error && (
@@ -1854,6 +1925,17 @@ export default function TransfersPage() {
                   >
                     Bank left: {remaining.toFixed(1)}m · Selected {squadCount}/5
                   </div>
+
+                  <div
+                    style={{
+                      color: "var(--text-muted)",
+                      fontSize: "0.72rem",
+                      marginTop: "0.15rem",
+                    }}
+                  >
+                    Special versions you own appear under their player — field
+                    one to replace his normal card.
+                  </div>
                 </div>
 
                 <button
@@ -1935,57 +2017,94 @@ export default function TransfersPage() {
                 {filteredPlayers.map((p) => {
                   const isSelected = allSelected.includes(p.id);
                   const canAfford = isSelected || remaining >= Number(p.price || 0);
+                  const versionCopies = marketVersionsForPlayer(p.id);
 
                   return (
-                    <div
-                      key={p.id}
-                      onClick={() =>
-                        !isSelected && canAfford && handlePlayerSelect(p)
-                      }
-                      style={{
-                        opacity: isSelected ? 0.42 : canAfford ? 1 : 0.35,
-                        cursor: isSelected || !canAfford ? "not-allowed" : "pointer",
-                        position: "relative",
-                      }}
-                    >
-                      <PlayerCard player={p} compact={true} />
+                    <Fragment key={p.id}>
+                      <div
+                        onClick={() =>
+                          !isSelected && canAfford && handlePlayerSelect(p)
+                        }
+                        style={{
+                          opacity: isSelected ? 0.42 : canAfford ? 1 : 0.35,
+                          cursor: isSelected || !canAfford ? "not-allowed" : "pointer",
+                          position: "relative",
+                        }}
+                      >
+                        <PlayerCard player={p} compact={true} />
 
-                      {isSelected && (
-                        <div
-                          style={{
-                            position: "absolute",
-                            inset: 0,
-                            borderRadius: "16px",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            color: "#fff",
-                            fontWeight: 900,
-                            background: "rgba(0,0,0,0.42)",
-                          }}
-                        >
-                          Selected
-                        </div>
-                      )}
+                        {isSelected && (
+                          <div
+                            style={{
+                              position: "absolute",
+                              inset: 0,
+                              borderRadius: "16px",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              color: "#fff",
+                              fontWeight: 900,
+                              background: "rgba(0,0,0,0.42)",
+                            }}
+                          >
+                            Selected
+                          </div>
+                        )}
 
-                      {!isSelected && !canAfford && (
-                        <div
-                          style={{
-                            position: "absolute",
-                            inset: 0,
-                            borderRadius: "16px",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            color: "#fff",
-                            fontWeight: 900,
-                            background: "rgba(0,0,0,0.42)",
-                          }}
-                        >
-                          Too Expensive
-                        </div>
-                      )}
-                    </div>
+                        {!isSelected && !canAfford && (
+                          <div
+                            style={{
+                              position: "absolute",
+                              inset: 0,
+                              borderRadius: "16px",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              color: "#fff",
+                              fontWeight: 900,
+                              background: "rgba(0,0,0,0.42)",
+                            }}
+                          >
+                            Too Expensive
+                          </div>
+                        )}
+                      </div>
+
+                      {versionCopies.map((userCard) => {
+                        const versionCard = limitedCardCatalog(userCard.cardId);
+
+                        if (!versionCard) return null;
+
+                        const copyState = versionState(userCard);
+
+                        if (copyState === "used") return null;
+
+                        const versionPrice = Number(
+                          versionCard.transferPrice || 0
+                        );
+                        const currentSlotCost = isSelected
+                          ? slotCost(p.id)
+                          : 0;
+                        const versionAffordable =
+                          copyState === "fielded" ||
+                          totalCost - currentSlotCost + versionPrice <= budget;
+                        const priceDelta = versionPrice - Number(p.price || 0);
+
+                        return (
+                          <SpecialVersionTile
+                            key={userCard.id}
+                            player={p}
+                            card={versionCard}
+                            copy={userCard}
+                            state={copyState}
+                            affordable={versionAffordable}
+                            priceDelta={priceDelta}
+                            onField={() => fieldVersion(userCard)}
+                            onUnfield={() => unfieldVersion(userCard)}
+                          />
+                        );
+                      })}
+                    </Fragment>
                   );
                 })}
 
