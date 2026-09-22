@@ -910,8 +910,16 @@ function TeamContent() {
 
         if (!settingsSnap.empty) {
           const settings = settingsSnap.docs[0].data() as Settings;
+          const rawGW = settings.currentGameweek;
+          const parsedGW = Number(rawGW);
 
-          activeGW = Number(settings.currentGameweek || 7);
+          // Gameweek 0 is a valid pre-season state.
+          activeGW =
+            rawGW !== undefined &&
+            rawGW !== null &&
+            Number.isFinite(parsedGW)
+              ? parsedGW
+              : 7;
           setCurrentGW(activeGW);
           setSelectedGW(activeGW);
 
