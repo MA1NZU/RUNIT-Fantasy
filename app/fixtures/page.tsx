@@ -71,7 +71,17 @@ export default function FixturesPage() {
         if (!settingsSnap.empty) {
           const settingsData = settingsSnap.docs[0].data() as Settings;
 
-          setCurrentGameweek(Number(settingsData.currentGameweek || 7));
+          const rawGW = settingsData.currentGameweek;
+          const parsedGW = Number(rawGW);
+
+          // Gameweek 0 is a valid pre-season state.
+          setCurrentGameweek(
+            rawGW !== undefined &&
+              rawGW !== null &&
+              Number.isFinite(parsedGW)
+              ? parsedGW
+              : 7
+          );
 
           if (settingsData.lockFixtures) {
             setIsLocked(true);
@@ -392,6 +402,7 @@ export default function FixturesPage() {
           >
             Player <span style={{ color: "var(--blue)" }}>Fixtures</span>
           </h1>
+
         </section>
 
         <section
@@ -419,7 +430,9 @@ export default function FixturesPage() {
               <div style={{ fontSize: "1.15rem", fontWeight: 900 }}>
                 Player Standings
               </div>
+
             </div>
+
           </div>
 
           {standings.length === 0 ? (
