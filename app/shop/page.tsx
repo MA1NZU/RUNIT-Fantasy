@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { db } from "@/lib/firebase";
 import {
   collection,
@@ -52,6 +52,23 @@ type ManagerTeam = {
   ownerEmail?: string;
   ownerUid?: string;
 };
+
+declare global {
+  interface Window {
+    onYouTubeIframeAPIReady: () => void;
+    YT: any;
+  }
+}
+
+function getYouTubeId(url: string) {
+  const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+  const match = url.match(regExp);
+
+  return match && match[2].length === 11 ? match[2] : null;
+}
+
+// How long the shop song preview plays before stopping automatically.
+const SONG_PREVIEW_SECONDS = 30;
 
 function toDateSafe(value: any): Date | null {
   if (!value) return null;
@@ -187,6 +204,15 @@ export default function ShopPage() {
   const [accountReady, setAccountReady] = useState(false);
   const [shopError, setShopError] = useState("");
   const [accountError, setAccountError] = useState("");
+
+  const previewPlayerRef = useRef<any>(null);
+  const previewTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const previewDeadlineRef = useRef<number>(0);
+  const [previewingId, setPreviewingId] = useState<string | null>(null);
+  const [previewSecondsLeft, setPreviewSecondsLeft] = useState(
+    SONG_PREVIEW_SECONDS
+  );
+  const [previewLoading, setPreviewLoading] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -464,6 +490,126 @@ export default function ShopPage() {
       active = false;
     };
   }, [user]);
+
+  // Song previews: one hidden YouTube player plays a short snippet of the
+  // selected song, then stops automatically.
+  useEffect(() => {
+    return () => {
+      if (previewTimerRef.current) clearInterval(previewTimerRef.current);
+
+      try {
+        previewPlayerRef.current?.destroy?.();
+      } catch {}
+    };
+  }, []);
+
+  const clearPreviewTimer = () => {
+    if (previewTimerRef.current) {
+      clearInterval(previewTimerRef.current);
+      previewTimerRef.current = null;
+    }
+  };
+
+  const stopSongPreview = () => {
+    clearPreviewTimer();
+    setPreviewingId(null);
+    setPreviewLoading(false);
+    setPreviewSecondsLeft(SONG_PREVIEW_SECONDS);
+
+    try {
+      previewPlayerRef.current?.stopVideo?.();
+    } catch {}
+  };
+
+  const attachPreviewPlayer = (videoId: string) => {
+    setPreviewLoading(true);
+
+    previewPlayerRef.current = new window.YT.Player(
+      "shop-song-preview-player",
+      {
+        height: "0",
+        width: "0",
+        videoId,
+        playerVars: { controls: 0, modestbranding: 1, rel: 0 },
+        events: {
+          onReady: (event: any) => {
+            event.target.setVolume(70);
+            event.target.playVideo();
+            setPreviewLoading(false);
+          },
+          onStateChange: (event: any) => {
+            if (event.data === window.YT.PlayerState.ENDED) {
+              stopSongPreview();
+            }
+          },
+          onError: () => {
+            stopSongPreview();
+          },
+        },
+      }
+    );
+  };
+
+  const createPreviewPlayer = (videoId: string) => {
+    if (window.YT && window.YT.Player) {
+      attachPreviewPlayer(videoId);
+
+      return;
+    }
+
+    window.onYouTubeIframeAPIReady = () => attachPreviewPlayer(videoId);
+
+    if (
+      !document.querySelector(
+        'script[src="https://www.youtube.com/iframe_api"]'
+      )
+    ) {
+      const tag = document.createElement("script");
+      tag.src = "https://www.youtube.com/iframe_api";
+      const firstScriptTag = document.getElementsByTagName("script")[0];
+
+      firstScriptTag?.parentNode?.insertBefore(tag, firstScriptTag);
+    }
+  };
+
+  const toggleSongPreview = (item: ShopItem) => {
+    const ytId = getYouTubeId(String(item.songUrl || ""));
+
+    if (!ytId) return;
+
+    if (previewingId === item.ID) {
+      stopSongPreview();
+
+      return;
+    }
+
+    clearPreviewTimer();
+    setPreviewingId(item.ID);
+    setPreviewLoading(true);
+    setPreviewSecondsLeft(SONG_PREVIEW_SECONDS);
+    previewDeadlineRef.current = Date.now() + SONG_PREVIEW_SECONDS * 1000;
+
+    previewTimerRef.current = setInterval(() => {
+      const left = Math.max(
+        0,
+        Math.ceil((previewDeadlineRef.current - Date.now()) / 1000)
+      );
+
+      setPreviewSecondsLeft(left);
+
+      if (left <= 0) {
+        stopSongPreview();
+      }
+    }, 250);
+
+    if (previewPlayerRef.current?.loadVideoById) {
+      previewPlayerRef.current.loadVideoById(ytId);
+      previewPlayerRef.current.playVideo();
+      setPreviewLoading(false);
+    } else {
+      createPreviewPlayer(ytId);
+    }
+  };
 
   const handleBuy = async (item: ShopItem) => {
     const userEmail = String(user?.email || "").trim();
@@ -1241,6 +1387,57 @@ export default function ShopPage() {
                           {item.itemName}
                         </div>
 
+                        {item.itemType === "song" &&
+                          getYouTubeId(String(item.songUrl || "")) && (
+                            <button
+                              onClick={() => toggleSongPreview(item)}
+                              style={{
+                                width: "100%",
+                                padding: "0.55rem",
+                                marginBottom: "0.5rem",
+                                borderRadius: "12px",
+                                fontWeight: 900,
+                                fontSize: "0.78rem",
+                                cursor: "pointer",
+                                border:
+                                  previewingId === item.ID
+                                    ? "1px solid rgba(107,159,255,0.65)"
+                                    : "1px solid rgba(255,255,255,0.14)",
+                                background:
+                                  previewingId === item.ID
+                                    ? "rgba(3,71,244,0.2)"
+                                    : "rgba(255,255,255,0.06)",
+                                color:
+                                  previewingId === item.ID
+                                    ? "#fff"
+                                    : "var(--text)",
+                              }}
+                            >
+                              {previewingId === item.ID ? (
+                                previewLoading ? (
+                                  "Loading preview..."
+                                ) : (
+                                  <span
+                                    style={{
+                                      display: "inline-flex",
+                                      alignItems: "center",
+                                      gap: "0.4rem",
+                                    }}
+                                  >
+                                    <span className="shop-preview-bars">
+                                      <span />
+                                      <span />
+                                      <span />
+                                    </span>
+                                    Stop · {previewSecondsLeft}s
+                                  </span>
+                                )
+                              ) : (
+                                `▶ Preview · ${SONG_PREVIEW_SECONDS}s`
+                              )}
+                            </button>
+                          )}
+
                         <button
                           onClick={() => handleBuy(item)}
                           disabled={owned || !canAfford || isBuying}
@@ -1286,6 +1483,52 @@ export default function ShopPage() {
             </section>
           ))
         )}
+
+        {/* Hidden YouTube player used for song previews. */}
+        <div
+          id="shop-song-preview-player"
+          style={{
+            width: "1px",
+            height: "1px",
+            overflow: "hidden",
+            opacity: 0,
+            pointerEvents: "none",
+          }}
+        />
+
+        <style jsx>{`
+          .shop-preview-bars {
+            display: inline-flex;
+            align-items: flex-end;
+            gap: 2px;
+            height: 10px;
+          }
+
+          .shop-preview-bars span {
+            width: 2px;
+            background: var(--blue);
+            animation: shop-preview-wave 1s ease-in-out infinite;
+          }
+
+          .shop-preview-bars span:nth-child(2) {
+            animation-delay: 0.2s;
+          }
+
+          .shop-preview-bars span:nth-child(3) {
+            animation-delay: 0.4s;
+          }
+
+          @keyframes shop-preview-wave {
+            0%,
+            100% {
+              height: 40%;
+            }
+
+            50% {
+              height: 100%;
+            }
+          }
+        `}</style>
       </div>
     </Shell>
   );
