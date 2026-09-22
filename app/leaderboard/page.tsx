@@ -41,7 +41,16 @@ export default function Leaderboard() {
         if (!settingsSnap.empty) {
           const data = settingsSnap.docs[0].data() as Settings;
 
-          gw = Number(data.currentGameweek || 7);
+          const rawGW = data.currentGameweek;
+          const parsedGW = Number(rawGW);
+
+          // Gameweek 0 is a valid pre-season state.
+          gw =
+            rawGW !== undefined &&
+            rawGW !== null &&
+            Number.isFinite(parsedGW)
+              ? parsedGW
+              : 7;
           setCurrentGW(gw);
 
           if (data.lockTeamLeaderboard) {
