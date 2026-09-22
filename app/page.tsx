@@ -26,7 +26,7 @@ type Settings = {
   deadline: string;
 };
 
-const TOTAL_MANAGERS = 8;
+const TOTAL_MANAGERS = 13;
 
 function getTimeLeft(deadline?: string, now = Date.now()) {
   if (!deadline) return "No deadline set";
@@ -100,7 +100,16 @@ export default function Home() {
 
         if (!settingsSnap.empty) {
           settingsData = settingsSnap.docs[0].data() as Settings;
-          activeGW = Number(settingsData.currentGameweek || 7);
+          const rawGW = settingsData.currentGameweek;
+          const parsedGW = Number(rawGW);
+
+          // Gameweek 0 is a valid pre-season state.
+          activeGW =
+            rawGW !== undefined &&
+            rawGW !== null &&
+            Number.isFinite(parsedGW)
+              ? parsedGW
+              : 7;
         }
 
         const gwTeamsSnap = await getDocs(
