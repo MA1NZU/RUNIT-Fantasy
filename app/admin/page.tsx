@@ -644,7 +644,9 @@ export default function AdminPage() {
         // Limited cards attached to this squad boost the linked player's
         // chosen stat. Cards whose player is not in the Starting IV keep
         // waiting and are not consumed. The same card never boosts twice in
-        // one gameweek, even if two copies are somehow active.
+        // one gameweek, even if two copies are somehow active. Every boost
+        // that applies is also recorded on the team doc (limitedCardBoosts)
+        // so the team page can display it on the player's card.
         const mainCanonicalIds = new Set(
           mainPlayerIds
             .map((playerId) => aliasToCanonical.get(String(playerId || "")))
@@ -653,6 +655,18 @@ export default function AdminPage() {
         const boostByPlayerId: Record<string, number> = {};
         const boostedCardIds = new Set<string>();
         const consumedCardRefs: any[] = [];
+        // The boosts that actually applied this gameweek, saved onto the
+        // team doc so the team page can show them on each player's card.
+        const appliedBoosts: {
+          playerId: string;
+          cardId: string;
+          cardName: string;
+          rarity: string;
+          accentColor: string;
+          boostStat: string;
+          boostValue: number;
+          delta: number;
+        }[] = [];
 
         attachedLimitedCards.forEach((userCard) => {
           const attachedByTeam =
@@ -694,6 +708,19 @@ export default function AdminPage() {
             (boostByPlayerId[boostPlayerId] || 0) + delta;
           boostedCardIds.add(userCard.cardId);
 
+          // Remember exactly what this card added so the team page can
+          // display the boost on the linked player's card.
+          appliedBoosts.push({
+            playerId: boostPlayerId,
+            cardId: String(userCard.cardId || ""),
+            cardName: String(card.cardName || ""),
+            rarity: String(card.rarity || ""),
+            accentColor: String(card.accentColor || ""),
+            boostStat: String(card.boostStat || ""),
+            boostValue: Number(card.boostValue ?? 1),
+            delta,
+          });
+
           if (userCard.status === "active") {
             consumedCardRefs.push(userCard.ref);
           }
@@ -716,11 +743,22 @@ export default function AdminPage() {
         const oldGwPoints = Number(team.gwPoints || 0);
         const difference = newGwPoints - oldGwPoints;
 
-        if (difference === 0 && consumedCardRefs.length === 0) return;
+        if (
+          difference === 0 &&
+          consumedCardRefs.length === 0 &&
+          appliedBoosts.length === 0
+        ) {
+          return;
+        }
 
-        if (difference !== 0) {
+        if (
+          difference !== 0 ||
+          appliedBoosts.length > 0 ||
+          consumedCardRefs.length > 0
+        ) {
           batch.update(teamDoc.ref, {
             gwPoints: newGwPoints,
+            limitedCardBoosts: appliedBoosts,
             "Updated Date": now,
           });
 
