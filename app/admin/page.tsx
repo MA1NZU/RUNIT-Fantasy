@@ -643,13 +643,15 @@ export default function AdminPage() {
 
         // Limited cards attached to this squad boost the linked player's
         // chosen stat. Cards whose player is not in the Starting IV keep
-        // waiting and are not consumed.
+        // waiting and are not consumed. The same card never boosts twice in
+        // one gameweek, even if two copies are somehow active.
         const mainCanonicalIds = new Set(
           mainPlayerIds
             .map((playerId) => aliasToCanonical.get(String(playerId || "")))
             .filter(Boolean)
         );
         const boostByPlayerId: Record<string, number> = {};
+        const boostedCardIds = new Set<string>();
         const consumedCardRefs: any[] = [];
 
         attachedLimitedCards.forEach((userCard) => {
@@ -672,6 +674,16 @@ export default function AdminPage() {
 
           if (!boostPlayerId || !mainCanonicalIds.has(boostPlayerId)) return;
 
+          // One boost per card per gameweek: a second copy of the same card
+          // is still consumed but never boosts twice.
+          if (boostedCardIds.has(userCard.cardId)) {
+            if (userCard.status === "active") {
+              consumedCardRefs.push(userCard.ref);
+            }
+
+            return;
+          }
+
           const stats = statsByCanonical.get(boostPlayerId);
           const game = String(
             (stats && stats.game) || gameByPlayerId.get(boostPlayerId) || ""
@@ -680,6 +692,7 @@ export default function AdminPage() {
 
           boostByPlayerId[boostPlayerId] =
             (boostByPlayerId[boostPlayerId] || 0) + delta;
+          boostedCardIds.add(userCard.cardId);
 
           if (userCard.status === "active") {
             consumedCardRefs.push(userCard.ref);
