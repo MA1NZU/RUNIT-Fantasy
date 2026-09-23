@@ -1,1576 +1,142 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { db } from "@/lib/firebase";
-import {
-  collection,
-  getDocs,
-  doc,
-  query,
-  runTransaction,
-  serverTimestamp,
-  where,
-} from "firebase/firestore";
+import { collection, getDocs, query, where, orderBy } from "firebase/firestore";
 import { useAuth } from "@/lib/AuthContext";
 import Shell from "@/app/shell";
+import { useSearchParams } from "next/navigation";
 import {
   LimitedCard,
-  getLimitedCardImageUrl,
+  UserLimitedCard,
   getLimitedCardRarityColor,
-  limitedCardPowerupText,
+  limitedCardBoostDelta,
 } from "@/lib/limitedCards";
 
-type ShopItem = {
-  ID: string;
-  itemName: string;
-  itemType: "avatar" | "banner" | "song" | "title";
+type Player = {
+  id: string;
+  name: string;
+  game: string;
   price: number;
-  previewImage: string;
-  songUrl?: string;
-  rarity: string;
-  section: string;
-  isVisible: boolean;
-  showNewTag?: boolean;
-  showLeavingTodayTag?: boolean;
+  points: number;
+  desc: string;
+  image?: string;
+  ID?: string;
 };
 
-type ShopSection = {
-  title: string;
-  order: number;
+type LimitedCardBoostEntry = {
+  playerId: string;
+  cardId: string;
+  cardName: string;
+  rarity: string;
+  accentColor: string;
+  boostStat: string;
+  boostValue: number;
+  delta: number;
+};
+
+type GWTeam = {
+  id: string;
+  gameweek: number;
+  player1: string;
+  player2: string;
+  player3: string;
+  player4: string;
+  captain: string;
+  sub: string;
+  gwPoints: number;
+  transfersMade: number;
+  transferPenalty: number;
+  limitedCards?: string[];
+  limitedCardBoosts?: LimitedCardBoostEntry[];
+  ownerEmail: string;
 };
 
 type Settings = {
-  currentGameweek?: number;
-  deadline?: any;
-  shopRefreshAt?: any;
-  lockShop?: boolean;
+  currentGameweek: number;
+  lockTeamLeaderboard?: boolean;
 };
 
-type ManagerTeam = {
-  id: string;
-  coins: number;
-  ownerEmail?: string;
-  ownerUid?: string;
-};
-
-declare global {
-  interface Window {
-    onYouTubeIframeAPIReady: () => void;
-    YT: any;
-  }
-}
-
-function getYouTubeId(url: string) {
-  const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
-  const match = url.match(regExp);
-
-  return match && match[2].length === 11 ? match[2] : null;
-}
-
-// How long the shop song preview plays before stopping automatically.
-const SONG_PREVIEW_SECONDS = 30;
-
-function toDateSafe(value: any): Date | null {
-  if (!value) return null;
-
-  if (typeof value.toDate === "function") return value.toDate();
-
-  if (typeof value === "object" && typeof value.seconds === "number") {
-    return new Date(value.seconds * 1000);
-  }
-
-  if (value instanceof Date) return value;
-
-  if (typeof value === "string") {
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return null;
-    return date;
-  }
-
-  return null;
-}
-
-function ShopRefreshTimer({ refreshAt }: { refreshAt?: any }) {
-  const [timeLeft, setTimeLeft] = useState("");
-
-  useEffect(() => {
-    const update = () => {
-      const refreshDate = toDateSafe(refreshAt);
-
-      if (!refreshDate) {
-        setTimeLeft("Not set");
-        return;
-      }
-
-      const diff = refreshDate.getTime() - Date.now();
-
-      if (diff <= 0) {
-        setTimeLeft("Refresh available");
-        return;
-      }
-
-      const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-      const hours = Math.floor(
-        (diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)
-      );
-      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-      const seconds = Math.floor((diff % (1000 * 60)) / 1000);
-
-      if (days > 0) {
-        setTimeLeft(`${days}d ${hours}h ${minutes}m`);
-      } else if (hours > 0) {
-        setTimeLeft(`${hours}h ${minutes}m ${seconds}s`);
-      } else if (minutes > 0) {
-        setTimeLeft(`${minutes}m ${seconds}s`);
-      } else {
-        setTimeLeft(`${seconds}s`);
-      }
-    };
-
-    update();
-
-    const timer = setInterval(update, 1000);
-
-    return () => clearInterval(timer);
-  }, [refreshAt]);
-
-  return (
-    <div
-      className="shop-refresh-timer"
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: "0.5rem",
-        background: "rgba(3,71,244,0.12)",
-        border: "1px solid rgba(107,159,255,0.4)",
-        color: "#8bb5ff",
-        borderRadius: "999px",
-        padding: "0.5rem 0.8rem",
-        fontSize: "0.8rem",
-        fontWeight: 800,
-      }}
-    >
-      <span>Next Refresh</span>
-      <span style={{ color: "#fff", fontFamily: "monospace" }}>
-        {timeLeft || "Loading..."}
-      </span>
-    </div>
-  );
-}
-
-const getRarityColor = (rarity?: string) => {
-  switch ((rarity || "").toLowerCase()) {
-    case "common":
-      return "#9ca3af";
-    case "uncommon":
-      return "#22c55e";
-    case "rare":
-      return "var(--blue)";
-    case "epic":
-      return "#a855f7";
-    case "legendary":
-      return "#ffce1b";
-    case "icon":
-      return "#22d3ee";
-    default:
-      return "var(--text-muted)";
-  }
-};
-
-function normalizeEmail(value?: string | null) {
-  return String(value || "").trim().toLowerCase();
-}
-
-function inventoryItemId(data: Record<string, any>) {
-  return String(data.itemId || data.itemID || data.item || data.ID || "");
-}
-
-export default function ShopPage() {
-  const { user } = useAuth();
-
-  const [itemsBySection, setItemsBySection] = useState<
-    Record<string, ShopItem[]>
-  >({});
-  const [sectionOrders, setSectionOrders] = useState<Record<string, number>>({});
-  const [settings, setSettings] = useState<Settings | null>(null);
-  const [userCoins, setUserCoins] = useState<number | null>(null);
-  const [managerTeam, setManagerTeam] = useState<ManagerTeam | null>(null);
-  const [ownedIds, setOwnedIds] = useState<string[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [buying, setBuying] = useState<string | null>(null);
-  const [limitedCards, setLimitedCards] = useState<LimitedCard[]>([]);
-  const [buyingCard, setBuyingCard] = useState<string | null>(null);
-  const [isLocked, setIsLocked] = useState(false);
-  const [accountReady, setAccountReady] = useState(false);
-  const [shopError, setShopError] = useState("");
-  const [accountError, setAccountError] = useState("");
-
-  const previewPlayerRef = useRef<any>(null);
-  const previewTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const previewDeadlineRef = useRef<number>(0);
-  const [previewingId, setPreviewingId] = useState<string | null>(null);
-  const [previewSecondsLeft, setPreviewSecondsLeft] = useState(
-    SONG_PREVIEW_SECONDS
-  );
-  const [previewLoading, setPreviewLoading] = useState(false);
-
-  useEffect(() => {
-    let active = true;
-    const userEmail = String(user?.email || "").trim();
-    const normalizedUserEmail = normalizeEmail(userEmail);
-    const userUid = user?.uid;
-
-    if (!userEmail || !userUid) {
-      setLoading(false);
-
-      return () => {
-        active = false;
-      };
-    }
-
-    const loadShop = async () => {
-      setLoading(true);
-      setIsLocked(false);
-      setSettings(null);
-      setItemsBySection({});
-      setSectionOrders({});
-      setUserCoins(null);
-      setManagerTeam(null);
-      setOwnedIds([]);
-      setAccountReady(false);
-      setShopError("");
-      setAccountError("");
-
-      const [itemsResult, settingsResult, sectionsResult, cardsResult] =
-        await Promise.allSettled([
-          getDocs(collection(db, "shopItems")),
-          getDocs(collection(db, "settings")),
-          getDocs(collection(db, "shopSections")),
-          getDocs(collection(db, "limitedCards")),
-        ]);
-
-      if (!active) return;
-
-      const publicLoadFailed =
-        itemsResult.status === "rejected" ||
-        settingsResult.status === "rejected" ||
-        sectionsResult.status === "rejected" ||
-        cardsResult.status === "rejected";
-
-      if (itemsResult.status === "rejected") {
-        console.error("Unable to load shop items:", itemsResult.reason);
-      }
-
-      if (settingsResult.status === "rejected") {
-        console.error("Unable to load shop settings:", settingsResult.reason);
-      }
-
-      if (sectionsResult.status === "rejected") {
-        console.error("Unable to load shop sections:", sectionsResult.reason);
-      }
-
-      if (cardsResult.status === "rejected") {
-        console.error("Unable to load limited cards:", cardsResult.reason);
-      }
-
-      if (publicLoadFailed) {
-        setShopError(
-          "Some shop data could not be loaded. Check that signed-in managers can read shopItems, shopSections, limitedCards, and settings in Firestore."
-        );
-      }
-
-      if (sectionsResult.status === "fulfilled") {
-        const orderMap: Record<string, number> = {};
-
-        sectionsResult.value.docs.forEach((sectionDoc) => {
-          const data = sectionDoc.data() as ShopSection;
-          const title = String(data.title || sectionDoc.id || "General");
-          orderMap[title] = Number(data.order ?? 99);
-        });
-
-        setSectionOrders(orderMap);
-      }
-
-      if (cardsResult.status === "fulfilled") {
-        setLimitedCards(
-          cardsResult.value.docs
-            .map((cardDoc) => {
-              const data = cardDoc.data() as Partial<LimitedCard>;
-
-              return {
-                ...data,
-                id: cardDoc.id,
-                ID: String(data.ID || cardDoc.id),
-              } as LimitedCard;
-            })
-            .filter((card) => card.isVisible !== false)
-            .sort((a, b) => (a.cardName || "").localeCompare(b.cardName || ""))
-        );
-      }
-
-      if (settingsResult.status === "fulfilled" && !settingsResult.value.empty) {
-        const settingsData = settingsResult.value.docs[0].data() as Settings;
-        setSettings(settingsData);
-
-        if (settingsData.lockShop) {
-          setIsLocked(true);
-          setLoading(false);
-          return;
-        }
-      }
-
-      if (itemsResult.status === "fulfilled") {
-        const allItems = itemsResult.value.docs.map((itemDoc) => {
-          const data = itemDoc.data() as Partial<ShopItem>;
-
-          return {
-            ...data,
-            ID: String(data.ID || itemDoc.id),
-          } as ShopItem;
-        });
-
-        const availableItems = allItems.filter((item) => item.isVisible !== false);
-
-        const grouped = availableItems.reduce((acc, item) => {
-          const section = item.section || "General";
-
-          if (!acc[section]) acc[section] = [];
-
-          acc[section].push(item);
-
-          return acc;
-        }, {} as Record<string, ShopItem[]>);
-
-        Object.keys(grouped).forEach((section) => {
-          grouped[section].sort((a, b) =>
-            (a.itemName || "").localeCompare(b.itemName || "")
-          );
-        });
-
-        setItemsBySection(grouped);
-      }
-
-      const [teamsByUidResult, teamsByEmailResult, inventoryByUidResult, inventoryByEmailResult] =
-        await Promise.allSettled([
-          getDocs(
-            query(collection(db, "userTeams"), where("ownerUid", "==", userUid))
-          ),
-          getDocs(
-            query(
-              collection(db, "userTeams"),
-              where("ownerEmail", "==", userEmail)
-            )
-          ),
-          getDocs(
-            query(
-              collection(db, "userInventory"),
-              where("ownerUid", "==", userUid)
-            )
-          ),
-          getDocs(
-            query(
-              collection(db, "userInventory"),
-              where("ownerEmail", "==", userEmail)
-            )
-          ),
-        ]);
-
-      if (!active) return;
-
-      const teamDocs = [
-        ...(teamsByUidResult.status === "fulfilled"
-          ? teamsByUidResult.value.docs
-          : []),
-        ...(teamsByEmailResult.status === "fulfilled"
-          ? teamsByEmailResult.value.docs
-          : []),
-      ];
-
-      const managerDoc = teamDocs.find((teamDoc) => {
-        const data = teamDoc.data();
-
-        return (
-          String(data.ownerUid || "") === userUid ||
-          normalizeEmail(data.ownerEmail) === normalizedUserEmail
-        );
-      });
-
-      const canReadManager =
-        teamsByUidResult.status === "fulfilled" ||
-        teamsByEmailResult.status === "fulfilled";
-      const canReadInventory =
-        inventoryByUidResult.status === "fulfilled" ||
-        inventoryByEmailResult.status === "fulfilled";
-
-      if (!canReadManager) {
-        console.error(
-          "Unable to load the manager account:",
-          teamsByUidResult.status === "rejected"
-            ? teamsByUidResult.reason
-            : teamsByEmailResult.status === "rejected"
-            ? teamsByEmailResult.reason
-            : "Unknown Firestore error"
-        );
-        setAccountError(
-          "Your manager record could not be read, so the shop cannot safely show or spend your coins. Publish the Firestore rules below and reload this page."
-        );
-      } else if (!managerDoc) {
-        setAccountError(
-          `No manager record matches ${userEmail}. Ask the admin to check the ownerEmail saved in userTeams.`
-        );
-      } else {
-        const data = managerDoc.data();
-        const parsedCoins = Number(data.coins || 0);
-        const coins = Number.isFinite(parsedCoins) ? parsedCoins : 0;
-
-        setManagerTeam({
-          id: managerDoc.id,
-          coins,
-          ownerEmail: String(data.ownerEmail || ""),
-          ownerUid: String(data.ownerUid || ""),
-        });
-        setUserCoins(coins);
-      }
-
-      if (!canReadInventory) {
-        console.error(
-          "Unable to load inventory:",
-          inventoryByUidResult.status === "rejected"
-            ? inventoryByUidResult.reason
-            : inventoryByEmailResult.status === "rejected"
-            ? inventoryByEmailResult.reason
-            : "Unknown Firestore error"
-        );
-        setAccountError((current) =>
-          current ||
-          "Your inventory could not be read, so purchases are disabled to prevent duplicate items. Publish the Firestore rules below and reload this page."
-        );
-      } else {
-        const inventoryDocs = new Map<string, Record<string, any>>();
-
-        [inventoryByUidResult, inventoryByEmailResult].forEach((result) => {
-          if (result.status !== "fulfilled") return;
-
-          result.value.docs.forEach((inventoryDoc) => {
-            const data = inventoryDoc.data();
-            const belongsToUser =
-              String(data.ownerUid || "") === userUid ||
-              normalizeEmail(data.ownerEmail) === normalizedUserEmail;
-
-            if (belongsToUser) inventoryDocs.set(inventoryDoc.id, data);
-          });
-        });
-
-        setOwnedIds(
-          Array.from(inventoryDocs.values())
-            .map((data) => inventoryItemId(data))
-            .filter(Boolean)
-        );
-      }
-
-      if (managerDoc && canReadInventory) {
-        setAccountReady(true);
-      }
-
-      setLoading(false);
-    };
-
-    loadShop().catch((error) => {
-      console.error("Unable to load shop:", error);
-
-      if (active) {
-        setShopError(
-          "The shop could not be loaded. Check your connection and Firestore permissions, then reload."
-        );
-        setLoading(false);
-      }
-    });
-
-    return () => {
-      active = false;
-    };
-  }, [user]);
-
-  // Song previews: one hidden YouTube player plays a short snippet of the
-  // selected song, then stops automatically.
-  useEffect(() => {
-    return () => {
-      if (previewTimerRef.current) clearInterval(previewTimerRef.current);
-
-      try {
-        previewPlayerRef.current?.destroy?.();
-      } catch {}
-    };
-  }, []);
-
-  const clearPreviewTimer = () => {
-    if (previewTimerRef.current) {
-      clearInterval(previewTimerRef.current);
-      previewTimerRef.current = null;
-    }
-  };
-
-  const stopSongPreview = () => {
-    clearPreviewTimer();
-    setPreviewingId(null);
-    setPreviewLoading(false);
-    setPreviewSecondsLeft(SONG_PREVIEW_SECONDS);
-
-    try {
-      previewPlayerRef.current?.stopVideo?.();
-    } catch {}
-  };
-
-  const attachPreviewPlayer = (videoId: string) => {
-    setPreviewLoading(true);
-
-    previewPlayerRef.current = new window.YT.Player(
-      "shop-song-preview-player",
-      {
-        height: "0",
-        width: "0",
-        videoId,
-        playerVars: { controls: 0, modestbranding: 1, rel: 0 },
-        events: {
-          onReady: (event: any) => {
-            event.target.setVolume(70);
-            event.target.playVideo();
-            setPreviewLoading(false);
-          },
-          onStateChange: (event: any) => {
-            if (event.data === window.YT.PlayerState.ENDED) {
-              stopSongPreview();
-            }
-          },
-          onError: () => {
-            stopSongPreview();
-          },
-        },
-      }
-    );
-  };
-
-  const createPreviewPlayer = (videoId: string) => {
-    if (window.YT && window.YT.Player) {
-      attachPreviewPlayer(videoId);
-
-      return;
-    }
-
-    window.onYouTubeIframeAPIReady = () => attachPreviewPlayer(videoId);
-
-    if (
-      !document.querySelector(
-        'script[src="https://www.youtube.com/iframe_api"]'
-      )
-    ) {
-      const tag = document.createElement("script");
-      tag.src = "https://www.youtube.com/iframe_api";
-      const firstScriptTag = document.getElementsByTagName("script")[0];
-
-      firstScriptTag?.parentNode?.insertBefore(tag, firstScriptTag);
-    }
-  };
-
-  const toggleSongPreview = (item: ShopItem) => {
-    const ytId = getYouTubeId(String(item.songUrl || ""));
-
-    if (!ytId) return;
-
-    if (previewingId === item.ID) {
-      stopSongPreview();
-
-      return;
-    }
-
-    clearPreviewTimer();
-    setPreviewingId(item.ID);
-    setPreviewLoading(true);
-    setPreviewSecondsLeft(SONG_PREVIEW_SECONDS);
-    previewDeadlineRef.current = Date.now() + SONG_PREVIEW_SECONDS * 1000;
-
-    previewTimerRef.current = setInterval(() => {
-      const left = Math.max(
-        0,
-        Math.ceil((previewDeadlineRef.current - Date.now()) / 1000)
-      );
-
-      setPreviewSecondsLeft(left);
-
-      if (left <= 0) {
-        stopSongPreview();
-      }
-    }, 250);
-
-    if (previewPlayerRef.current?.loadVideoById) {
-      previewPlayerRef.current.loadVideoById(ytId);
-      previewPlayerRef.current.playVideo();
-      setPreviewLoading(false);
-    } else {
-      createPreviewPlayer(ytId);
-    }
-  };
-
-  const handleBuy = async (item: ShopItem) => {
-    const userEmail = String(user?.email || "").trim();
-    const normalizedUserEmail = normalizeEmail(userEmail);
-    const userUid = user?.uid;
-    const price = Number(item.price || 0);
-
-    if (!userEmail || !userUid) return;
-
-    if (!managerTeam || userCoins === null || !accountReady) {
-      alert("Your manager coins are not available yet. Reload after checking Firestore access.");
-      return;
-    }
-
-    if (ownedIds.includes(item.ID)) return;
-
-    if (!Number.isFinite(price) || price < 0) {
-      alert("This item has an invalid price. Ask an admin to update it.");
-      return;
-    }
-
-    if (userCoins < price) {
-      alert("Not enough coins!");
-      return;
-    }
-
-    if (!confirm(`Buy ${item.itemName}?`)) return;
-
-    setBuying(item.ID);
-
-    try {
-      const remainingCoins = await runTransaction(db, async (transaction) => {
-        const teamRef = doc(db, "userTeams", managerTeam.id);
-        const inventoryRef = doc(
-          db,
-          "userInventory",
-          `${userUid}_${encodeURIComponent(item.ID)}`
-        );
-        const [teamSnap, inventorySnap] = await Promise.all([
-          transaction.get(teamRef),
-          transaction.get(inventoryRef),
-        ]);
-
-        if (!teamSnap.exists()) {
-          throw new Error("MANAGER_NOT_FOUND");
-        }
-
-        const teamData = teamSnap.data();
-        const ownsManagerRecord =
-          String(teamData.ownerUid || "") === userUid ||
-          normalizeEmail(teamData.ownerEmail) === normalizedUserEmail;
-
-        if (!ownsManagerRecord) {
-          throw new Error("MANAGER_MISMATCH");
-        }
-
-        if (inventorySnap.exists()) {
-          throw new Error("ALREADY_OWNED");
-        }
-
-        const currentCoins = Number(teamData.coins || 0);
-
-        if (!Number.isFinite(currentCoins) || currentCoins < price) {
-          throw new Error("NOT_ENOUGH_COINS");
-        }
-
-        const nextCoins = currentCoins - price;
-
-        transaction.update(teamRef, {
-          coins: nextCoins,
-          "Updated Date": serverTimestamp(),
-        });
-
-        transaction.set(inventoryRef, {
-          ownerUid: userUid,
-          ownerEmail: userEmail,
-          itemId: item.ID,
-          itemName: item.itemName,
-          itemType: item.itemType,
-          purchaseDate: serverTimestamp(),
-          acquiredAt: serverTimestamp(),
-          equipped: false,
-          source: "shop",
-        });
-
-        return nextCoins;
-      });
-
-      setUserCoins(remainingCoins);
-      setManagerTeam((current) =>
-        current ? { ...current, coins: remainingCoins } : current
-      );
-      setOwnedIds((current) => Array.from(new Set([...current, item.ID])));
-
-      alert("Success!");
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "";
-
-      if (message === "NOT_ENOUGH_COINS") {
-        alert("Not enough coins!");
-      } else if (message === "ALREADY_OWNED") {
-        setOwnedIds((current) => Array.from(new Set([...current, item.ID])));
-        alert("You already own this item.");
-      } else if (message === "MANAGER_NOT_FOUND" || message === "MANAGER_MISMATCH") {
-        alert("Your manager record could not be verified. Ask the admin to check your ownerEmail.");
-      } else {
-        console.error("Purchase failed:", err);
-        alert("Purchase failed. Check your Firestore access and try again.");
-      }
-    } finally {
-      setBuying(null);
-    }
-  };
-
-  const handleBuyCard = async (card: LimitedCard) => {
-    const userEmail = String(user?.email || "").trim();
-    const normalizedUserEmail = normalizeEmail(userEmail);
-    const userUid = user?.uid;
-    const price = Number(card.shopPrice || 0);
-
-    if (!userEmail || !userUid) return;
-
-    if (!managerTeam || userCoins === null || !accountReady) {
-      alert(
-        "Your manager coins are not available yet. Reload after checking Firestore access."
-      );
-      return;
-    }
-
-    if (!Number.isFinite(price) || price < 0) {
-      alert("This card has an invalid price. Ask an admin to update it.");
-      return;
-    }
-
-    if (Number(card.stock || 0) <= 0) {
-      alert("This card is sold out.");
-      return;
-    }
-
-    if (userCoins < price) {
-      alert("Not enough coins!");
-      return;
-    }
-
-    if (
-      !confirm(
-        `Buy ${card.cardName} for ${price} coins?\n\nYou can buy multiple copies. Field each one from the transfers player market.`
-      )
-    )
-      return;
-
-    setBuyingCard(card.ID);
-
-    try {
-      const remainingCoins = await runTransaction(db, async (transaction) => {
-        const teamRef = doc(db, "userTeams", managerTeam.id);
-        const cardRef = doc(db, "limitedCards", card.ID);
-        const [teamSnap, cardSnap] = await Promise.all([
-          transaction.get(teamRef),
-          transaction.get(cardRef),
-        ]);
-
-        if (!teamSnap.exists()) {
-          throw new Error("MANAGER_NOT_FOUND");
-        }
-
-        const teamData = teamSnap.data();
-        const ownsManagerRecord =
-          String(teamData.ownerUid || "") === userUid ||
-          normalizeEmail(teamData.ownerEmail) === normalizedUserEmail;
-
-        if (!ownsManagerRecord) {
-          throw new Error("MANAGER_MISMATCH");
-        }
-
-        if (!cardSnap.exists()) {
-          throw new Error("CARD_NOT_FOUND");
-        }
-
-        const cardData = cardSnap.data();
-
-        if (cardData.isVisible === false) {
-          throw new Error("CARD_NOT_AVAILABLE");
-        }
-
-        const stock = Number(cardData.stock || 0);
-
-        if (stock <= 0) {
-          throw new Error("SOLD_OUT");
-        }
-
-        const currentCoins = Number(teamData.coins || 0);
-
-        if (!Number.isFinite(currentCoins) || currentCoins < price) {
-          throw new Error("NOT_ENOUGH_COINS");
-        }
-
-        const nextCoins = currentCoins - price;
-
-        transaction.update(cardRef, {
-          stock: stock - 1,
-          "Updated Date": serverTimestamp(),
-        });
-
-        transaction.update(teamRef, {
-          coins: nextCoins,
-          "Updated Date": serverTimestamp(),
-        });
-
-        const userCardId = `${userUid}_${card.ID}_${Date.now().toString(
-          36
-        )}${Math.random().toString(36).slice(2, 6)}`;
-
-        transaction.set(doc(db, "userLimitedCards", userCardId), {
-          ownerUid: userUid,
-          ownerEmail: userEmail,
-          cardId: card.ID,
-          status: "owned",
-          gameweek: 0,
-          purchaseDate: serverTimestamp(),
-          acquiredAt: serverTimestamp(),
-          source: "shop",
-        });
-
-        return nextCoins;
-      });
-
-      setUserCoins(remainingCoins);
-      setManagerTeam((current) =>
-        current ? { ...current, coins: remainingCoins } : current
-      );
-      setLimitedCards((current) =>
-        current.map((c) =>
-          c.ID === card.ID
-            ? { ...c, stock: Math.max(0, Number(c.stock || 0) - 1) }
-            : c
-        )
-      );
-
-      alert("Card purchased! Field him from the transfers player market.");
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "";
-
-      if (message === "NOT_ENOUGH_COINS") {
-        alert("Not enough coins!");
-      } else if (message === "SOLD_OUT") {
-        setLimitedCards((current) =>
-          current.map((c) => (c.ID === card.ID ? { ...c, stock: 0 } : c))
-        );
-        alert("This card just sold out.");
-      } else if (
-        message === "CARD_NOT_FOUND" ||
-        message === "CARD_NOT_AVAILABLE"
-      ) {
-        alert("This card is no longer available.");
-      } else if (
-        message === "MANAGER_NOT_FOUND" ||
-        message === "MANAGER_MISMATCH"
-      ) {
-        alert(
-          "Your manager record could not be verified. Ask the admin to check your ownerEmail."
-        );
-      } else {
-        console.error("Card purchase failed:", err);
-        alert("Purchase failed. Check your Firestore access and try again.");
-      }
-    } finally {
-      setBuyingCard(null);
-    }
-  };
-
-  const getImageUrl = (url: string) => {
-    if (!url) return "";
-
-    if (url.startsWith("wix:image://v1/")) {
-      const guid = url.split("/")[3];
-      return `https://static.wixstatic.com/media/${guid}~mv2.png`;
-    }
-
-    return url;
-  };
-
-  if (loading) {
-    return (
-      <Shell>
-        <p style={{ padding: "2rem" }}>Loading Shop...</p>
-      </Shell>
-    );
-  }
-
-  if (isLocked) {
-    return (
-      <Shell>
-        <div
-          style={{
-            maxWidth: "760px",
-            margin: "4rem auto",
-            textAlign: "center",
-            background: "var(--surface)",
-            border: "1px solid var(--border)",
-            borderRadius: "24px",
-            padding: "2.5rem",
-          }}
-        >
-          <div style={{ fontSize: "3rem", marginBottom: "1rem" }}>↻</div>
-
-          <h1
-            style={{
-              fontSize: "1.8rem",
-              fontWeight: 900,
-              marginBottom: "0.5rem",
-            }}
-          >
-            REFRESHING SHOP
-          </h1>
-
-          <p style={{ color: "var(--text-muted)" }}>
-            Estimated Time: 2 minutes.
-          </p>
-        </div>
-      </Shell>
-    );
-  }
-
-  const sections = Object.entries(itemsBySection).sort(([aTitle], [bTitle]) => {
-    const aOrder = Number(sectionOrders[aTitle] ?? 99);
-    const bOrder = Number(sectionOrders[bTitle] ?? 99);
-
-    if (aOrder !== bOrder) return aOrder - bOrder;
-
-    return aTitle.localeCompare(bTitle);
-  });
-
-  return (
-    <Shell>
-      <div className="page-container shop-page" style={{ maxWidth: "1120px", margin: "0 auto" }}>
-        <section
-          className="page-hero shop-hero"
-          style={{
-            position: "relative",
-            overflow: "hidden",
-            border: "1px solid var(--border)",
-            borderRadius: "28px",
-            padding: "2rem",
-            marginBottom: "1rem",
-            background:
-              "radial-gradient(circle at 20% 10%, rgba(3, 71, 244, 0.28), transparent 32%), radial-gradient(circle at 90% 20%, rgba(255, 193, 7, 0.14), transparent 30%), linear-gradient(135deg, rgba(255,255,255,0.075), rgba(255,255,255,0.02))",
-          }}
-        >
-          <div
-            style={{
-              position: "absolute",
-              width: "280px",
-              height: "280px",
-              right: "-110px",
-              bottom: "-110px",
-              borderRadius: "999px",
-              background: "rgba(3, 71, 244, 0.18)",
-              filter: "blur(20px)",
-              pointerEvents: "none",
-            }}
-          />
-
-          <div style={{ position: "relative", zIndex: 1 }}>
-            <div
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "8px",
-                background: "rgba(3, 71, 244, 0.15)",
-                border: "1px solid rgba(107, 159, 255, 0.45)",
-                color: "#8bb5ff",
-                fontSize: "0.75rem",
-                padding: "6px 12px",
-                borderRadius: "999px",
-                marginBottom: "1rem",
-                fontWeight: 700,
-              }}
-            >
-              <span
-                style={{
-                  width: "8px",
-                  height: "8px",
-                  borderRadius: "999px",
-                  background: "var(--accent)",
-                }}
-              />
-              RUNIT Store
-            </div>
-
-            <h1
-              style={{
-                fontSize: "clamp(2.5rem, 7vw, 4.75rem)",
-                lineHeight: 0.95,
-                letterSpacing: "-0.06em",
-                fontWeight: 900,
-                margin: "0 0 1rem",
-              }}
-            >
-              Fantasy
-              <br />
-              <span style={{ color: "var(--blue)" }}>Shop</span>
-            </h1>
-
-            <p
-              style={{
-                maxWidth: "620px",
-                color: "var(--text-muted)",
-                fontSize: "1rem",
-                lineHeight: 1.7,
-                marginBottom: "1.25rem",
-              }}
-            >
-              ‎ 
-            </p>
-
-            <div
-              className="shop-hero-meta"
-              style={{
-                display: "flex",
-                gap: "0.75rem",
-                flexWrap: "wrap",
-                alignItems: "center",
-              }}
-            >
-              <div
-                style={{
-                  background: "rgba(255,193,7,0.1)",
-                  border: "1px solid rgba(255,193,7,0.25)",
-                  color: "var(--accent)",
-                  padding: "0.5rem 0.8rem",
-                  borderRadius: "999px",
-                  fontWeight: 900,
-                  fontSize: "0.85rem",
-                }}
-              >
-                {userCoins === null
-                  ? "Coins unavailable"
-                  : `${userCoins.toLocaleString()} Coins`}
-              </div>
-
-              <ShopRefreshTimer refreshAt={settings?.shopRefreshAt} />
-            </div>
-          </div>
-        </section>
-
-        {shopError && (
-          <div
-            role="alert"
-            style={{
-              marginBottom: "1rem",
-              background: "rgba(255,70,70,0.08)",
-              border: "1px solid rgba(255,70,70,0.3)",
-              borderRadius: "14px",
-              padding: "0.9rem 1rem",
-              color: "#ffb4b4",
-              fontWeight: 700,
-              lineHeight: 1.5,
-            }}
-          >
-            {shopError}
-          </div>
-        )}
-
-        {accountError && (
-          <div
-            role="status"
-            style={{
-              marginBottom: "1rem",
-              background: "rgba(255,193,7,0.08)",
-              border: "1px solid rgba(255,193,7,0.3)",
-              borderRadius: "14px",
-              padding: "0.9rem 1rem",
-              color: "var(--accent)",
-              fontWeight: 700,
-              lineHeight: 1.5,
-            }}
-          >
-            {accountError}
-          </div>
-        )}
-
-        {limitedCards.length > 0 && (
-          <section style={{ marginBottom: "3rem" }}>
-            <div
-              className="shop-section-header"
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                gap: "1rem",
-                marginBottom: "1rem",
-                flexWrap: "wrap",
-              }}
-            >
-              <div>
-                <div
-                  style={{
-                    fontSize: "0.75rem",
-                    color: "var(--text-muted)",
-                    textTransform: "uppercase",
-                    letterSpacing: "1px",
-                    fontWeight: 900,
-                    marginBottom: "0.25rem",
-                  }}
-                >
-                  Section
-                </div>
-
-                <h2 style={{ fontSize: "1.35rem", fontWeight: 900, margin: 0 }}>
-                  Mastery Cards
-                </h2>
-              </div>
-
-              <div
-                style={{
-                  color: "var(--text-muted)",
-                  fontSize: "0.8rem",
-                  background: "rgba(255,255,255,0.045)",
-                  border: "1px solid rgba(255,255,255,0.08)",
-                  borderRadius: "999px",
-                  padding: "0.45rem 0.7rem",
-                  fontWeight: 800,
-                }}
-              >
-                {limitedCards.length} card{limitedCards.length === 1 ? "" : "s"}
-              </div>
-            </div>
-
-            <div
-              className="shop-items-grid"
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
-                gap: "1.25rem",
-              }}
-            >
-              {limitedCards.map((card) => (
-                <LimitedCardShopTile
-                  key={card.ID}
-                  card={card}
-                  accountReady={accountReady}
-                  userCoins={userCoins}
-                  isBuying={buyingCard === card.ID}
-                  onBuy={handleBuyCard}
-                />
-              ))}
-            </div>
-          </section>
-        )}
-
-        {sections.length === 0 ? (
-          <div
-            style={{
-              background: "var(--surface)",
-              border: "1px solid var(--border)",
-              borderRadius: "20px",
-              padding: "2rem",
-              textAlign: "center",
-              color: "var(--text-muted)",
-            }}
-          >
-            No shop items available right now.
-          </div>
-        ) : (
-          sections.map(([sectionTitle, items]) => (
-            <section key={sectionTitle} style={{ marginBottom: "3rem" }}>
-              <div
-                className="shop-section-header"
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  gap: "1rem",
-                  marginBottom: "1rem",
-                  flexWrap: "wrap",
-                }}
-              >
-                <div>
-                  <div
-                    style={{
-                      fontSize: "0.75rem",
-                      color: "var(--text-muted)",
-                      textTransform: "uppercase",
-                      letterSpacing: "1px",
-                      fontWeight: 900,
-                      marginBottom: "0.25rem",
-                    }}
-                  >
-                    Section
-                  </div>
-
-                  <h2
-                    style={{
-                      fontSize: "1.35rem",
-                      fontWeight: 900,
-                      margin: 0,
-                    }}
-                  >
-                    {sectionTitle}
-                  </h2>
-                </div>
-
-                <div
-                  style={{
-                    color: "var(--text-muted)",
-                    fontSize: "0.8rem",
-                    background: "rgba(255,255,255,0.045)",
-                    border: "1px solid rgba(255,255,255,0.08)",
-                    borderRadius: "999px",
-                    padding: "0.45rem 0.7rem",
-                    fontWeight: 800,
-                  }}
-                >
-                  {items.length} item{items.length === 1 ? "" : "s"}
-                </div>
-              </div>
-
-              <div
-                className="shop-items-grid"
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
-                  gap: "1.25rem",
-                }}
-              >
-                {items.map((item) => {
-                  const owned = ownedIds.includes(item.ID);
-                  const itemPrice = Number(item.price || 0);
-                  const canAfford =
-                    accountReady &&
-                    userCoins !== null &&
-                    Number.isFinite(itemPrice) &&
-                    userCoins >= itemPrice;
-                  const isBuying = buying === item.ID;
-
-                  return (
-                    <div
-                      key={item.ID}
-                      style={{
-                        position: "relative",
-                        overflow: "hidden",
-                        background:
-                          "linear-gradient(145deg, rgba(255,255,255,0.045), rgba(255,255,255,0.015)), var(--surface)",
-                        border: "1px solid var(--border)",
-                        borderRadius: "20px",
-                      }}
-                    >
-                      <div
-                        style={{
-                          position: "absolute",
-                          top: "0.75rem",
-                          left: "0.75rem",
-                          display: "flex",
-                          gap: "0.35rem",
-                          zIndex: 3,
-                          flexWrap: "wrap",
-                        }}
-                      >
-                        {item.showNewTag && (
-                          <span
-                            style={{
-                              background: "var(--blue)",
-                              color: "#fff",
-                              fontSize: "0.62rem",
-                              fontWeight: 900,
-                              padding: "0.2rem 0.45rem",
-                              borderRadius: "999px",
-                            }}
-                          >
-                            NEW
-                          </span>
-                        )}
-
-                        {item.showLeavingTodayTag && (
-                          <span
-                            style={{
-                              background: "#0f0d1b",
-                              color: "var(--accent)",
-                              border: "1px solid rgba(255,193,7,0.3)",
-                              fontSize: "0.62rem",
-                              fontWeight: 900,
-                              padding: "0.2rem 0.45rem",
-                              borderRadius: "999px",
-                            }}
-                          >
-                            LEAVING TODAY
-                          </span>
-                        )}
-                      </div>
-
-                      <div
-                        style={{
-                          width: "100%",
-                          aspectRatio:
-                            item.itemType === "banner" ? "16/7" : "1/1",
-                          background:
-                            "radial-gradient(circle at 30% 20%, rgba(255,255,255,0.08), transparent 35%), #111",
-                          borderBottom: "1px solid var(--border)",
-                        }}
-                      >
-                        {item.previewImage ? (
-                          <img
-                            src={getImageUrl(item.previewImage)}
-                            style={{
-                              width: "100%",
-                              height: "100%",
-                              objectFit: "cover",
-                              display: "block",
-                            }}
-                            alt={item.itemName}
-                          />
-                        ) : (
-                          <div
-                            style={{
-                              width: "100%",
-                              height: "100%",
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                              color: "rgba(255,255,255,0.22)",
-                              fontWeight: 900,
-                              fontSize: "2rem",
-                            }}
-                          >
-                            {item.itemName?.slice(0, 1) || "?"}
-                          </div>
-                        )}
-                      </div>
-
-                      <div style={{ padding: "1rem" }}>
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "space-between",
-                            gap: "0.75rem",
-                            marginBottom: "0.4rem",
-                          }}
-                        >
-                          <div
-                            style={{
-                              fontSize: "0.65rem",
-                              color: "var(--accent)",
-                              fontWeight: 900,
-                              textTransform: "uppercase",
-                              letterSpacing: "0.7px",
-                            }}
-                          >
-                            {item.itemType}
-                          </div>
-
-                          <div
-                            style={{
-                              fontSize: "0.65rem",
-                              color: getRarityColor(item.rarity),
-                              fontWeight: 900,
-                              textTransform: "uppercase",
-                              letterSpacing: "0.7px",
-                            }}
-                          >
-                            {item.rarity || "common"}
-                          </div>
-                        </div>
-
-                        <div
-                          style={{
-                            fontWeight: 900,
-                            margin: "0.2rem 0 0.75rem",
-                            fontSize: "1rem",
-                            minHeight: "2.4rem",
-                            lineHeight: 1.25,
-                          }}
-                        >
-                          {item.itemName}
-                        </div>
-
-                        {item.itemType === "song" &&
-                          getYouTubeId(String(item.songUrl || "")) && (
-                            <button
-                              onClick={() => toggleSongPreview(item)}
-                              style={{
-                                width: "100%",
-                                padding: "0.55rem",
-                                marginBottom: "0.5rem",
-                                borderRadius: "12px",
-                                fontWeight: 900,
-                                fontSize: "0.78rem",
-                                cursor: "pointer",
-                                border:
-                                  previewingId === item.ID
-                                    ? "1px solid rgba(107,159,255,0.65)"
-                                    : "1px solid rgba(255,255,255,0.14)",
-                                background:
-                                  previewingId === item.ID
-                                    ? "rgba(3,71,244,0.2)"
-                                    : "rgba(255,255,255,0.06)",
-                                color:
-                                  previewingId === item.ID
-                                    ? "#fff"
-                                    : "var(--text)",
-                              }}
-                            >
-                              {previewingId === item.ID ? (
-                                previewLoading ? (
-                                  "Loading preview..."
-                                ) : (
-                                  <span
-                                    style={{
-                                      display: "inline-flex",
-                                      alignItems: "center",
-                                      gap: "0.4rem",
-                                    }}
-                                  >
-                                    <span className="shop-preview-bars">
-                                      <span />
-                                      <span />
-                                      <span />
-                                    </span>
-                                    Stop · {previewSecondsLeft}s
-                                  </span>
-                                )
-                              ) : (
-                                `▶ Preview · ${SONG_PREVIEW_SECONDS}s`
-                              )}
-                            </button>
-                          )}
-
-                        <button
-                          onClick={() => handleBuy(item)}
-                          disabled={owned || !canAfford || isBuying}
-                          title={
-                            !accountReady
-                              ? "Your manager coins are unavailable. Check Firestore access and reload."
-                              : undefined
-                          }
-                          style={{
-                            width: "100%",
-                            padding: "0.75rem",
-                            borderRadius: "12px",
-                            border: "none",
-                            fontWeight: 900,
-                            cursor:
-                              owned || !canAfford || isBuying
-                                ? "not-allowed"
-                                : "pointer",
-                            background: owned
-                              ? "var(--border)"
-                              : !canAfford
-                              ? "rgba(255,255,255,0.08)"
-                              : "var(--blue)",
-                            color:
-                              owned || !canAfford
-                                ? "var(--text-muted)"
-                                : "#fff",
-                          }}
-                        >
-                          {owned
-                            ? "OWNED"
-                            : isBuying
-                            ? "Buying..."
-                            : !accountReady
-                            ? "COINS UNAVAILABLE"
-                            : `${itemPrice} Coins`}
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </section>
-          ))
-        )}
-
-        {/* Hidden YouTube player used for song previews. */}
-        <div
-          id="shop-song-preview-player"
-          style={{
-            width: "1px",
-            height: "1px",
-            overflow: "hidden",
-            opacity: 0,
-            pointerEvents: "none",
-          }}
-        />
-
-        <style jsx>{`
-          .shop-preview-bars {
-            display: inline-flex;
-            align-items: flex-end;
-            gap: 2px;
-            height: 10px;
-          }
-
-          .shop-preview-bars span {
-            width: 2px;
-            background: var(--blue);
-            animation: shop-preview-wave 1s ease-in-out infinite;
-          }
-
-          .shop-preview-bars span:nth-child(2) {
-            animation-delay: 0.2s;
-          }
-
-          .shop-preview-bars span:nth-child(3) {
-            animation-delay: 0.4s;
-          }
-
-          @keyframes shop-preview-wave {
-            0%,
-            100% {
-              height: 40%;
-            }
-
-            50% {
-              height: 100%;
-            }
-          }
-        `}</style>
-      </div>
-    </Shell>
-  );
-}
-
-function LimitedCardShopTile({
-  card,
-  accountReady,
-  userCoins,
-  isBuying,
-  onBuy,
+function PlayerCard({
+  player,
+  points,
+  isCaptain,
+  slot,
+  boostCards,
+  onClick,
 }: {
-  card: LimitedCard;
-  accountReady: boolean;
-  userCoins: number | null;
-  isBuying: boolean;
-  onBuy: (card: LimitedCard) => void;
+  player: Player;
+  points: number;
+  isCaptain?: boolean;
+  isSub?: boolean;
+  slot?: string;
+  boostCards?: LimitedCardBoostEntry[];
+  onClick?: () => void;
 }) {
-  const rarityColor = getLimitedCardRarityColor(card.rarity, card.accentColor);
-  const imageUrl = getLimitedCardImageUrl(card.image);
-  const price = Number(card.shopPrice || 0);
-  const stock = Number(card.stock || 0);
-  const soldOut = stock <= 0;
-  const canAfford =
-    accountReady &&
-    userCoins !== null &&
-    Number.isFinite(price) &&
-    userCoins >= price;
-  const disabled = soldOut || !accountReady || !canAfford || isBuying;
+  const description = player.desc || "Fit to play";
+  const isUnfit = description !== "Fit to play";
+  const boostList = Array.isArray(boostCards) ? boostCards : [];
+  const boostTotal = boostList.reduce(
+    (sum, entry) => sum + Number(entry.delta || 0),
+    0
+  );
+  const hasBoostCards = boostList.length > 0;
+  const mainBoostColor = hasBoostCards
+    ? getLimitedCardRarityColor(boostList[0].rarity, boostList[0].accentColor)
+    : "#22c55e";
+  const boostedPoints = points + boostTotal;
+  const shownPoints = isCaptain ? boostedPoints * 2 : boostedPoints;
 
   return (
     <div
+      className="team-player-card"
+      onClick={onClick}
       style={{
         position: "relative",
         overflow: "hidden",
-        background: `linear-gradient(160deg, ${rarityColor}24, rgba(255,255,255,0.015)), var(--surface)`,
-        border: `1px solid ${rarityColor}66`,
+        background: hasBoostCards
+          ? `linear-gradient(145deg, ${mainBoostColor}33, rgba(255,255,255,0.02)), var(--surface)`
+          : isCaptain
+          ? "linear-gradient(145deg, rgba(3,71,244,0.18), rgba(255,193,7,0.07)), var(--surface)"
+          : "linear-gradient(145deg, rgba(255,255,255,0.04), rgba(255,255,255,0.015)), var(--surface)",
+        border: `1px solid ${
+          isUnfit
+            ? "var(--red)"
+            : hasBoostCards
+            ? `${mainBoostColor}cc`
+            : isCaptain
+            ? "rgba(107,159,255,0.75)"
+            : "var(--border)"
+        }`,
+        boxShadow: hasBoostCards ? `0 0 20px ${mainBoostColor}55` : "none",
         borderRadius: "20px",
-        display: "flex",
-        flexDirection: "column",
+        padding: "0.75rem",
+        cursor: "pointer",
+        transition: "transform 0.15s ease",
+        minHeight: "235px",
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.transform = "translateY(-4px) scale(1.01)";
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.transform = "translateY(0) scale(1)";
       }}
     >
+      <div
+        style={{
+          position: "absolute",
+          width: "120px",
+          height: "120px",
+          right: "-55px",
+          top: "-55px",
+          borderRadius: "999px",
+          background: isCaptain
+            ? "rgba(255,193,7,0.12)"
+            : "rgba(3,71,244,0.08)",
+          pointerEvents: "none",
+        }}
+      />
+
       <div
         style={{
           position: "absolute",
@@ -1582,7 +148,23 @@ function LimitedCardShopTile({
           flexWrap: "wrap",
         }}
       >
-        {card.showNewTag && (
+        {slot && (
+          <span
+            style={{
+              background: "rgba(0,0,0,0.45)",
+              color: "#fff",
+              border: "1px solid rgba(255,255,255,0.12)",
+              fontSize: "0.62rem",
+              fontWeight: 800,
+              padding: "0.2rem 0.45rem",
+              borderRadius: "999px",
+            }}
+          >
+            {slot}
+          </span>
+        )}
+
+        {isCaptain && (
           <span
             style={{
               background: "var(--blue)",
@@ -1593,45 +175,63 @@ function LimitedCardShopTile({
               borderRadius: "999px",
             }}
           >
-            NEW
+            CAPTAIN
           </span>
         )}
 
-        {card.showLeavingTodayTag && (
-          <span
-            style={{
-              background: "#0f0d1b",
-              color: "var(--accent)",
-              border: "1px solid rgba(255,193,7,0.3)",
-              fontSize: "0.62rem",
-              fontWeight: 900,
-              padding: "0.2rem 0.45rem",
-              borderRadius: "999px",
-            }}
-          >
-            LEAVING TODAY
-          </span>
-        )}
+        {boostList.map((entry, index) => {
+          const color = getLimitedCardRarityColor(
+            entry.rarity,
+            entry.accentColor
+          );
+
+          return (
+            <span
+              key={`${entry.cardId}-${index}`}
+              style={{
+                background: `${color}2e`,
+                color,
+                border: `1px solid ${color}80`,
+                fontSize: "0.62rem",
+                fontWeight: 900,
+                padding: "0.2rem 0.45rem",
+                borderRadius: "999px",
+                maxWidth: "120px",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              ⚡ {entry.cardName || "Boost"}
+            </span>
+          );
+        })}
       </div>
 
       <div
         style={{
+          position: "relative",
+          zIndex: 2,
           width: "100%",
-          aspectRatio: "4/3",
-          background: `radial-gradient(circle at 30% 20%, ${rarityColor}30, transparent 45%), #111`,
-          borderBottom: "1px solid var(--border)",
+          aspectRatio: "1/1",
+          borderRadius: "16px",
+          overflow: "hidden",
+          background:
+            "radial-gradient(circle at 30% 20%, rgba(255,255,255,0.08), transparent 35%), #161616",
+          marginBottom: "0.8rem",
+          border: "1px solid rgba(255,255,255,0.08)",
         }}
       >
-        {imageUrl ? (
+        {player.image ? (
           <img
-            src={imageUrl}
-            alt={card.cardName}
+            src={player.image}
             style={{
               width: "100%",
               height: "100%",
               objectFit: "cover",
               display: "block",
             }}
+            alt={player.name}
           />
         ) : (
           <div
@@ -1641,155 +241,1445 @@ function LimitedCardShopTile({
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              color: "rgba(255,255,255,0.22)",
+              fontSize: "2.4rem",
               fontWeight: 900,
-              fontSize: "2rem",
+              color: "rgba(255,255,255,0.18)",
             }}
           >
-            {card.cardName?.slice(0, 1) || "?"}
+            {player.name.slice(0, 1)}
           </div>
         )}
+
+        <div
+          style={{
+            position: "absolute",
+            left: 0,
+            right: 0,
+            bottom: 0,
+            padding: "1.5rem 0.6rem 0.55rem",
+            background:
+              "linear-gradient(to top, rgba(0,0,0,0.78), transparent)",
+          }}
+        >
+          <div
+            style={{
+              color: "#fff",
+              fontWeight: 900,
+              fontSize: "0.95rem",
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+          >
+            {player.name}
+          </div>
+        </div>
       </div>
 
       <div
         style={{
-          padding: "1rem",
-          display: "flex",
-          flexDirection: "column",
-          gap: "0.4rem",
-          flex: 1,
+          position: "relative",
+          zIndex: 2,
+          display: "grid",
+          gridTemplateColumns: "1fr auto",
+          gap: "0.75rem",
+          alignItems: "center",
+        }}
+      >
+        <div>
+          <div
+            style={{
+              fontSize: "0.7rem",
+              color: "var(--text-muted)",
+              marginBottom: "0.2rem",
+            }}
+          >
+            {player.game}
+          </div>
+
+          <div
+            style={{
+              fontSize: "0.72rem",
+              color: isUnfit ? "var(--red)" : "var(--text-muted)",
+              lineHeight: 1.35,
+              height: "2rem",
+              overflow: "hidden",
+            }}
+          >
+            {description}
+          </div>
+        </div>
+
+        <div
+          style={{
+            textAlign: "right",
+            background: isCaptain
+              ? "rgba(255,193,7,0.12)"
+              : "rgba(255,255,255,0.045)",
+            border: isCaptain
+              ? "1px solid rgba(255,193,7,0.25)"
+              : "1px solid rgba(255,255,255,0.08)",
+            borderRadius: "14px",
+            padding: "0.5rem 0.65rem",
+            minWidth: "70px",
+          }}
+        >
+          <div
+            style={{
+              fontSize: "1.25rem",
+              fontWeight: 900,
+              color: isCaptain ? "var(--accent)" : "var(--text)",
+              lineHeight: 1,
+            }}
+          >
+            {shownPoints}
+          </div>
+
+          {boostTotal !== 0 && (
+            <div
+              style={{
+                fontSize: "0.62rem",
+                fontWeight: 900,
+                color: boostTotal > 0 ? "var(--green)" : "var(--red)",
+                marginTop: "0.2rem",
+                whiteSpace: "nowrap",
+              }}
+            >
+              ⚡ {boostTotal > 0 ? `+${boostTotal}` : boostTotal} boost
+            </div>
+          )}
+
+          <div
+            style={{
+              fontSize: "0.62rem",
+              color: "var(--text-muted)",
+              marginTop: "0.2rem",
+              whiteSpace: "nowrap",
+            }}
+          >
+            pts {isCaptain ? "x2" : ""}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StatsModal({
+  player,
+  stats,
+  isCaptain,
+  boostCards,
+  onClose,
+}: {
+  player: Player;
+  stats: any;
+  isCaptain: boolean;
+  boostCards?: LimitedCardBoostEntry[];
+  onClose: () => void;
+}) {
+  const s = (key: string) => Number(stats[key] || 0);
+  const boostList = Array.isArray(boostCards) ? boostCards : [];
+
+  const getBreakdown = () => {
+    const rows: { label: string; val: any; pts: number }[] = [];
+
+    if (s("matchWin"))
+      rows.push({
+        label: "Match Win",
+        val: s("matchWin"),
+        pts: s("matchWin") * 2,
+      });
+
+    if (s("matchLose"))
+      rows.push({
+        label: "Match Loss",
+        val: s("matchLose"),
+        pts: s("matchLose") * -2,
+      });
+
+    if (s("mvp"))
+      rows.push({
+        label: "MVP",
+        val: s("mvp"),
+        pts: s("mvp") * 8,
+      });
+
+    if (s("svp"))
+      rows.push({
+        label: "SVP",
+        val: s("svp"),
+        pts: s("svp") * 5,
+      });
+
+    if (s("bonus"))
+      rows.push({
+        label: "Bonus",
+        val: s("bonus"),
+        pts: s("bonus") * 1,
+      });
+
+    if (player.game === "Valorant") {
+      if (s("kills"))
+        rows.push({
+          label: "Kills",
+          val: s("kills"),
+          pts: Math.floor(s("kills") / 2),
+        });
+
+      if (s("assists"))
+        rows.push({
+          label: "Assists",
+          val: s("assists"),
+          pts: Math.floor(s("assists") / 2),
+        });
+
+      if (s("deaths"))
+        rows.push({
+          label: "Deaths",
+          val: s("deaths"),
+          pts: Math.floor(s("deaths") / 3) * -1,
+        });
+
+      if (s("firstBlood"))
+        rows.push({
+          label: "First Blood",
+          val: s("firstBlood"),
+          pts: s("firstBlood"),
+        });
+
+      if (s("firstDeath"))
+        rows.push({
+          label: "First Death",
+          val: s("firstDeath"),
+          pts: s("firstDeath") * -1,
+        });
+
+      if (s("tripleKill"))
+        rows.push({
+          label: "Triple Kill",
+          val: s("tripleKill"),
+          pts: s("tripleKill") * 3,
+        });
+
+      if (s("quadraKill"))
+        rows.push({
+          label: "Quadra Kill",
+          val: s("quadraKill"),
+          pts: s("quadraKill") * 5,
+        });
+
+      if (s("ace"))
+        rows.push({
+          label: "Ace",
+          val: s("ace"),
+          pts: s("ace") * 8,
+        });
+
+      if (s("clutch"))
+        rows.push({
+          label: "Clutch",
+          val: s("clutch"),
+          pts: s("clutch") * 2,
+        });
+    } else {
+      if (s("kills"))
+        rows.push({
+          label: "Kills",
+          val: s("kills"),
+          pts: Math.floor(s("kills") / 3),
+        });
+
+      if (s("assists"))
+        rows.push({
+          label: "Assists",
+          val: s("assists"),
+          pts: Math.floor(s("assists") / 4),
+        });
+
+      if (s("deaths"))
+        rows.push({
+          label: "Deaths",
+          val: s("deaths"),
+          pts: s("deaths") * -2,
+        });
+
+      if (s("lastKills"))
+        rows.push({
+          label: "Last Kills",
+          val: s("lastKills"),
+          pts: Math.floor(s("lastKills") / 2),
+        });
+
+      if (s("headKill"))
+        rows.push({
+          label: "Head Kill",
+          val: s("headKill"),
+          pts: s("headKill") * 3,
+        });
+
+      if (s("healing"))
+        rows.push({
+          label: "Healing",
+          val: s("healing"),
+          pts: Math.floor(s("healing") / 5050),
+        });
+
+      if (s("damage"))
+        rows.push({
+          label: "Damage",
+          val: s("damage"),
+          pts: Math.floor(s("damage") / 5050),
+        });
+
+      if (s("blocked"))
+        rows.push({
+          label: "Blocked",
+          val: s("blocked"),
+          pts: Math.floor(s("blocked") / 5050),
+        });
+
+      if (s("soloKills"))
+        rows.push({
+          label: "Solo Kills",
+          val: s("soloKills"),
+          pts: s("soloKills"),
+        });
+    }
+
+    return rows;
+  };
+
+  const rows = getBreakdown();
+  const totalRaw = rows.reduce((acc, r) => acc + r.pts, 0);
+  const boostTotal = boostList.reduce(
+    (acc, entry) => acc + Number(entry.delta || 0),
+    0
+  );
+  const totalWithBoost = totalRaw + boostTotal;
+  const totalShown = isCaptain ? totalWithBoost * 2 : totalWithBoost;
+
+  return (
+    <div
+      className="team-stats-modal"
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,0.85)",
+        zIndex: 1000,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "1rem",
+      }}
+      onClick={onClose}
+    >
+      <div
+        className="team-stats-modal-content"
+        style={{
+          position: "relative",
+          overflow: "hidden",
+          background:
+            "radial-gradient(circle at 15% 0%, rgba(3,71,244,0.22), transparent 35%), var(--surface)",
+          border: "1px solid var(--border)",
+          borderRadius: "26px",
+          width: "100%",
+          maxWidth: "500px",
+          padding: "1.25rem",
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button
+          onClick={onClose}
+          style={{
+            position: "absolute",
+            top: "1rem",
+            right: "1rem",
+            background: "rgba(255,255,255,0.06)",
+            border: "1px solid rgba(255,255,255,0.1)",
+            color: "#fff",
+            width: "34px",
+            height: "34px",
+            borderRadius: "12px",
+            fontSize: "1rem",
+            cursor: "pointer",
+            zIndex: 2,
+          }}
+        >
+          ✕
+        </button>
+
+        <div
+          className="team-stats-modal-header"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "1rem",
+            marginBottom: "1.25rem",
+            paddingRight: "2.5rem",
+          }}
+        >
+          <div
+            style={{
+              width: "72px",
+              height: "72px",
+              borderRadius: "18px",
+              overflow: "hidden",
+              background: "#222",
+              border: "1px solid rgba(255,255,255,0.1)",
+              flexShrink: 0,
+            }}
+          >
+            {player.image ? (
+              <img
+                src={player.image}
+                style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                alt={player.name}
+              />
+            ) : (
+              <div
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: "1.8rem",
+                  fontWeight: 900,
+                  color: "rgba(255,255,255,0.18)",
+                }}
+              >
+                {player.name.slice(0, 1)}
+              </div>
+            )}
+          </div>
+
+          <div>
+            <h2 style={{ fontSize: "1.25rem", fontWeight: 900, margin: 0 }}>
+              {player.name}
+            </h2>
+
+            <div
+              style={{
+                fontSize: "0.75rem",
+                color: "var(--accent)",
+                fontWeight: 800,
+                marginTop: "0.25rem",
+              }}
+            >
+              {player.game.toUpperCase()} ·{" "}
+              {isCaptain ? "CAPTAIN STATS" : "PLAYER STATS"}
+            </div>
+          </div>
+        </div>
+
+        <div
+          style={{
+            background: "rgba(255,255,255,0.035)",
+            border: "1px solid rgba(255,255,255,0.08)",
+            borderRadius: "18px",
+            overflow: "hidden",
+          }}
+        >
+          <div
+            className="team-stats-row"
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 70px 70px",
+              fontSize: "0.68rem",
+              color: "var(--text-muted)",
+              fontWeight: 900,
+              textTransform: "uppercase",
+              padding: "0.8rem 0.9rem",
+              borderBottom: "1px solid var(--border)",
+            }}
+          >
+            <span>Statistic</span>
+            <span style={{ textAlign: "right" }}>Value</span>
+            <span style={{ textAlign: "right" }}>Pts</span>
+          </div>
+
+          <div
+            style={{
+              maxHeight: "310px",
+              overflowY: "auto",
+            }}
+          >
+            {rows.length === 0 ? (
+              <div
+                style={{
+                  padding: "1.5rem",
+                  color: "var(--text-muted)",
+                  textAlign: "center",
+                  fontSize: "0.9rem",
+                }}
+              >
+                No stats recorded for this player yet.
+              </div>
+            ) : (
+              rows.map((r, i) => (
+                <div
+                  key={i}
+                  className="team-stats-row"
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 70px 70px",
+                    padding: "0.8rem 0.9rem",
+                    borderBottom:
+                      i === rows.length - 1
+                        ? "none"
+                        : "1px solid var(--border)",
+                    fontSize: "0.9rem",
+                  }}
+                >
+                  <span style={{ fontWeight: 700 }}>{r.label}</span>
+
+                  <span
+                    style={{
+                      textAlign: "right",
+                      color: "var(--text-muted)",
+                    }}
+                  >
+                    {r.val.toLocaleString()}
+                  </span>
+
+                  <span
+                    style={{
+                      textAlign: "right",
+                      fontWeight: 900,
+                      color: r.pts >= 0 ? "var(--green)" : "var(--red)",
+                    }}
+                  >
+                    {r.pts > 0 ? `+${r.pts}` : r.pts}
+                  </span>
+                </div>
+              ))
+            )}
+
+            {boostList.length > 0 && (
+              <div>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 70px 70px",
+                    fontSize: "0.68rem",
+                    color: "var(--accent)",
+                    fontWeight: 900,
+                    textTransform: "uppercase",
+                    padding: "0.8rem 0.9rem 0.4rem",
+                    borderTop: "1px solid var(--border)",
+                    marginTop: "0.4rem",
+                  }}
+                >
+                  <span>⚡ Mastery Card Boost</span>
+                  <span style={{ textAlign: "right" }}>Mult</span>
+                  <span style={{ textAlign: "right" }}>Pts</span>
+                </div>
+
+                {boostList.map((entry, i) => {
+                  const color = getLimitedCardRarityColor(
+                    entry.rarity,
+                    entry.accentColor
+                  );
+
+                  return (
+                    <div
+                      key={`boost-${entry.cardId}-${i}`}
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "1fr 70px 70px",
+                        padding: "0.7rem 0.9rem",
+                        borderBottom:
+                          i === boostList.length - 1
+                            ? "none"
+                            : "1px solid var(--border)",
+                        fontSize: "0.9rem",
+                      }}
+                    >
+                      <span style={{ fontWeight: 700, color }}>
+                        {entry.cardName || "Mastery card"}
+                      </span>
+
+                      <span
+                        style={{
+                          textAlign: "right",
+                          color: "var(--text-muted)",
+                        }}
+                      >
+                        {Number(entry.boostValue ?? 1)}×
+                      </span>
+
+                      <span
+                        style={{
+                          textAlign: "right",
+                          fontWeight: 900,
+                          color:
+                            Number(entry.delta || 0) >= 0
+                              ? "var(--green)"
+                              : "var(--red)",
+                        }}
+                      >
+                        {Number(entry.delta || 0) > 0
+                          ? `+${entry.delta}`
+                          : entry.delta}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div
+          style={{
+            marginTop: "1rem",
+            padding: "1rem",
+            background:
+              "linear-gradient(135deg, rgba(255,193,7,0.12), rgba(3,71,244,0.12))",
+            border: "1px solid rgba(255,255,255,0.1)",
+            borderRadius: "18px",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: "1rem",
+          }}
+        >
+          <div>
+            <div style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>
+              {isCaptain ? "Doubled Points" : "Points"}
+            </div>
+
+            <div style={{ fontSize: "0.9rem", fontWeight: 800 }}>
+              {isCaptain ? "TOTAL" : "TOTAL"}
+            </div>
+          </div>
+
+          <div
+            style={{
+              fontSize: "1.7rem",
+              fontWeight: 900,
+              color: "var(--accent)",
+            }}
+          >
+            {totalShown}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TeamContent() {
+  const { user } = useAuth();
+  const searchParams = useSearchParams();
+
+  const queryEmail = searchParams.get("email");
+  const targetEmail = queryEmail || user?.email;
+  const isOwnTeam = !queryEmail || queryEmail === user?.email;
+
+  const [players, setPlayers] = useState<Record<string, Player>>({});
+  const [gwTeams, setGwTeams] = useState<GWTeam[]>([]);
+  const [matchStats, setMatchStats] = useState<Record<string, any>>({});
+  const [limitedCardCatalog, setLimitedCardCatalog] = useState<
+    Record<string, LimitedCard>
+  >({});
+  const [userCardCopies, setUserCardCopies] = useState<UserLimitedCard[]>([]);
+
+  const [currentGW, setCurrentGW] = useState<number>(7);
+  const [selectedGW, setSelectedGW] = useState<number>(7);
+  const [loading, setLoading] = useState(true);
+  const [isLocked, setIsLocked] = useState(false);
+
+  const [selectedStatPlayerId, setSelectedStatPlayerId] = useState<
+    string | null
+  >(null);
+
+  useEffect(() => {
+    if (!targetEmail) return;
+
+    const loadData = async () => {
+      setLoading(true);
+      setIsLocked(false);
+      setGwTeams([]);
+
+      try {
+        const settingsSnap = await getDocs(collection(db, "settings"));
+
+        let activeGW = 7;
+
+        if (!settingsSnap.empty) {
+          const settings = settingsSnap.docs[0].data() as Settings;
+          const rawGW = settings.currentGameweek;
+          const parsedGW = Number(rawGW);
+
+          // Gameweek 0 is a valid pre-season state.
+          activeGW =
+            rawGW !== undefined &&
+            rawGW !== null &&
+            Number.isFinite(parsedGW)
+              ? parsedGW
+              : 7;
+          setCurrentGW(activeGW);
+          setSelectedGW(activeGW);
+
+          if (settings.lockTeamLeaderboard) {
+            setIsLocked(true);
+            setLoading(false);
+            return;
+          }
+        }
+
+        const pSnap = await getDocs(collection(db, "players"));
+        const pMap: Record<string, Player> = {};
+
+        pSnap.docs.forEach((d) => {
+          const data = d.data();
+          const p = { id: d.id, ...data } as Player;
+
+          pMap[d.id] = p;
+
+          if (data.ID) {
+            pMap[data.ID] = p;
+          }
+        });
+
+        setPlayers(pMap);
+
+        const teamsSnap = await getDocs(
+          query(
+            collection(db, "gameweekTeams"),
+            where("ownerEmail", "==", targetEmail),
+            orderBy("gameweek", "desc")
+          )
+        );
+
+        const teams = teamsSnap.docs.map(
+          (d) => ({ id: d.id, ...d.data() } as GWTeam)
+        );
+
+        setGwTeams(teams);
+
+        const cardsSnap = await getDocs(collection(db, "limitedCards"));
+        const cardMap: Record<string, LimitedCard> = {};
+
+        cardsSnap.docs.forEach((d) => {
+          const data = d.data() as Partial<LimitedCard>;
+          const card = {
+            ...data,
+            id: d.id,
+            ID: String(data.ID || d.id),
+          } as LimitedCard;
+
+          cardMap[d.id] = card;
+
+          if (data.ID) {
+            cardMap[String(data.ID)] = card;
+          }
+        });
+
+        setLimitedCardCatalog(cardMap);
+
+        // Card copies are owner-only in the Firestore rules, so this only
+        // loads for your own team (or when the admin views a team). Other
+        // managers' teams rely on the limitedCardBoosts record the admin
+        // sync writes onto the gameweek team doc.
+        try {
+          const copiesSnap = await getDocs(
+            query(
+              collection(db, "userLimitedCards"),
+              where("ownerEmail", "==", targetEmail)
+            )
+          );
+
+          setUserCardCopies(
+            copiesSnap.docs.map(
+              (d) => ({ id: d.id, ...d.data() } as UserLimitedCard)
+            )
+          );
+        } catch {
+          setUserCardCopies([]);
+        }
+      } catch (err) {
+        console.error(err);
+      }
+
+      setLoading(false);
+    };
+
+    loadData();
+  }, [targetEmail]);
+
+  useEffect(() => {
+    const loadStats = async () => {
+      try {
+        const statsSnap = await getDocs(
+          query(
+            collection(db, "playerMatchStats"),
+            where("gameweek", "==", selectedGW)
+          )
+        );
+
+        const sMap: Record<string, any> = {};
+
+        statsSnap.docs.forEach((d) => {
+          const data = d.data();
+
+          if (data.Title) {
+            sMap[data.Title] = data;
+          }
+
+          if (data.player) {
+            sMap[data.player] = data;
+          }
+
+          sMap[d.id] = data;
+        });
+
+        setMatchStats(sMap);
+      } catch (err) {
+        console.error(err);
+      }
+    };
+
+    loadStats();
+  }, [selectedGW]);
+
+  const currentTeam = gwTeams.find((t) => t.gameweek === selectedGW);
+
+  const availableGWs = Array.from(new Set(gwTeams.map((t) => t.gameweek)))
+    .filter((gw) => gw <= currentGW)
+    .sort((a, b) => b - a);
+
+  const playerIds = currentTeam
+    ? [
+        currentTeam.player1,
+        currentTeam.player2,
+        currentTeam.player3,
+        currentTeam.player4,
+      ].filter(Boolean)
+    : [];
+
+  const getStatsFor = (id: string) => {
+    const p = players[id];
+
+    if (!p) return undefined;
+
+    return (
+      matchStats[p.name] ||
+      (p.ID ? matchStats[p.ID] : undefined) ||
+      matchStats[p.id]
+    );
+  };
+
+  const samePlayerRef = (a: string, b: string) => {
+    if (!a || !b) return false;
+    if (a === b) return true;
+
+    const p = players[a];
+
+    return Boolean(p && (p.ID === b || p.name === b));
+  };
+
+  const getPoints = (id: string) => {
+    const p = players[id];
+
+    if (!p) return 0;
+
+    const stats = getStatsFor(id);
+
+    if (stats?.gwPoints !== undefined) {
+      return Number(stats.gwPoints || 0);
+    }
+
+    return selectedGW === currentGW ? Number(p.points || 0) : 0;
+  };
+
+  // Limited cards attached to this gameweek's squad. After the admin
+  // syncs scores the team doc carries limitedCardBoosts — the exact boosts
+  // that were applied. Before that (own team only) the boost is computed
+  // from the attached copies with the same math the admin sync uses.
+  const boostsForPlayer = (pid: string): LimitedCardBoostEntry[] => {
+    if (!currentTeam) return [];
+
+    if (Array.isArray(currentTeam.limitedCardBoosts)) {
+      return currentTeam.limitedCardBoosts.filter((entry) =>
+        samePlayerRef(pid, String(entry.playerId || ""))
+      );
+    }
+
+    const attached = userCardCopies.filter((copy) => {
+      const inTeam =
+        Array.isArray(currentTeam.limitedCards) &&
+        currentTeam.limitedCards.includes(copy.id);
+      const byRecord =
+        copy.status === "active" &&
+        Number(copy.gameweek || 0) === currentTeam.gameweek;
+
+      return inTeam || byRecord;
+    });
+
+    const seenCardIds = new Set<string>();
+    const entries: LimitedCardBoostEntry[] = [];
+
+    attached.forEach((copy) => {
+      const card = limitedCardCatalog[String(copy.cardId || "")];
+
+      if (!card) return;
+
+      const boostPlayerId = String(card.playerId || "");
+
+      if (!boostPlayerId || !samePlayerRef(pid, boostPlayerId)) return;
+      if (seenCardIds.has(copy.cardId)) return;
+
+      seenCardIds.add(copy.cardId);
+
+      const stats = getStatsFor(pid);
+      const game = String(
+        (stats && stats.game) || players[pid]?.game || ""
+      );
+      const delta = limitedCardBoostDelta(game, card, stats);
+
+      entries.push({
+        playerId: boostPlayerId,
+        cardId: String(copy.cardId || ""),
+        cardName: String(card.cardName || ""),
+        rarity: String(card.rarity || ""),
+        accentColor: String(card.accentColor || ""),
+        boostStat: String(card.boostStat || ""),
+        boostValue: Number(card.boostValue ?? 1),
+        delta,
+      });
+    });
+
+    return entries;
+  };
+
+  const getBoostTotal = (pid: string) =>
+    boostsForPlayer(pid).reduce(
+      (sum, entry) => sum + Number(entry.delta || 0),
+      0
+    );
+
+  const calculateTeamGWPoints = (team: GWTeam) => {
+    const mainPlayerIds = [
+      team.player1,
+      team.player2,
+      team.player3,
+      team.player4,
+    ].filter(Boolean);
+
+    return mainPlayerIds.reduce((total, pid) => {
+      const points = getPoints(pid) + getBoostTotal(pid);
+
+      if (team.captain === pid) {
+        return total + points * 2;
+      }
+
+      return total + points;
+    }, 0);
+  };
+
+  const calculatedGWPoints = currentTeam ? calculateTeamGWPoints(currentTeam) : 0;
+  const storedGWPoints = Number(currentTeam?.gwPoints || 0);
+  const displayGWPoints = storedGWPoints || calculatedGWPoints;
+
+  const squadValue = playerIds.reduce((sum, pid) => {
+    const p = players[pid];
+    return sum + Number(p?.price || 0);
+  }, 0);
+
+  if (loading && gwTeams.length === 0) {
+    return (
+      <div
+        style={{
+          maxWidth: "900px",
+          margin: "4rem auto",
+          textAlign: "center",
+          color: "var(--text-muted)",
+        }}
+      >
+        Loading Squad...
+      </div>
+    );
+  }
+
+  if (isLocked) {
+    return (
+      <div
+        style={{
+          maxWidth: "760px",
+          margin: "4rem auto",
+          position: "relative",
+          overflow: "hidden",
+          border: "1px solid var(--border)",
+          borderRadius: "28px",
+          padding: "2.5rem",
+          background:
+            "radial-gradient(circle at 20% 10%, rgba(3, 71, 244, 0.3), transparent 35%), radial-gradient(circle at 90% 20%, rgba(255, 193, 7, 0.14), transparent 30%), linear-gradient(135deg, rgba(255,255,255,0.075), rgba(255,255,255,0.02))",
+          textAlign: "center",
         }}
       >
         <div
           style={{
+            width: "64px",
+            height: "64px",
+            borderRadius: "22px",
+            background: "rgba(255,255,255,0.05)",
+            border: "1px solid rgba(255,255,255,0.1)",
             display: "flex",
             alignItems: "center",
-            justifyContent: "space-between",
-            gap: "0.6rem",
+            justifyContent: "center",
+            margin: "0 auto 1.2rem",
+            fontSize: "2rem",
           }}
         >
-          <div
-            style={{
-              fontSize: "0.62rem",
-              fontWeight: 900,
-              textTransform: "uppercase",
-              letterSpacing: "0.7px",
-              color: "#8bb5ff",
-            }}
-          >
-            Mastery Card
-          </div>
-
-          <div
-            style={{
-              fontSize: "0.62rem",
-              color: rarityColor,
-              fontWeight: 900,
-              textTransform: "uppercase",
-              letterSpacing: "0.7px",
-            }}
-          >
-            {card.rarity || "rare"}
-          </div>
+          🔒
         </div>
 
-        <div style={{ fontWeight: 900, fontSize: "1rem", lineHeight: 1.2 }}>
-          {card.cardName}
-        </div>
-
-        <div
+        <h1
           style={{
-            color: "var(--accent)",
-            fontSize: "0.7rem",
-            fontWeight: 800,
-            lineHeight: 1.4,
+            fontSize: "clamp(2rem, 5vw, 3.2rem)",
+            lineHeight: 1,
+            letterSpacing: "-0.05em",
+            fontWeight: 900,
+            marginBottom: "0.75rem",
           }}
         >
-          {limitedCardPowerupText(card)}
-        </div>
+          {isOwnTeam ? "My Team is" : "Team Page is"}{" "}
+          <span style={{ color: "var(--blue)" }}>Locked</span>
+        </h1>
 
-        <div
+        <p
           style={{
             color: "var(--text-muted)",
-            fontSize: "0.68rem",
-            fontWeight: 700,
+            maxWidth: "460px",
+            margin: "0 auto",
+            lineHeight: 1.7,
           }}
         >
-          One-time use
-        </div>
+          Access to team pages is currently restricted by the admin. Check
+          back again soon.
+        </p>
+      </div>
+    );
+  }
 
+  return (
+    <main className="page-container team-page" style={{ maxWidth: "1120px", margin: "0 auto", paddingBottom: "3rem" }}>
+      <section
+        className="page-hero team-hero"
+        style={{
+          position: "relative",
+          overflow: "hidden",
+          border: "1px solid var(--border)",
+          borderRadius: "28px",
+          padding: "2rem",
+          marginBottom: "1rem",
+          background:
+            "radial-gradient(circle at 20% 10%, rgba(3, 71, 244, 0.28), transparent 32%), radial-gradient(circle at 90% 20%, rgba(255, 193, 7, 0.14), transparent 30%), linear-gradient(135deg, rgba(255,255,255,0.075), rgba(255,255,255,0.02))",
+        }}
+      >
         <div
           style={{
-            display: "flex",
-            gap: "0.4rem",
-            flexWrap: "wrap",
-            marginTop: "0.15rem",
+            position: "absolute",
+            width: "280px",
+            height: "280px",
+            right: "-110px",
+            bottom: "-110px",
+            borderRadius: "999px",
+            background: "rgba(3, 71, 244, 0.18)",
+            filter: "blur(20px)",
+            pointerEvents: "none",
           }}
-        >
-          <span
+        />
+
+        <div style={{ position: "relative", zIndex: 1 }}>
+          <div
             style={{
-              background: "rgba(3,71,244,0.12)",
-              border: "1px solid rgba(107,159,255,0.35)",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "8px",
+              background: "rgba(3, 71, 244, 0.15)",
+              border: "1px solid rgba(107, 159, 255, 0.45)",
               color: "#8bb5ff",
-              fontSize: "0.62rem",
-              fontWeight: 900,
-              padding: "0.22rem 0.45rem",
+              fontSize: "0.75rem",
+              padding: "6px 12px",
               borderRadius: "999px",
+              marginBottom: "1rem",
+              fontWeight: 700,
             }}
           >
-            Squad cost +{Number(card.transferPrice || 0).toFixed(1)}m
-          </span>
+            <span
+              style={{
+                width: "8px",
+                height: "8px",
+                borderRadius: "999px",
+                background: "var(--accent)",
+              }}
+            />
+            {isOwnTeam ? "My Team" : "Manager Team"} · GW{selectedGW}
+          </div>
 
-          <span
+          <h1
             style={{
-              background: "rgba(255,255,255,0.045)",
-              border: "1px solid rgba(255,255,255,0.08)",
-              color: soldOut ? "var(--red)" : "var(--text-muted)",
-              fontSize: "0.62rem",
+              fontSize: "clamp(2.5rem, 7vw, 4.75rem)",
+              lineHeight: 0.95,
+              letterSpacing: "-0.06em",
               fontWeight: 900,
-              padding: "0.22rem 0.45rem",
-              borderRadius: "999px",
+              margin: "0 0 1rem",
             }}
           >
-            {soldOut ? "Sold out" : `${stock} left`}
-          </span>
-        </div>
+            {isOwnTeam ? "My" : "Manager"}
+            <br />
+            <span style={{ color: "var(--blue)" }}>Team</span>
+          </h1>
 
-        <button
-          onClick={() => onBuy(card)}
-          disabled={disabled}
-          title={
-            !accountReady
-              ? "Your manager coins are unavailable. Check Firestore access and reload."
-              : undefined
-          }
+          <div className="gameweek-tabs" style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
+            {availableGWs.map((gw) => (
+              <button
+                key={gw}
+                onClick={() => setSelectedGW(gw)}
+                style={{
+                  padding: "0.65rem 0.95rem",
+                  borderRadius: "12px",
+                  border:
+                    selectedGW === gw
+                      ? "1px solid rgba(107,159,255,0.65)"
+                      : "1px solid var(--border)",
+                  background:
+                    selectedGW === gw
+                      ? "var(--blue)"
+                      : "rgba(255,255,255,0.045)",
+                  color: selectedGW === gw ? "#fff" : "var(--text-muted)",
+                  cursor: "pointer",
+                  fontWeight: 900,
+                }}
+              >
+                GW{gw}
+              </button>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {currentTeam ? (
+        <>
+          <section
+            className="team-summary-card responsive-scroll"
+            style={{
+              background: "var(--surface)",
+              border: "1px solid var(--border)",
+              borderRadius: "18px",
+              padding: "0.65rem",
+              marginBottom: "1rem",
+              overflowX: "auto",
+            }}
+          >
+            <div
+              className="team-summary-grid"
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1.35fr 1fr 1fr 1fr",
+                gap: "0.5rem",
+                minWidth: "520px",
+                alignItems: "stretch",
+              }}
+            >
+              <div
+                className="team-summary-gw-points"
+                style={{
+                  background: "rgba(255,193,7,0.08)",
+                  border: "1px solid rgba(255,193,7,0.25)",
+                  borderRadius: "14px",
+                  padding: "0.85rem",
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: "2rem",
+                    fontWeight: 900,
+                    color: "var(--accent)",
+                    lineHeight: 1,
+                    letterSpacing: "-0.05em",
+                  }}
+                >
+                  {displayGWPoints}
+                </div>
+
+                <div
+                  style={{
+                    color: "var(--text-muted)",
+                    fontSize: "0.68rem",
+                    marginTop: "0.35rem",
+                    fontWeight: 800,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.7px",
+                  }}
+                >
+                  GW Points
+                </div>
+              </div>
+
+              <div
+                style={{
+                  background: "rgba(255,255,255,0.035)",
+                  border: "1px solid var(--border)",
+                  borderRadius: "14px",
+                  padding: "0.85rem",
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: "1.45rem",
+                    fontWeight: 900,
+                    color: "var(--text)",
+                    lineHeight: 1,
+                    letterSpacing: "-0.04em",
+                  }}
+                >
+                  {currentTeam.transfersMade ?? 0}
+                </div>
+
+                <div
+                  style={{
+                    color: "var(--text-muted)",
+                    fontSize: "0.68rem",
+                    marginTop: "0.35rem",
+                    fontWeight: 800,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.7px",
+                  }}
+                >
+                  Transfers
+                </div>
+              </div>
+
+              <div
+                style={{
+                  background: "rgba(255,255,255,0.035)",
+                  border: "1px solid var(--border)",
+                  borderRadius: "14px",
+                  padding: "0.85rem",
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: "1.45rem",
+                    fontWeight: 900,
+                    color: currentTeam.transferPenalty
+                      ? "var(--red)"
+                      : "var(--text)",
+                    lineHeight: 1,
+                    letterSpacing: "-0.04em",
+                  }}
+                >
+                  {currentTeam.transferPenalty ?? 0}
+                </div>
+
+                <div
+                  style={{
+                    color: "var(--text-muted)",
+                    fontSize: "0.68rem",
+                    marginTop: "0.35rem",
+                    fontWeight: 800,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.7px",
+                  }}
+                >
+                  Penalty
+                </div>
+              </div>
+
+              <div
+                style={{
+                  background: "rgba(255,255,255,0.035)",
+                  border: "1px solid var(--border)",
+                  borderRadius: "14px",
+                  padding: "0.85rem",
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: "1.45rem",
+                    fontWeight: 900,
+                    color: "var(--text)",
+                    lineHeight: 1,
+                    letterSpacing: "-0.04em",
+                  }}
+                >
+                  {squadValue.toFixed(1)}
+                </div>
+
+                <div
+                  style={{
+                    color: "var(--text-muted)",
+                    fontSize: "0.68rem",
+                    marginTop: "0.35rem",
+                    fontWeight: 800,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.7px",
+                  }}
+                >
+                  Squad Value
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section
+            className="team-squad-section"
+            style={{
+              background:
+                "radial-gradient(circle at 50% 0%, rgba(3,71,244,0.12), transparent 35%), var(--surface)",
+              border: "1px solid var(--border)",
+              borderRadius: "26px",
+              padding: "1rem",
+              marginBottom: "1rem",
+              overflow: "hidden",
+            }}
+          >
+            <div
+              style={{
+                marginBottom: "1rem",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: "0.75rem",
+                flexWrap: "wrap",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: "0.75rem",
+                  color: "var(--text-muted)",
+                  textTransform: "uppercase",
+                  letterSpacing: "1px",
+                  fontWeight: 900,
+                }}
+              >
+                Starting IV
+              </div>
+
+              {playerIds.some((pid) => boostsForPlayer(pid).length > 0) && (
+                <div
+                  style={{
+                    fontSize: "0.7rem",
+                    color: "var(--accent)",
+                    fontWeight: 800,
+                  }}
+                >
+                  ⚡ Mastery card boost active
+                </div>
+              )}
+            </div>
+
+            <div
+              className="team-squad-grid"
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(155px, 1fr))",
+                gap: "1rem",
+              }}
+            >
+              {playerIds.map((pid, i) => {
+                const player = players[pid];
+
+                if (!player) return null;
+
+                return (
+                  <PlayerCard
+                    key={pid || i}
+                    player={player}
+                    points={getPoints(pid)}
+                    isCaptain={currentTeam.captain === pid}
+                    slot={`P${i + 1}`}
+                    boostCards={boostsForPlayer(pid)}
+                    onClick={() => setSelectedStatPlayerId(pid)}
+                  />
+                );
+              })}
+            </div>
+          </section>
+
+          {currentTeam.sub && players[currentTeam.sub] && (
+            <section
+              style={{
+                background: "var(--surface)",
+                border: "1px solid var(--border)",
+                borderRadius: "24px",
+                padding: "1rem",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: "0.75rem",
+                  color: "var(--text-muted)",
+                  textTransform: "uppercase",
+                  letterSpacing: "1px",
+                  fontWeight: 900,
+                  marginBottom: "1rem",
+                }}
+              >
+                Bench
+              </div>
+
+              <div className="team-bench-card" style={{ maxWidth: "220px" }}>
+                <PlayerCard
+                  player={players[currentTeam.sub]}
+                  points={getPoints(currentTeam.sub)}
+                  slot="BENCH"
+                  onClick={() => setSelectedStatPlayerId(currentTeam.sub)}
+                />
+              </div>
+            </section>
+          )}
+        </>
+      ) : (
+        <div
           style={{
-            marginTop: "auto",
-            width: "100%",
-            padding: "0.75rem",
-            borderRadius: "12px",
-            border: "none",
-            fontWeight: 900,
-            cursor: disabled ? "not-allowed" : "pointer",
-            background: soldOut
-              ? "var(--border)"
-              : !canAfford
-              ? "rgba(255,255,255,0.08)"
-              : "var(--blue)",
-            color: soldOut || !canAfford ? "var(--text-muted)" : "#fff",
+            background: "var(--surface)",
+            border: "1px solid var(--border)",
+            borderRadius: "20px",
+            padding: "2rem",
+            color: "var(--text-muted)",
+            textAlign: "center",
           }}
         >
-          {soldOut
-            ? "SOLD OUT"
-            : isBuying
-            ? "Buying..."
-            : !accountReady
-            ? "COINS UNAVAILABLE"
-            : !canAfford
-            ? "NOT ENOUGH COINS"
-            : `Buy · ${price.toLocaleString()} Coins`}
-        </button>
-      </div>
-    </div>
+          No squad data found for GW{selectedGW}.
+        </div>
+      )}
+
+      {selectedStatPlayerId && players[selectedStatPlayerId] && (
+        <StatsModal
+          player={players[selectedStatPlayerId]}
+          stats={
+            matchStats[players[selectedStatPlayerId].name] ||
+            (players[selectedStatPlayerId].ID
+              ? matchStats[players[selectedStatPlayerId].ID as string]
+              : undefined) ||
+            matchStats[players[selectedStatPlayerId].id] ||
+            {}
+          }
+          isCaptain={currentTeam?.captain === selectedStatPlayerId}
+          boostCards={
+            selectedStatPlayerId
+              ? boostsForPlayer(selectedStatPlayerId)
+              : []
+          }
+          onClose={() => setSelectedStatPlayerId(null)}
+        />
+      )}
+    </main>
+  );
+}
+
+export default function TeamPage() {
+  return (
+    <Shell>
+      <Suspense fallback={<p>Loading...</p>}>
+        <TeamContent />
+      </Suspense>
+    </Shell>
   );
 }
