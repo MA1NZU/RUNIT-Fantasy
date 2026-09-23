@@ -771,7 +771,7 @@ function StatsModal({
                     marginTop: "0.4rem",
                   }}
                 >
-                  <span>⚡ Limited Card Boost</span>
+                  <span>⚡ Mastery Card Boost</span>
                   <span style={{ textAlign: "right" }}>Mult</span>
                   <span style={{ textAlign: "right" }}>Pts</span>
                 </div>
@@ -797,7 +797,7 @@ function StatsModal({
                       }}
                     >
                       <span style={{ fontWeight: 700, color }}>
-                        {entry.cardName || "Limited card"}
+                        {entry.cardName || "Mastery card"}
                       </span>
 
                       <span
@@ -1569,7 +1569,7 @@ function TeamContent() {
                     fontWeight: 800,
                   }}
                 >
-                  ⚡ Limited card boost active
+                  ⚡ Mastery card boost active
                 </div>
               )}
             </div>
