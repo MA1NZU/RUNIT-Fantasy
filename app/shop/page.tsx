@@ -1120,7 +1120,7 @@ export default function ShopPage() {
                 </div>
 
                 <h2 style={{ fontSize: "1.35rem", fontWeight: 900, margin: 0 }}>
-                  Limited Cards
+                  Mastery Cards
                 </h2>
               </div>
 
@@ -1677,7 +1677,7 @@ function LimitedCardShopTile({
               color: "#8bb5ff",
             }}
           >
-            Limited Card
+            Mastery Card
           </div>
 
           <div
@@ -1715,7 +1715,7 @@ function LimitedCardShopTile({
             fontWeight: 700,
           }}
         >
-          One-time use · field him from the Transfers player market
+          One-time use
         </div>
 
         <div
