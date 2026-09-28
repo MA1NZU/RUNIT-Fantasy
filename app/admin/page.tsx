@@ -1,2198 +1,4 @@
-"use client";
-
-import { useEffect, useState } from "react";
-import { db } from "@/lib/firebase";
-import {
-  collection,
-  getDocs,
-  doc,
-  updateDoc,
-  query,
-  where,
-  setDoc,
-  addDoc,
-  deleteDoc,
-  writeBatch,
-  increment,
-} from "firebase/firestore";
-import { useAuth } from "@/lib/AuthContext";
-import { useRouter } from "next/navigation";
-import Shell from "@/app/shell";
-import {
-  LIMITED_CARD_RARITIES,
-  LimitedCard,
-  getLimitedCardImageUrl,
-  getLimitedCardRarityColor,
-  limitedCardBoostDelta,
-  limitedCardPowerupText,
-  limitedCardStatLabel,
-  limitedCardStatOptions,
-} from "@/lib/limitedCards";
-
-const ADMIN_EMAIL = "yahyaayman2006@gmail.com";
-
-type Player = {
-  id: string;
-  name: string;
-  game: string;
-  price: number;
-  points: number;
-  totalPoints: number;
-  desc: string;
-  ID?: string;
-  showInTransfers?: boolean;
-};
-
-type UserTeam = {
-  id: string;
-  manager: string;
-  totalPoints: number;
-  gameweekPoints: number;
-  coins: number;
-  Bank: number;
-  freeTransfers: number;
-  ownerEmail: string;
-  namez: string;
-  lastGwCoinsEarned?: number;
-  lastGwCoinsGameweek?: number;
-  lastGwCoinsGrantedAt?: string;
-  showInLeaderboard?: boolean;
-};
-
-type Settings = {
-  id: string;
-  currentGameweek: number;
-  deadline: string;
-  shopRefreshAt?: any;
-  lockTeamLeaderboard?: boolean;
-  lockTransfers?: boolean;
-  lockShop?: boolean;
-  lockFixtures?: boolean;
-  hiddenPages?: string[];
-};
-
-type ShopItem = {
-  id: string;
-  ID: string;
-  itemName: string;
-  itemType: "avatar" | "banner" | "song" | "title";
-  price: number;
-  previewImage: string;
-  songUrl?: string;
-  rarity: string;
-  section: string;
-  isVisible: boolean;
-  showNewTag?: boolean;
-  showLeavingTodayTag?: boolean;
-};
-
-type ShopSection = {
-  id: string;
-  title: string;
-  order: number;
-};
-
-type PlayerFixture = {
-  id: string;
-  gameweek: number;
-  playerOneId: string;
-  playerTwoId: string;
-};
-
-type Tab =
-  | "players"
-  | "fixtures"
-  | "pages"
-  | "stats"
-  | "managers"
-  | "shop"
-  | "cards"
-  | "sections"
-  | "settings"
-  | "locks";
-
-const HIDEABLE_PAGE_OPTIONS = [
-  { href: "/leaderboard", label: "Leaderboard" },
-  { href: "/fixtures", label: "Fixtures" },
-  { href: "/team", label: "My Team" },
-  { href: "/transfers", label: "Transfers" },
-  { href: "/shop", label: "Shop" },
-  { href: "/inventory", label: "Inventory" },
-  { href: "/profile", label: "Profile" },
-] as const;
-
-const defaultNewItem: Partial<ShopItem> = {
-  itemType: "avatar",
-  rarity: "common",
-  price: 0,
-  section: "General",
-  isVisible: true,
-  songUrl: "",
-  showNewTag: false,
-  showLeavingTodayTag: false,
-};
-
-const defaultNewCard: Partial<LimitedCard> = {
-  rarity: "rare",
-  image: "",
-  accentColor: "",
-  shopPrice: 0,
-  transferPrice: 0,
-  playerId: "",
-  boostStat: "kills",
-  boostValue: 1.5,
-  powerupText: "",
-  stock: 1,
-  isVisible: true,
-  showNewTag: false,
-  showLeavingTodayTag: false,
-};
-
-const getRankPrizeCoins = (rank: number) => {
-  if (rank === 1) return 4000;
-  if (rank === 2) return 3000;
-  if (rank === 3) return 2500;
-  if (rank === 4) return 1500;
-  if (rank >= 5) return 1000;
-  return 0;
-};
-
-function sectionDocId(title: string) {
-  return encodeURIComponent((title || "General").trim());
-}
-
-function toDateSafe(value: any): Date | null {
-  if (!value) return null;
-
-  if (typeof value.toDate === "function") return value.toDate();
-
-  if (typeof value === "object" && typeof value.seconds === "number") {
-    return new Date(value.seconds * 1000);
-  }
-
-  if (value instanceof Date) return value;
-
-  if (typeof value === "string") {
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return null;
-    return date;
-  }
-
-  return null;
-}
-
-function datetimeInputValue(value: any) {
-  if (!value) return "";
-
-  if (typeof value === "string") {
-    if (value.includes("T")) return value.slice(0, 16);
-
-    const date = toDateSafe(value);
-    if (!date) return "";
-
-    return date.toISOString().slice(0, 16);
-  }
-
-  const date = toDateSafe(value);
-  if (!date) return "";
-
-  return date.toISOString().slice(0, 16);
-}
-
-export default function AdminPage() {
-  const { user } = useAuth();
-  const router = useRouter();
-
-  const [tab, setTab] = useState<Tab>("players");
-
-  const [players, setPlayers] = useState<Player[]>([]);
-  const [managers, setManagers] = useState<UserTeam[]>([]);
-  const [shopItems, setShopItems] = useState<ShopItem[]>([]);
-  const [shopSections, setShopSections] = useState<ShopSection[]>([]);
-  const [limitedCards, setLimitedCards] = useState<LimitedCard[]>([]);
-  const [settings, setSettings] = useState<Settings | null>(null);
-  const [fixtures, setFixtures] = useState<PlayerFixture[]>([]);
-  const [fixtureGameweek, setFixtureGameweek] = useState(7);
-  const [newFixturePlayerOne, setNewFixturePlayerOne] = useState("");
-  const [newFixturePlayerTwo, setNewFixturePlayerTwo] = useState("");
-
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState<string | null>(null);
-  const [saved, setSaved] = useState<string | null>(null);
-
-  const [selectedPlayerId, setSelectedPlayerId] = useState("");
-  const [calcStats, setCalcStats] = useState<Record<string, string>>({});
-  const [newItem, setNewItem] = useState<Partial<ShopItem>>({
-    ...defaultNewItem,
-  });
-
-  const [newCard, setNewCard] = useState<Partial<LimitedCard>>({
-    ...defaultNewCard,
-  });
-
-  const [shopSearch, setShopSearch] = useState("");
-  const [shopTypeFilter, setShopTypeFilter] = useState<
-    "all" | ShopItem["itemType"]
-  >("all");
-  const [shopSortBy, setShopSortBy] = useState<
-    "type" | "name" | "price" | "section" | "rarity" | "visible"
-  >("type");
-
-  useEffect(() => {
-    if (user && user.email !== ADMIN_EMAIL) router.replace("/");
-  }, [user, router]);
-
-  useEffect(() => {
-    if (!user || user.email !== ADMIN_EMAIL) return;
-
-    const load = async () => {
-      setLoading(true);
-
-      try {
-        const [
-          pSnap,
-          mSnap,
-          sSnap,
-          shopSnap,
-          sectionsSnap,
-          fixturesSnap,
-          limitedCardsSnap,
-        ] = await Promise.all([
-          getDocs(collection(db, "players")),
-          getDocs(collection(db, "userTeams")),
-          getDocs(collection(db, "settings")),
-          getDocs(collection(db, "shopItems")),
-          getDocs(collection(db, "shopSections")),
-          getDocs(collection(db, "playerFixtures")),
-          getDocs(collection(db, "limitedCards")),
-        ]);
-
-        let activeGW = 7;
-
-        if (!sSnap.empty) {
-          const settingsData = {
-            id: sSnap.docs[0].id,
-            ...sSnap.docs[0].data(),
-          } as Settings;
-          const rawGW = settingsData.currentGameweek;
-          const parsedGW = Number(rawGW);
-
-          setSettings(settingsData);
-          // Gameweek 0 is a valid pre-season state.
-          activeGW =
-            rawGW !== undefined &&
-            rawGW !== null &&
-            Number.isFinite(parsedGW)
-              ? parsedGW
-              : 7;
-        }
-
-        setFixtureGameweek(activeGW);
-
-        const loadedShopItems = shopSnap.docs.map(
-          (d) => ({ id: d.id, ...d.data() } as ShopItem)
-        );
-
-        setShopItems(loadedShopItems);
-
-        setLimitedCards(
-          limitedCardsSnap.docs
-            .map((d) => ({ id: d.id, ...d.data() } as LimitedCard))
-            .sort((a, b) => (a.cardName || "").localeCompare(b.cardName || ""))
-        );
-
-        const sectionMap: Record<string, ShopSection> = {};
-
-        sectionsSnap.docs.forEach((d) => {
-          const data = d.data();
-          const title = String(data.title || d.id || "General");
-
-          sectionMap[title] = {
-            id: d.id,
-            title,
-            order: Number(data.order ?? 99),
-          };
-        });
-
-        loadedShopItems.forEach((item) => {
-          const title = item.section || "General";
-
-          if (!sectionMap[title]) {
-            sectionMap[title] = {
-              id: sectionDocId(title),
-              title,
-              order: 99,
-            };
-          }
-        });
-
-        setShopSections(
-          Object.values(sectionMap).sort(
-            (a, b) => a.order - b.order || a.title.localeCompare(b.title)
-          )
-        );
-
-        const gwTeamsSnap = await getDocs(
-          query(
-            collection(db, "gameweekTeams"),
-            where("gameweek", "==", activeGW)
-          )
-        );
-
-        const currentGwPointsByEmail: Record<string, number> = {};
-
-        gwTeamsSnap.docs.forEach((d) => {
-          const data = d.data();
-          const email = String(data.ownerEmail || "").toLowerCase();
-
-          if (email) currentGwPointsByEmail[email] = Number(data.gwPoints ?? 0);
-        });
-
-        setPlayers(
-          pSnap.docs
-            .map((d) => ({ id: d.id, ...d.data() } as Player))
-            .sort((a, b) => (a.name || "").localeCompare(b.name || ""))
-        );
-
-        setFixtures(
-          fixturesSnap.docs
-            .map((fixtureDoc) => {
-              const data = fixtureDoc.data();
-
-              return {
-                id: fixtureDoc.id,
-                gameweek: Number(data.gameweek || 0),
-                playerOneId: String(data.playerOneId || ""),
-                playerTwoId: String(data.playerTwoId || ""),
-              } as PlayerFixture;
-            })
-            .filter(
-              (fixture) =>
-                fixture.gameweek > 0 &&
-                Boolean(fixture.playerOneId) &&
-                Boolean(fixture.playerTwoId)
-            )
-            .sort(
-              (a, b) =>
-                a.gameweek - b.gameweek || a.id.localeCompare(b.id)
-            )
-        );
-
-        setManagers(
-          mSnap.docs
-            .map((d) => {
-              const manager = { id: d.id, ...d.data() } as UserTeam;
-              const emailKey = String(manager.ownerEmail || "").toLowerCase();
-
-              return {
-                ...manager,
-                totalPoints: Number(manager.totalPoints || 0),
-                gameweekPoints: currentGwPointsByEmail[emailKey] ?? 0,
-                coins: Number(manager.coins || 0),
-                Bank: Number(manager.Bank || 0),
-                freeTransfers: Number(manager.freeTransfers || 0),
-                lastGwCoinsEarned: Number(manager.lastGwCoinsEarned || 0),
-                lastGwCoinsGameweek: Number(manager.lastGwCoinsGameweek || 0),
-              };
-            })
-            .sort(
-              (a, b) => Number(b.totalPoints || 0) - Number(a.totalPoints || 0)
-            )
-        );
-      } catch (err) {
-        console.error("Load Error:", err);
-      }
-
-      setLoading(false);
-    };
-
-    load();
-  }, [user]);
-
-  const markSaved = (key: string) => {
-    setSaved(key);
-    setTimeout(() => setSaved(null), 2000);
-  };
-
-  const calculatePoints = (p: Player) => {
-    let total = 0;
-    const s = (key: string) => Number(calcStats[key] || 0);
-
-    total += s("matchWin") * 2;
-    total += s("matchLose") * -2;
-    total += s("mvp") * 8;
-    total += s("svp") * 5;
-    total += s("bonus") * 1;
-
-    if (p.game === "Valorant") {
-      total += Math.floor(s("kills") / 2);
-      total += Math.floor(s("assists") / 2);
-      total += Math.floor(s("deaths") / 3) * -1;
-      total += s("firstBlood");
-      total += s("firstDeath") * -1;
-      total += s("tripleKill") * 3;
-      total += s("quadraKill") * 5;
-      total += s("ace") * 8;
-      total += s("clutch") * 2;
-    } else {
-      total += Math.floor(s("kills") / 3);
-      total += Math.floor(s("assists") / 4);
-      total += s("deaths") * -2;
-      total += Math.floor(s("lastKills") / 2);
-      total += s("headKill") * 3;
-      total += Math.floor(s("healing") / 5050);
-      total += Math.floor(s("damage") / 5050);
-      total += Math.floor(s("blocked") / 5050);
-      total += s("soloKills");
-    }
-
-    return total;
-  };
-
-  const syncCurrentGameweekScores = async () => {
-    if (
-      !settings ||
-      settings.currentGameweek === undefined ||
-      settings.currentGameweek === null
-    ) {
-      return;
-    }
-
-    const currentGameweek = Number(settings.currentGameweek);
-    const now = new Date().toISOString();
-
-    try {
-      const [
-        playersSnap,
-        statsSnap,
-        gwTeamsSnap,
-        userTeamsSnap,
-        limitedCardsSnap,
-        userLimitedCardsSnap,
-      ] = await Promise.all([
-        getDocs(collection(db, "players")),
-        getDocs(
-          query(
-            collection(db, "playerMatchStats"),
-            where("gameweek", "==", currentGameweek)
-          )
-        ),
-        getDocs(
-          query(
-            collection(db, "gameweekTeams"),
-            where("gameweek", "==", currentGameweek)
-          )
-        ),
-        getDocs(collection(db, "userTeams")),
-        getDocs(collection(db, "limitedCards")),
-        getDocs(collection(db, "userLimitedCards")),
-      ]);
-
-      const aliasToCanonical = new Map<string, string>();
-      const playerAliasGroups: string[][] = [];
-
-      playersSnap.docs.forEach((playerDoc) => {
-        const data = playerDoc.data();
-
-        const aliases = [playerDoc.id, data.ID, data.name, data.Title]
-          .map((v) => String(v || ""))
-          .filter(Boolean);
-
-        if (aliases.length === 0) return;
-
-        const canonical = playerDoc.id;
-
-        aliases.forEach((alias) => aliasToCanonical.set(alias, canonical));
-        playerAliasGroups.push(aliases);
-      });
-
-      const pointsByAlias = new Map<string, number>();
-
-      statsSnap.docs.forEach((statDoc) => {
-        const data = statDoc.data();
-        const points = Number(data.gwPoints || 0);
-
-        const directAliases = [data.player, data.Title, data.name, statDoc.id]
-          .map((v) => String(v || ""))
-          .filter(Boolean);
-
-        const directCanonicalSet = new Set(
-          directAliases.map((alias) => aliasToCanonical.get(alias) || alias)
-        );
-
-        const aliasesForThisStat = new Set<string>();
-        directAliases.forEach((alias) => aliasesForThisStat.add(alias));
-
-        playerAliasGroups.forEach((group) => {
-          const groupMatchesStat = group.some((alias) => {
-            const canonical = aliasToCanonical.get(alias) || alias;
-            return (
-              directAliases.includes(alias) || directCanonicalSet.has(canonical)
-            );
-          });
-
-          if (groupMatchesStat) {
-            group.forEach((alias) => aliasesForThisStat.add(alias));
-          }
-        });
-
-        aliasesForThisStat.forEach((alias) => {
-          pointsByAlias.set(alias, points);
-
-          const canonical = aliasToCanonical.get(alias);
-          if (canonical) pointsByAlias.set(canonical, points);
-        });
-      });
-
-      const getPlayerPoints = (playerId: any) => {
-        const key = String(playerId || "");
-        if (!key) return 0;
-
-        if (pointsByAlias.has(key)) return Number(pointsByAlias.get(key) || 0);
-
-        const canonical = aliasToCanonical.get(key);
-
-        if (canonical && pointsByAlias.has(canonical)) {
-          return Number(pointsByAlias.get(canonical) || 0);
-        }
-
-        return 0;
-      };
-
-      const samePlayer = (a: any, b: any) => {
-        const aKey = String(a || "");
-        const bKey = String(b || "");
-
-        if (!aKey || !bKey) return false;
-        if (aKey === bKey) return true;
-
-        const aCanonical = aliasToCanonical.get(aKey) || aKey;
-        const bCanonical = aliasToCanonical.get(bKey) || bKey;
-
-        return aCanonical === bCanonical;
-      };
-
-      const userTeamsByEmail: Record<string, any[]> = {};
-
-      userTeamsSnap.docs.forEach((userTeamDoc) => {
-        const data = userTeamDoc.data();
-        const email = String(data.ownerEmail || "").toLowerCase();
-
-        if (!email) return;
-
-        if (!userTeamsByEmail[email]) userTeamsByEmail[email] = [];
-
-        userTeamsByEmail[email].push(userTeamDoc);
-      });
-
-      // Limited cards: the catalogue plus every copy attached to this
-      // gameweek's squads.
-      const limitedCardCatalogById = new Map<string, any>();
-
-      limitedCardsSnap.docs.forEach((cardDoc) => {
-        const cardData = cardDoc.data();
-
-        limitedCardCatalogById.set(cardDoc.id, cardData);
-
-        const dataId = String(cardData.ID || "");
-
-        if (dataId) limitedCardCatalogById.set(dataId, cardData);
-      });
-
-      const gameByPlayerId = new Map<string, string>();
-
-      playersSnap.docs.forEach((playerDoc) => {
-        gameByPlayerId.set(playerDoc.id, String(playerDoc.data().game || ""));
-      });
-
-      const statsByCanonical = new Map<string, any>();
-
-      statsSnap.docs.forEach((statDoc) => {
-        const data = statDoc.data();
-        const alias = String(data.player || data.Title || "");
-        const canonical = aliasToCanonical.get(alias) || alias;
-
-        if (canonical) statsByCanonical.set(canonical, data);
-      });
-
-      const attachedLimitedCards = userLimitedCardsSnap.docs.map(
-        (userCardDoc) => {
-          const data = userCardDoc.data();
-
-          return {
-            id: userCardDoc.id,
-            ref: userCardDoc.ref,
-            ownerEmail: String(data.ownerEmail || "").toLowerCase(),
-            cardId: String(data.cardId || ""),
-            status: String(data.status || "owned"),
-            gameweek: Number(data.gameweek || 0),
-          };
-        }
-      );
-
-      const batch = writeBatch(db);
-      let operationCount = 0;
-
-      const managerUpdatesByEmail: Record<
-        string,
-        {
-          newGwPoints: number;
-          difference: number;
-        }
-      > = {};
-
-      gwTeamsSnap.docs.forEach((teamDoc) => {
-        const team = teamDoc.data();
-
-        const mainPlayerIds = [
-          team.player1,
-          team.player2,
-          team.player3,
-          team.player4,
-        ].filter(Boolean);
-
-        const teamOwnerEmail = String(team.ownerEmail || "").toLowerCase();
-
-        // Limited cards attached to this squad boost the linked player's
-        // chosen stat. Cards whose player is not in the Starting IV keep
-        // waiting and are not consumed. The same card never boosts twice in
-        // one gameweek, even if two copies are somehow active. Every boost
-        // that applies is also recorded on the team doc (limitedCardBoosts)
-        // so the team page can display it on the player's card.
-        const mainCanonicalIds = new Set(
-          mainPlayerIds
-            .map((playerId) => aliasToCanonical.get(String(playerId || "")))
-            .filter(Boolean)
-        );
-        const boostByPlayerId: Record<string, number> = {};
-        const boostedCardIds = new Set<string>();
-        const consumedCardRefs: any[] = [];
-        // The boosts that actually applied this gameweek, saved onto the
-        // team doc so the team page can show them on each player's card.
-        const appliedBoosts: {
-          playerId: string;
-          cardId: string;
-          cardName: string;
-          rarity: string;
-          accentColor: string;
-          boostStat: string;
-          boostValue: number;
-          delta: number;
-        }[] = [];
-
-        attachedLimitedCards.forEach((userCard) => {
-          const attachedByTeam =
-            Array.isArray(team.limitedCards) &&
-            team.limitedCards.includes(userCard.id);
-          const attachedByRecord =
-            userCard.status === "active" &&
-            userCard.gameweek === currentGameweek &&
-            !!teamOwnerEmail &&
-            userCard.ownerEmail === teamOwnerEmail;
-
-          if (!attachedByTeam && !attachedByRecord) return;
-
-          const card = limitedCardCatalogById.get(userCard.cardId);
-
-          if (!card) return;
-
-          const boostPlayerId = String(card.playerId || "");
-
-          if (!boostPlayerId || !mainCanonicalIds.has(boostPlayerId)) return;
-
-          // One boost per card per gameweek: a second copy of the same card
-          // is still consumed but never boosts twice.
-          if (boostedCardIds.has(userCard.cardId)) {
-            if (userCard.status === "active") {
-              consumedCardRefs.push(userCard.ref);
-            }
-
-            return;
-          }
-
-          const stats = statsByCanonical.get(boostPlayerId);
-          const game = String(
-            (stats && stats.game) || gameByPlayerId.get(boostPlayerId) || ""
-          );
-          const delta = limitedCardBoostDelta(game, card, stats);
-
-          boostByPlayerId[boostPlayerId] =
-            (boostByPlayerId[boostPlayerId] || 0) + delta;
-          boostedCardIds.add(userCard.cardId);
-
-          // Remember exactly what this card added so the team page can
-          // display the boost on the linked player's card.
-          appliedBoosts.push({
-            playerId: boostPlayerId,
-            cardId: String(userCard.cardId || ""),
-            cardName: String(card.cardName || ""),
-            rarity: String(card.rarity || ""),
-            accentColor: String(card.accentColor || ""),
-            boostStat: String(card.boostStat || ""),
-            boostValue: Number(card.boostValue ?? 1),
-            delta,
-          });
-
-          if (userCard.status === "active") {
-            consumedCardRefs.push(userCard.ref);
-          }
-        });
-
-        const newGwPoints = mainPlayerIds.reduce((total, playerId) => {
-          const canonical =
-            aliasToCanonical.get(String(playerId || "")) ||
-            String(playerId || "");
-          const boost = boostByPlayerId[canonical] || 0;
-          const playerPoints = getPlayerPoints(playerId) + boost;
-
-          if (samePlayer(playerId, team.captain)) {
-            return total + playerPoints * 2;
-          }
-
-          return total + playerPoints;
-        }, 0);
-
-        const oldGwPoints = Number(team.gwPoints || 0);
-        const difference = newGwPoints - oldGwPoints;
-
-        if (
-          difference === 0 &&
-          consumedCardRefs.length === 0 &&
-          appliedBoosts.length === 0
-        ) {
-          return;
-        }
-
-        if (
-          difference !== 0 ||
-          appliedBoosts.length > 0 ||
-          consumedCardRefs.length > 0
-        ) {
-          batch.update(teamDoc.ref, {
-            gwPoints: newGwPoints,
-            limitedCardBoosts: appliedBoosts,
-            "Updated Date": now,
-          });
-
-          operationCount += 1;
-        }
-
-        // One-time use: the copy did its job for this gameweek.
-        consumedCardRefs.forEach((cardRef) => {
-          batch.update(cardRef, {
-            status: "used",
-            "Updated Date": now,
-          });
-
-          operationCount += 1;
-        });
-
-        const ownerEmail = teamOwnerEmail;
-
-        if (difference !== 0 && ownerEmail) {
-          const matchingUserTeams = userTeamsByEmail[ownerEmail] || [];
-
-          matchingUserTeams.forEach((userTeamDoc) => {
-            batch.update(userTeamDoc.ref, {
-              gameweekPoints: newGwPoints,
-              totalPoints: increment(difference),
-              "Updated Date": now,
-            });
-
-            operationCount += 1;
-          });
-
-          managerUpdatesByEmail[ownerEmail] = {
-            newGwPoints,
-            difference:
-              (managerUpdatesByEmail[ownerEmail]?.difference || 0) + difference,
-          };
-        }
-      });
-
-      if (operationCount === 0) {
-        console.log("No GW score changes found.");
-        return;
-      }
-
-      await batch.commit();
-
-      setManagers((prev) =>
-        prev
-          .map((manager) => {
-            const email = String(manager.ownerEmail || "").toLowerCase();
-            const update = managerUpdatesByEmail[email];
-
-            if (!update) return manager;
-
-            return {
-              ...manager,
-              gameweekPoints: update.newGwPoints,
-              totalPoints:
-                Number(manager.totalPoints || 0) + Number(update.difference),
-            };
-          })
-          .sort(
-            (a, b) => Number(b.totalPoints || 0) - Number(a.totalPoints || 0)
-          )
-      );
-    } catch (err) {
-      console.error("Failed to sync current gameweek scores:", err);
-      alert(
-        "Saved, but failed to auto-update manager totals. Check console for details."
-      );
-    }
-  };
-
-  const handleSaveStats = async () => {
-    const p = players.find((x) => x.id === selectedPlayerId);
-
-    if (!p || !settings) return;
-
-    setSaving("matchstats");
-
-    const pts = calculatePoints(p);
-
-    try {
-      const statId = `${p.id}_gw${settings.currentGameweek}`;
-
-      await setDoc(
-        doc(db, "playerMatchStats", statId),
-        {
-          ...calcStats,
-          player: p.ID || p.id,
-          Title: p.name,
-          game: p.game,
-          gameweek: settings.currentGameweek,
-          gwPoints: pts,
-          UpdatedDate: new Date().toISOString(),
-        },
-        { merge: true }
-      );
-
-      await updateDoc(doc(db, "players", p.id), { points: pts });
-
-      await syncCurrentGameweekScores();
-
-      markSaved("matchstats");
-    } catch (err) {
-      console.error(err);
-    }
-
-    setSaving(null);
-  };
-
-  const handleSaveSettings = async () => {
-    if (!settings) return;
-
-    setSaving("settings");
-
-    try {
-      await updateDoc(doc(db, "settings", settings.id), {
-        currentGameweek: Number(settings.currentGameweek),
-        deadline: settings.deadline,
-        shopRefreshAt: settings.shopRefreshAt || "",
-        lockTeamLeaderboard: !!settings.lockTeamLeaderboard,
-        lockTransfers: !!settings.lockTransfers,
-        lockShop: !!settings.lockShop,
-        lockFixtures: !!settings.lockFixtures,
-        hiddenPages: Array.isArray(settings.hiddenPages)
-          ? settings.hiddenPages
-          : [],
-      });
-
-      markSaved("settings");
-    } catch (err) {
-      console.error(err);
-    }
-
-    setSaving(null);
-  };
-
-  const handleSaveManager = async (m: UserTeam) => {
-    setSaving(m.id);
-
-    try {
-      await updateDoc(doc(db, "userTeams", m.id), {
-        totalPoints: Number(m.totalPoints || 0),
-        gameweekPoints: Number(m.gameweekPoints || 0),
-        coins: Number(m.coins || 0),
-        Bank: Number(m.Bank || 0),
-        freeTransfers: Number(m.freeTransfers || 0),
-        showInLeaderboard: m.showInLeaderboard !== false,
-        "Updated Date": new Date().toISOString(),
-      });
-
-      markSaved(m.id);
-    } catch (err) {
-      console.error(err);
-    }
-
-    setSaving(null);
-  };
-
-  const handleGrantRankingCoins = async () => {
-    const currentGameweek = settings?.currentGameweek;
-
-    if (!currentGameweek) {
-      alert("Current gameweek not found.");
-      return;
-    }
-
-    // Rank by this gameweek's points, not total points.
-    const rankedManagers = [...managers].sort(
-      (a, b) => Number(b.gameweekPoints || 0) - Number(a.gameweekPoints || 0)
-    );
-
-    const alreadyGrantedCount = rankedManagers.filter(
-      (m) => Number(m.lastGwCoinsGameweek || 0) === currentGameweek
-    ).length;
-
-    const confirmMessage =
-      alreadyGrantedCount > 0
-        ? `Coins were already granted to ${alreadyGrantedCount} manager(s) for GW${currentGameweek}.\n\nGrant coins again anyway?`
-        : `Grant ranking coins to all managers for GW${currentGameweek}?\n\nRanked by GW points:\n1st: 4,000¢\n2nd: 3,000¢\n3rd: 2,500¢\n4th: 1,500¢\n5th or more: 1,000¢`;
-
-    if (!confirm(confirmMessage)) return;
-
-    setSaving("grantRankingCoins");
-
-    try {
-      const batch = writeBatch(db);
-      const now = new Date().toISOString();
-
-      const updatedManagers = rankedManagers.map((manager, index) => {
-        const rank = index + 1;
-        const prizeCoins = getRankPrizeCoins(rank);
-        const currentCoins = Number(manager.coins || 0);
-        const newCoins = currentCoins + prizeCoins;
-
-        batch.update(doc(db, "userTeams", manager.id), {
-          coins: newCoins,
-          lastGwCoinsEarned: prizeCoins,
-          lastGwCoinsGameweek: currentGameweek,
-          lastGwCoinsGrantedAt: now,
-          "Updated Date": now,
-        });
-
-        return {
-          ...manager,
-          coins: newCoins,
-          lastGwCoinsEarned: prizeCoins,
-          lastGwCoinsGameweek: currentGameweek,
-          lastGwCoinsGrantedAt: now,
-        };
-      });
-
-      await batch.commit();
-
-      setManagers(
-        updatedManagers.sort(
-          (a, b) => Number(b.totalPoints || 0) - Number(a.totalPoints || 0)
-        )
-      );
-
-      markSaved("grantRankingCoins");
-      alert(`Coins granted successfully for GW${currentGameweek}.`);
-    } catch (err) {
-      console.error("Failed to grant ranking coins:", err);
-      alert("Failed to grant coins. Check console for details.");
-    }
-
-    setSaving(null);
-  };
-
-  const handleAddShopItem = async () => {
-    if (!newItem.itemName) return alert("Item name required");
-
-    setSaving("newShopItem");
-
-    try {
-      const id = Math.random().toString(36).substr(2, 9);
-      const sectionTitle = newItem.section || "General";
-
-      const itemData = {
-        ...newItem,
-        ID: id,
-        section: sectionTitle,
-        songUrl: newItem.songUrl || "",
-        showNewTag: !!newItem.showNewTag,
-        showLeavingTodayTag: !!newItem.showLeavingTodayTag,
-        "Created Date": new Date().toISOString(),
-      };
-
-      await setDoc(doc(db, "shopItems", id), itemData);
-
-      setShopItems([...shopItems, { id, ...itemData } as ShopItem]);
-
-      setShopSections((prev) => {
-        if (prev.some((s) => s.title === sectionTitle)) return prev;
-
-        return [
-          ...prev,
-          {
-            id: sectionDocId(sectionTitle),
-            title: sectionTitle,
-            order: prev.length + 1,
-          },
-        ];
-      });
-
-      setNewItem({ ...defaultNewItem });
-
-      markSaved("newShopItem");
-    } catch (err) {
-      console.error(err);
-    }
-
-    setSaving(null);
-  };
-
-  const handleUpdateShopItem = async (item: ShopItem) => {
-    setSaving(item.id);
-
-    try {
-      const sectionTitle = item.section || "General";
-
-      await updateDoc(doc(db, "shopItems", item.id), {
-        ...item,
-        section: sectionTitle,
-        songUrl: item.songUrl || "",
-        showNewTag: !!item.showNewTag,
-        showLeavingTodayTag: !!item.showLeavingTodayTag,
-        "Updated Date": new Date().toISOString(),
-      });
-
-      setShopSections((prev) => {
-        if (prev.some((s) => s.title === sectionTitle)) return prev;
-
-        return [
-          ...prev,
-          {
-            id: sectionDocId(sectionTitle),
-            title: sectionTitle,
-            order: prev.length + 1,
-          },
-        ];
-      });
-
-      markSaved(item.id);
-    } catch (err) {
-      console.error(err);
-    }
-
-    setSaving(null);
-  };
-
-  const handleAddLimitedCard = async () => {
-    if (!newCard.cardName) return alert("Card name required");
-    if (!newCard.playerId) return alert("Choose the player this card boosts");
-
-    setSaving("newLimitedCard");
-
-    try {
-      const id = Math.random().toString(36).slice(2, 11);
-
-      const cardData = {
-        ID: id,
-        cardName: newCard.cardName,
-        rarity: newCard.rarity || "rare",
-        image: newCard.image || "",
-        accentColor: newCard.accentColor || "",
-        shopPrice: Number(newCard.shopPrice || 0),
-        transferPrice: Number(newCard.transferPrice || 0),
-        playerId: newCard.playerId,
-        boostStat: newCard.boostStat || "kills",
-        boostValue: Number(newCard.boostValue || 1),
-        powerupText: newCard.powerupText || "",
-        stock: Math.max(0, Number(newCard.stock ?? 1)),
-        isVisible: newCard.isVisible !== false,
-        showNewTag: !!newCard.showNewTag,
-        showLeavingTodayTag: !!newCard.showLeavingTodayTag,
-        "Created Date": new Date().toISOString(),
-      };
-
-      await setDoc(doc(db, "limitedCards", id), cardData);
-
-      setLimitedCards((prev) => [
-        ...prev,
-        { id, ...cardData } as LimitedCard,
-      ]);
-
-      setNewCard({ ...defaultNewCard });
-
-      markSaved("newLimitedCard");
-    } catch (err) {
-      console.error(err);
-    }
-
-    setSaving(null);
-  };
-
-  const handleUpdateLimitedCard = async (card: LimitedCard) => {
-    setSaving(card.id);
-
-    try {
-      await updateDoc(doc(db, "limitedCards", card.id), {
-        cardName: card.cardName || "",
-        rarity: card.rarity || "rare",
-        image: card.image || "",
-        accentColor: card.accentColor || "",
-        shopPrice: Number(card.shopPrice || 0),
-        transferPrice: Number(card.transferPrice || 0),
-        playerId: card.playerId || "",
-        boostStat: card.boostStat || "kills",
-        boostValue: Number(card.boostValue || 1),
-        powerupText: card.powerupText || "",
-        stock: Math.max(0, Number(card.stock ?? 0)),
-        isVisible: card.isVisible !== false,
-        showNewTag: !!card.showNewTag,
-        showLeavingTodayTag: !!card.showLeavingTodayTag,
-        "Updated Date": new Date().toISOString(),
-      });
-
-      markSaved(card.id);
-    } catch (err) {
-      console.error(err);
-    }
-
-    setSaving(null);
-  };
-
-  const handleSaveShopSections = async () => {
-    setSaving("shopSections");
-
-    try {
-      const batch = writeBatch(db);
-      const now = new Date().toISOString();
-
-      shopSections.forEach((section, index) => {
-        const title = section.title || "General";
-
-        batch.set(
-          doc(db, "shopSections", sectionDocId(title)),
-          {
-            title,
-            order: Number(section.order || index + 1),
-            "Updated Date": now,
-          },
-          { merge: true }
-        );
-      });
-
-      await batch.commit();
-
-      setShopSections((prev) =>
-        [...prev].sort(
-          (a, b) => Number(a.order || 99) - Number(b.order || 99)
-        )
-      );
-
-      markSaved("shopSections");
-    } catch (err) {
-      console.error("Failed to save shop sections:", err);
-      alert("Failed to save shop section order.");
-    }
-
-    setSaving(null);
-  };
-
-  const moveSection = (index: number, direction: -1 | 1) => {
-    setShopSections((prev) => {
-      const arr = [...prev];
-      const target = index + direction;
-
-      if (target < 0 || target >= arr.length) return prev;
-
-      const temp = arr[index];
-      arr[index] = arr[target];
-      arr[target] = temp;
-
-      return arr.map((section, i) => ({
-        ...section,
-        order: i + 1,
-      }));
-    });
-  };
-
-  const updateSectionOrder = (title: string, order: number) => {
-    setShopSections((prev) =>
-      prev.map((section) =>
-        section.title === title ? { ...section, order } : section
-      )
-    );
-  };
-
-  const updateManagerField = (id: string, field: keyof UserTeam, value: any) => {
-    setManagers((prev) =>
-      prev.map((m) => (m.id === id ? { ...m, [field]: value } : m))
-    );
-  };
-
-  const updateShopItemField = (
-    id: string,
-    field: keyof ShopItem,
-    value: any
-  ) => {
-    setShopItems((prev) =>
-      prev.map((i) => (i.id === id ? { ...i, [field]: value } : i))
-    );
-  };
-
-  const updateLimitedCardPatch = (id: string, patch: Partial<LimitedCard>) => {
-    setLimitedCards((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, ...patch } : c))
-    );
-  };
-
-  const updateFixtureField = (
-    id: string,
-    field: "gameweek" | "playerOneId" | "playerTwoId",
-    value: string | number
-  ) => {
-    setFixtures((prev) =>
-      prev.map((fixture) =>
-        fixture.id === id ? { ...fixture, [field]: value } : fixture
-      )
-    );
-  };
-
-  const getFixtureValidationError = (
-    gameweek: number,
-    playerOneId: string,
-    playerTwoId: string,
-    ignoreFixtureId?: string
-  ) => {
-    if (!Number.isInteger(gameweek) || gameweek < 1) {
-      return "Enter a valid gameweek number.";
-    }
-
-    if (!playerOneId || !playerTwoId) {
-      return "Choose both players for the fixture.";
-    }
-
-    if (playerOneId === playerTwoId) {
-      return "A player cannot face themselves.";
-    }
-
-    const playerAlreadyScheduled = fixtures.some(
-      (fixture) =>
-        fixture.id !== ignoreFixtureId &&
-        fixture.gameweek === gameweek &&
-        (fixture.playerOneId === playerOneId ||
-          fixture.playerTwoId === playerOneId ||
-          fixture.playerOneId === playerTwoId ||
-          fixture.playerTwoId === playerTwoId)
-    );
-
-    if (playerAlreadyScheduled) {
-      return "Each player can only have one fixture in the same gameweek.";
-    }
-
-    return null;
-  };
-
-  const handleAddFixture = async () => {
-    const gameweek = Number(fixtureGameweek);
-    const error = getFixtureValidationError(
-      gameweek,
-      newFixturePlayerOne,
-      newFixturePlayerTwo
-    );
-
-    if (error) {
-      alert(error);
-      return;
-    }
-
-    setSaving("newFixture");
-
-    try {
-      const now = new Date().toISOString();
-      const fixtureData = {
-        gameweek,
-        playerOneId: newFixturePlayerOne,
-        playerTwoId: newFixturePlayerTwo,
-        "Created Date": now,
-        "Updated Date": now,
-      };
-      const fixtureRef = await addDoc(
-        collection(db, "playerFixtures"),
-        fixtureData
-      );
-
-      setFixtures((prev) =>
-        [
-          ...prev,
-          {
-            id: fixtureRef.id,
-            gameweek,
-            playerOneId: newFixturePlayerOne,
-            playerTwoId: newFixturePlayerTwo,
-          },
-        ].sort(
-          (a, b) => a.gameweek - b.gameweek || a.id.localeCompare(b.id)
-        )
-      );
-      setNewFixturePlayerOne("");
-      setNewFixturePlayerTwo("");
-      markSaved("newFixture");
-    } catch (err) {
-      console.error("Failed to add fixture:", err);
-      alert("Failed to add the fixture. Check the console for details.");
-    }
-
-    setSaving(null);
-  };
-
-  const handleSaveFixture = async (fixture: PlayerFixture) => {
-    const gameweek = Number(fixture.gameweek);
-    const error = getFixtureValidationError(
-      gameweek,
-      fixture.playerOneId,
-      fixture.playerTwoId,
-      fixture.id
-    );
-
-    if (error) {
-      alert(error);
-      return;
-    }
-
-    setSaving(fixture.id);
-
-    try {
-      await updateDoc(doc(db, "playerFixtures", fixture.id), {
-        gameweek,
-        playerOneId: fixture.playerOneId,
-        playerTwoId: fixture.playerTwoId,
-        "Updated Date": new Date().toISOString(),
-      });
-
-      setFixtures((prev) =>
-        prev
-          .map((item) =>
-            item.id === fixture.id ? { ...fixture, gameweek } : item
-          )
-          .sort(
-            (a, b) => a.gameweek - b.gameweek || a.id.localeCompare(b.id)
-          )
-      );
-      markSaved(fixture.id);
-    } catch (err) {
-      console.error("Failed to save fixture:", err);
-      alert("Failed to save the fixture. Check the console for details.");
-    }
-
-    setSaving(null);
-  };
-
-  const handleDeleteFixture = async (fixture: PlayerFixture) => {
-    if (!confirm(`Delete this GW${fixture.gameweek} fixture?`)) return;
-
-    setSaving(fixture.id);
-
-    try {
-      await deleteDoc(doc(db, "playerFixtures", fixture.id));
-      setFixtures((prev) => prev.filter((item) => item.id !== fixture.id));
-    } catch (err) {
-      console.error("Failed to delete fixture:", err);
-      alert("Failed to delete the fixture. Check the console for details.");
-    }
-
-    setSaving(null);
-  };
-
-  if (!user || user.email !== ADMIN_EMAIL) return null;
-
-  if (loading) {
-    return (
-      <Shell>
-        <p style={{ padding: "2rem" }}>Loading Admin Panel...</p>
-      </Shell>
-    );
-  }
-
-  const activePlayer = players.find((p) => p.id === selectedPlayerId);
-
-  const filteredShopItems = [...shopItems]
-    .filter((item) => {
-      const search = shopSearch.toLowerCase().trim();
-
-      if (!search) return true;
-
-      return (
-        String(item.itemName || "").toLowerCase().includes(search) ||
-        String(item.itemType || "").toLowerCase().includes(search) ||
-        String(item.section || "").toLowerCase().includes(search) ||
-        String(item.rarity || "").toLowerCase().includes(search) ||
-        String(item.ID || "").toLowerCase().includes(search)
-      );
-    })
-    .filter((item) => {
-      if (shopTypeFilter === "all") return true;
-      return item.itemType === shopTypeFilter;
-    })
-    .sort((a, b) => {
-      if (shopSortBy === "type") {
-        const typeCompare = String(a.itemType || "").localeCompare(
-          String(b.itemType || "")
-        );
-
-        if (typeCompare !== 0) return typeCompare;
-
-        return String(a.itemName || "").localeCompare(String(b.itemName || ""));
-      }
-
-      if (shopSortBy === "name") {
-        return String(a.itemName || "").localeCompare(String(b.itemName || ""));
-      }
-
-      if (shopSortBy === "price") {
-        return Number(a.price || 0) - Number(b.price || 0);
-      }
-
-      if (shopSortBy === "section") {
-        const sectionCompare = String(a.section || "").localeCompare(
-          String(b.section || "")
-        );
-
-        if (sectionCompare !== 0) return sectionCompare;
-
-        return String(a.itemName || "").localeCompare(String(b.itemName || ""));
-      }
-
-      if (shopSortBy === "rarity") {
-        const rarityCompare = String(a.rarity || "").localeCompare(
-          String(b.rarity || "")
-        );
-
-        if (rarityCompare !== 0) return rarityCompare;
-
-        return String(a.itemName || "").localeCompare(String(b.itemName || ""));
-      }
-
-      if (shopSortBy === "visible") {
-        const visibilityCompare =
-          Number(a.isVisible === false) - Number(b.isVisible === false);
-
-        if (visibilityCompare !== 0) return visibilityCompare;
-
-        return String(a.itemName || "").localeCompare(String(b.itemName || ""));
-      }
-
-      return 0;
-    });
-
-  const sortedShopSections = [...shopSections].sort(
-    (a, b) => Number(a.order || 99) - Number(b.order || 99)
-  );
-
-  const selectedFixtures = fixtures
-    .filter((fixture) => fixture.gameweek === Number(fixtureGameweek))
-    .sort((a, b) => a.id.localeCompare(b.id));
-
-  const hiddenPages = Array.isArray(settings?.hiddenPages)
-    ? settings.hiddenPages
-    : [];
-
-  const setPageHidden = (href: string, shouldHide: boolean) => {
-    if (!settings) return;
-
-    const nextHiddenPages = shouldHide
-      ? Array.from(new Set([...hiddenPages, href]))
-      : hiddenPages.filter((page) => page !== href);
-
-    setSettings({ ...settings, hiddenPages: nextHiddenPages });
-  };
-
-  const playerLabel = (playerId: string) => {
-    const player = players.find((item) => item.id === playerId);
-    return player ? `${player.name} · ${player.game}` : "Unknown player";
-  };
-
-  return (
-    <Shell>
-      <div className="page-container admin-page" style={{ maxWidth: "1200px", margin: "0 auto" }}>
-        <h1 style={{ fontSize: "2rem", fontWeight: 700, marginBottom: "2rem" }}>
-          Admin Panel
-        </h1>
-
-        <div
-          className="admin-tabs"
-          style={{
-            display: "flex",
-            gap: "0.5rem",
-            marginBottom: "2rem",
-            flexWrap: "wrap",
-          }}
-        >
-          {[
-            "players",
-            "fixtures",
-            "pages",
-            "stats",
-            "managers",
-            "shop",
-            "cards",
-            "sections",
-            "settings",
-            "locks",
-          ].map((t) => (
-            <button
-              key={t}
-              onClick={() => setTab(t as Tab)}
-              style={{
-                padding: "0.6rem 1.2rem",
-                borderRadius: "8px",
-                border: "1px solid var(--border)",
-                background: tab === t ? "var(--blue)" : "var(--surface)",
-                color: "#fff",
-                cursor: "pointer",
-                fontWeight: 600,
-              }}
-            >
-              {t.toUpperCase()}
-            </button>
-          ))}
-        </div>
-
-        {tab === "locks" && settings && (
-          <div style={{ maxWidth: "500px" }}>
-            <h2 style={sectionTitleStyle}>Page Access Locks</h2>
-
-            <div style={panelStyle}>
-              <LockRow
-                title="My Team & Leaderboard"
-                desc="Restrict access to these pages"
-                checked={!!settings.lockTeamLeaderboard}
-                onChange={(checked) =>
-                  setSettings({ ...settings, lockTeamLeaderboard: checked })
-                }
-              />
-
-              <LockRow
-                title="Transfers Page"
-                desc="Lock squad building and transfers"
-                checked={!!settings.lockTransfers}
-                onChange={(checked) =>
-                  setSettings({ ...settings, lockTransfers: checked })
-                }
-              />
-
-              <LockRow
-                title="Shop Page"
-                desc="Lock store purchases and shop access"
-                checked={!!settings.lockShop}
-                onChange={(checked) =>
-                  setSettings({ ...settings, lockShop: checked })
-                }
-              />
-
-              <LockRow
-                title="Fixtures Page"
-                desc="Restrict access to player fixtures and standings"
-                checked={!!settings.lockFixtures}
-                onChange={(checked) =>
-                  setSettings({ ...settings, lockFixtures: checked })
-                }
-              />
-
-              <button
-                onClick={handleSaveSettings}
-                disabled={saving === "settings"}
-                style={primaryButtonStyle(saved === "settings")}
-              >
-                {saving === "settings"
-                  ? "Saving..."
-                  : saved === "settings"
-                  ? "✓ Saved"
-                  : "Save Lock Settings"}
-              </button>
-            </div>
-
-          </div>
-        )}
-
-        {tab === "pages" && settings && (
-          <div style={{ maxWidth: "650px" }}>
-            <h2 style={sectionTitleStyle}>Page Visibility</h2>
-
-            <div style={panelStyle}>
-              <div
-                style={{
-                  color: "var(--text-muted)",
-                  fontSize: "0.85rem",
-                  lineHeight: 1.6,
-                }}
-              >
-                Hidden pages are removed from regular users&apos; navigation and
-                direct links to them return to the home page. Admin access is
-                unchanged.
-              </div>
-
-              {HIDEABLE_PAGE_OPTIONS.map((page) => {
-                const isHidden = hiddenPages.includes(page.href);
-
-                return (
-                  <LockRow
-                    key={page.href}
-                    title={`${page.label} — ${isHidden ? "Hidden" : "Visible"}`}
-                    desc="Hide or show this page for regular users"
-                    checked={isHidden}
-                    onChange={(checked) => setPageHidden(page.href, checked)}
-                  />
-                );
-              })}
-
-              <button
-                onClick={handleSaveSettings}
-                disabled={saving === "settings"}
-                style={primaryButtonStyle(saved === "settings")}
-              >
-                {saving === "settings"
-                  ? "Saving..."
-                  : saved === "settings"
-                  ? "✓ Saved"
-                  : "Save Page Visibility"}
-              </button>
-            </div>
-          </div>
-        )}
-
-        {tab === "settings" && settings && (
-          <div style={{ maxWidth: "900px" }}>
-            <h2 style={sectionTitleStyle}>Gameweek Settings</h2>
-
-            <div style={panelStyle}>
-              <div>
-                <div style={labelStyle}>Current Gameweek</div>
-
-                <div
-                  style={{ display: "flex", alignItems: "center", gap: "1rem" }}
-                >
-                  <button
-                    onClick={() =>
-                      setSettings({
-                        ...settings,
-                        currentGameweek: Math.max(
-                          0,
-                          settings.currentGameweek - 1
-                        ),
-                      })
-                    }
-                    style={smallButtonStyle}
-                  >
-                    -
-                  </button>
-
-                  <div
-                    style={{
-                      fontSize: "1.5rem",
-                      fontWeight: 700,
-                      width: "60px",
-                      textAlign: "center",
-                    }}
-                  >
-                    {settings.currentGameweek}
-                  </div>
-
-                  <button
-                    onClick={() =>
-                      setSettings({
-                        ...settings,
-                        currentGameweek: settings.currentGameweek + 1,
-                      })
-                    }
-                    style={smallButtonStyle}
-                  >
-                    +
-                  </button>
-                </div>
-              </div>
-
-              <div
-                className="admin-settings-grid"
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(2, minmax(220px, 1fr))",
-                  gap: "1rem",
-                }}
-              >
-                <div>
-                  <div style={labelStyle}>Transfer Deadline</div>
-                  <input
-                    type="datetime-local"
-                    value={datetimeInputValue(settings.deadline)}
-                    onChange={(e) =>
-                      setSettings({ ...settings, deadline: e.target.value })
-                    }
-                    style={inputStyle}
-                  />
-                </div>
-
-                <div>
-                  <div style={labelStyle}>Next Shop Refresh</div>
-                  <input
-                    type="datetime-local"
-                    value={datetimeInputValue(settings.shopRefreshAt)}
-                    onChange={(e) =>
-                      setSettings({
-                        ...settings,
-                        shopRefreshAt: e.target.value,
-                      })
-                    }
-                    style={inputStyle}
-                  />
-                </div>
-              </div>
-
-              <button
-                onClick={handleSaveSettings}
-                disabled={saving === "settings"}
-                style={primaryButtonStyle(saved === "settings")}
-              >
-                {saving === "settings"
-                  ? "Saving..."
-                  : saved === "settings"
-                  ? "✓ Saved"
-                  : "Save Settings"}
-              </button>
-            </div>
-          </div>
-        )}
-
-        {tab === "sections" && (
-          <div style={{ maxWidth: "750px" }}>
-            <h2 style={sectionTitleStyle}>Shop Section Order</h2>
-
-            <div
-              style={{
-                ...panelStyle,
-                gap: "1rem",
-              }}
-            >
-              <div
-                style={{
-                  color: "var(--text-muted)",
-                  fontSize: "0.85rem",
-                  lineHeight: 1.6,
-                }}
-              >
-                Reorder shop sections from top to bottom. Lower order appears
-                first in the shop.
-              </div>
-
-              {sortedShopSections.length === 0 ? (
-                <div style={{ color: "var(--text-muted)" }}>
-                  No shop sections found.
-                </div>
-              ) : (
-                sortedShopSections.map((section, index) => (
-                  <div
-                    key={section.title}
-                    className="admin-section-row"
-                    style={{
-                      background: "rgba(255,255,255,0.035)",
-                      border: "1px solid var(--border)",
-                      borderRadius: "12px",
-                      padding: "1rem",
-                      display: "grid",
-                      gridTemplateColumns: "1fr 110px auto auto",
-                      gap: "0.75rem",
-                      alignItems: "center",
-                    }}
-                  >
-                    <div>
-                      <div style={{ fontWeight: 800 }}>{section.title}</div>
-                      <div
-                        style={{
-                          color: "var(--text-muted)",
-                          fontSize: "0.75rem",
-                          marginTop: "0.2rem",
-                        }}
-                      >
-                        {shopItems.filter(
-                          (item) =>
-                            (item.section || "General") === section.title
-                        ).length}{" "}
-                        item(s)
-                      </div>
-                    </div>
-
-                    <input
-                      type="number"
-                      value={section.order}
-                      onChange={(e) =>
-                        updateSectionOrder(
-                          section.title,
-                          Number(e.target.value)
-                        )
-                      }
-                      style={inputStyle}
-                    />
-
-                    <button
-                      onClick={() => moveSection(index, -1)}
-                      disabled={index === 0}
-                      style={secondaryButtonStyle}
-                    >
-                      ↑
-                    </button>
-
-                    <button
-                      onClick={() => moveSection(index, 1)}
-                      disabled={index === sortedShopSections.length - 1}
-                      style={secondaryButtonStyle}
-                    >
-                      ↓
-                    </button>
-                  </div>
-                ))
-              )}
-
-              <button
-                onClick={handleSaveShopSections}
-                disabled={saving === "shopSections"}
-                style={primaryButtonStyle(saved === "shopSections")}
-              >
-                {saving === "shopSections"
-                  ? "Saving..."
-                  : saved === "shopSections"
-                  ? "✓ Saved"
-                  : "Save Section Order"}
-              </button>
-            </div>
-          </div>
-        )}
-
-        {tab === "shop" && (
-          <div>
-            <h2 style={sectionTitleStyle}>Shop Manager</h2>
-
-            <div
-              className="admin-shop-filters"
-              style={{
-                background: "var(--surface)",
-                border: "1px solid var(--border)",
-                borderRadius: "14px",
-                padding: "1rem",
-                marginBottom: "1rem",
-                display: "grid",
-                gridTemplateColumns: "1.5fr 1fr 1fr auto",
-                gap: "0.85rem",
-                alignItems: "end",
-              }}
-            >
-              <div>
-                <div style={{ fontSize: "0.7rem", marginBottom: "0.3rem" }}>
-                  Search Items
-                </div>
-                <input
-                  value={shopSearch}
-                  onChange={(e) => setShopSearch(e.target.value)}
-                  placeholder="Search by name, type, section, rarity..."
-                  style={inputStyle}
-                />
-              </div>
-
-              <div>
-                <div style={{ fontSize: "0.7rem", marginBottom: "0.3rem" }}>
-                  Filter Type
-                </div>
-                <select
-                  value={shopTypeFilter}
-                  onChange={(e) =>
-                    setShopTypeFilter(
-                      e.target.value as "all" | ShopItem["itemType"]
-                    )
-                  }
-                  style={inputStyle}
-                >
-                  <option value="all">All Types</option>
-                  <option value="avatar">Avatars</option>
-                  <option value="banner">Banners</option>
-                  <option value="song">Songs</option>
-                  <option value="title">Titles</option>
-                </select>
-              </div>
-
-              <div>
-                <div style={{ fontSize: "0.7rem", marginBottom: "0.3rem" }}>
-                  Sort By
-                </div>
-                <select
-                  value={shopSortBy}
-                  onChange={(e) =>
-                    setShopSortBy(
-                      e.target.value as
-                        | "type"
-                        | "name"
-                        | "price"
-                        | "section"
-                        | "rarity"
-                        | "visible"
-                    )
-                  }
-                  style={inputStyle}
-                >
-                  <option value="type">Type</option>
-                  <option value="name">Name</option>
-                  <option value="price">Price</option>
-                  <option value="section">Section</option>
-                  <option value="rarity">Rarity</option>
-                  <option value="visible">Visible First</option>
-                </select>
-              </div>
-
-              <button
-                onClick={() => {
-                  setShopSearch("");
-                  setShopTypeFilter("all");
-                  setShopSortBy("type");
-                }}
-                style={secondaryButtonStyle}
-              >
-                Reset
-              </button>
-
-              <div
-                style={{
-                  gridColumn: "1 / -1",
-                  color: "var(--text-muted)",
-                  fontSize: "0.8rem",
-                }}
-              >
-                Showing{" "}
-                <strong style={{ color: "#fff" }}>
-                  {filteredShopItems.length}
-                </strong>{" "}
-                of{" "}
-                <strong style={{ color: "#fff" }}>{shopItems.length}</strong>{" "}
-                items
-              </div>
-            </div>
-
-            <div
-              style={{
-                background: "var(--surface)",
-                border: "1px solid var(--border)",
-                borderRadius: "14px",
-                padding: "1.25rem",
-                marginBottom: "2rem",
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  gap: "1rem",
-                  marginBottom: "1rem",
-                  flexWrap: "wrap",
-                }}
-              >
-                <div>
-                  <div style={{ fontWeight: 800, fontSize: "1rem" }}>
-                    Add Shop Item
-                  </div>
-                  <div
-                    style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}
-                  >
-                    Create a new item with tags, visibility, and media URLs.
-                  </div>
-                </div>
-
-                <button
-                  onClick={handleAddShopItem}
-                  disabled={saving === "newShopItem"}
-                  style={primaryButtonStyle(saved === "newShopItem")}
-                >
-                  {saving === "newShopItem"
-                    ? "Adding..."
-                    : saved === "newShopItem"
-                    ? "Added"
-                    : "Add Item"}
-                </button>
-              </div>
-
-              <div
-                className="admin-shop-form-grid"
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-                  gap: "0.85rem",
-                  marginBottom: "0.85rem",
-                }}
-              >
-                <ShopTextInput
-                  label="Name"
-                  value={newItem.itemName || ""}
-                  onChange={(value) =>
-                    setNewItem({ ...newItem, itemName: value })
-                  }
-                />
-
-                <div>
-                  <div style={{ fontSize: "0.7rem", marginBottom: "0.3rem" }}>
-                    Type
-                  </div>
-                  <select
-                    value={newItem.itemType}
-                    onChange={(e) =>
-                      setNewItem({
-                        ...newItem,
-                        itemType: e.target.value as ShopItem["itemType"],
-                      })
-                    }
-                    style={inputStyle}
-                  >
-                    <option value="avatar">Avatar</option>
-                    <option value="banner">Banner</option>
-                    <option value="song">Song</option>
-                    <option value="title">Title</option>
-                  </select>
-                </div>
-
-                <ShopTextInput
-                  label="Price"
-                  type="number"
-                  value={newItem.price || 0}
-                  onChange={(value) =>
-                    setNewItem({
-                      ...newItem,
-                      price: Number(value),
-                    })
-                  }
-                />
-
-                <ShopTextInput
-                  label="Section"
-                  value={newItem.section || ""}
-                  onChange={(value) =>
-                    setNewItem({ ...newItem, section: value })
-                  }
-                />
-
-                <ShopTextInput
-                  label="Rarity"
-                  value={newItem.rarity || ""}
-                  onChange={(value) =>
-                    setNewItem({ ...newItem, rarity: value })
-                  }
-                />
-              </div>
-
-              <div
-                className="admin-shop-url-grid"
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
-                  gap: "0.85rem",
-                  marginBottom: "0.85rem",
-                }}
-              >
-                <ShopTextInput
-                  label="Image URL"
-                  value={newItem.previewImage || ""}
-                  onChange={(value) =>
-                    setNewItem({
-                      ...newItem,
-                      previewImage: value,
-                    })
-                  }
-                />
-
-                <ShopTextInput
-                  label="Song URL"
-                  value={newItem.songUrl || ""}
-                  onChange={(value) =>
-                    setNewItem({ ...newItem, songUrl: value })
-                  }
-                />
-              </div>
-
-              <div
-                style={{
-                  display: "flex",
-                  gap: "1rem",
-                  flexWrap: "wrap",
-                  alignItems: "center",
-                }}
-              >
-                <label style={toggleLabelStyle}>
-                  <input
-                    type="checkbox"
-                    checked={!!newItem.showNewTag}
-                    onChange={(e) =>
-                      setNewItem({
-                        ...newItem,
-                        showNewTag: e.target.checked,
-                      })
-                    }
-                  />
-                  NEW Tag
-                </label>
-
-                <label style={toggleLabelStyle}>
-                  <input
-                    type="checkbox"
-                    checked={!!newItem.showLeavingTodayTag}
-                    onChange={(e) =>
-                      setNewItem({
-                        ...newItem,
-                        showLeavingTodayTag: e.target.checked,
-                      })
-                    }
-                  />
-                  LEAVING TODAY Tag
-                </label>
-
-                <label style={toggleLabelStyle}>
-                  <input
-                    type="checkbox"
-                    checked={!!newItem.isVisible}
-                    onChange={(e) =>
-                      setNewItem({
-                        ...newItem,
-                        isVisible: e.target.checked,
-                      })
-                    }
-                  />
-                  Visible
-                </label>
-              </div>
-            </div>
-
-            <div
-              className="admin-shop-grid"
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fill, minmax(360px, 1fr))",
-                gap: "1rem",
-              }}
-            >
-              {filteredShopItems.map((item) => (
-                <ShopItemCard
-                  key={item.id}
-                  item={item}
-                  saving={saving}
-                  saved={saved}
-                  onChange={updateShopItemField}
-                  onSave={handleUpdateShopItem}
-                  onDelete={() => {
-                    if (confirm("Delete?")) {
-                      deleteDoc(doc(db, "shopItems", item.id)).then(() =>
-                        setShopItems(shopItems.filter((i) => i.id !== item.id))
-                      );
-                    }
-                  }}
-                />
-              ))}
-            </div>
-          </div>
-        )}
-                {tab === "cards" && (
+        {tab === "cards" && (
           <div>
             <h2 style={sectionTitleStyle}>Mastery Cards</h2>
 
@@ -3083,6 +889,100 @@ export default function AdminPage() {
                       : "Save"}
                   </button>
                 </div>
+
+                <div
+                  style={{
+                    display: "flex",
+                    flexWrap: "wrap",
+                    alignItems: "center",
+                    gap: "0.5rem",
+                    marginTop: "0.85rem",
+                  }}
+                >
+                  <div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>
+                    Titles:
+                  </div>
+
+                  {(m.titles || []).length === 0 && (
+                    <div
+                      style={{
+                        fontSize: "0.75rem",
+                        color: "var(--text-muted)",
+                      }}
+                    >
+                      None yet
+                    </div>
+                  )}
+
+                  {(m.titles || []).map((title) => (
+                    <span
+                      key={title}
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "0.4rem",
+                        background: "rgba(255,193,7,0.08)",
+                        border: "1px solid rgba(255,193,7,0.35)",
+                        color: "var(--accent)",
+                        borderRadius: "999px",
+                        padding: "0.3rem 0.3rem 0.3rem 0.7rem",
+                        fontSize: "0.75rem",
+                        fontWeight: 800,
+                      }}
+                    >
+                      🏆 {title}
+                      <button
+                        type="button"
+                        onClick={() =>
+                          updateManagerField(
+                            m.id,
+                            "titles",
+                            (m.titles || []).filter((t) => t !== title)
+                          )
+                        }
+                        style={{
+                          background: "rgba(0,0,0,0.35)",
+                          border: "none",
+                          color: "#fff",
+                          width: "20px",
+                          height: "20px",
+                          borderRadius: "999px",
+                          cursor: "pointer",
+                          fontSize: "0.65rem",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        ✕
+                      </button>
+                    </span>
+                  ))}
+
+                  <input
+                    value={titleDrafts[m.id] || ""}
+                    onChange={(e) =>
+                      setTitleDrafts({ ...titleDrafts, [m.id]: e.target.value })
+                    }
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") addManagerTitle(m);
+                    }}
+                    placeholder="New title, e.g. Season 2025 Champion"
+                    style={{
+                      ...inputStyle,
+                      maxWidth: "280px",
+                      minHeight: "34px",
+                    }}
+                  />
+
+                  <button
+                    type="button"
+                    onClick={() => addManagerTitle(m)}
+                    style={secondaryButtonStyle}
+                  >
+                    Add Title
+                  </button>
+                </div>
               </div>
             ))}
           </div>
@@ -3543,6 +1443,2154 @@ function ShopItemCard({
               onChange={(e) =>
                 onChange(item.id, "showLeavingTodayTag", e.target.checked)
               }
+            />
+            LEAVING
+          </label>
+
+          <label style={toggleLabelStyle}>
+            <input
+              type="checkbox"
+              checked={!!item.isVisible}
+              onChange={(e) => onChange(item.id, "isVisible", e.target.checked)}
+            />
+            Visible
+          </label>
+        </div>
+
+        <div style={{ display: "flex", gap: "0.5rem" }}>
+          <button
+            onClick={() => onSave(item)}
+            disabled={saving === item.id}
+            style={{
+              background: saved === item.id ? "var(--green)" : "var(--accent)",
+              color: "#000",
+              border: "none",
+              borderRadius: "8px",
+              padding: "0.5rem 0.9rem",
+              fontWeight: 800,
+              cursor: "pointer",
+            }}
+          >
+            {saving === item.id
+              ? "Saving..."
+              : saved === item.id
+              ? "Saved"
+              : "Save"}
+          </button>
+
+          <button
+            onClick={onDelete}
+            style={{
+              background: "transparent",
+              border: "1px solid var(--border)",
+              color: "var(--red)",
+              borderRadius: "8px",
+              padding: "0.5rem 0.75rem",
+              cursor: "pointer",
+              fontWeight: 800,
+            }}
+          >
+            ✕
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LimitedCardFields({
+  card,
+  players,
+  onChange,
+}: {
+  card: Partial<LimitedCard>;
+  players: Player[];
+  onChange: (patch: Partial<LimitedCard>) => void;
+}) {
+  const linkedPlayer = players.find((p) => p.id === card.playerId);
+  const statOptions = limitedCardStatOptions(linkedPlayer?.game);
+  const statValues = statOptions.map((option) => option.value);
+  const currentStat = String(card.boostStat || "");
+  const showCurrentStat = currentStat && !statValues.includes(currentStat);
+
+  return (
+    <div>
+      <div
+        className="admin-shop-form-grid"
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+          gap: "0.85rem",
+          marginBottom: "0.85rem",
+        }}
+      >
+        <ShopTextInput
+          label="Card Name"
+          value={card.cardName || ""}
+          onChange={(value) => onChange({ cardName: value })}
+        />
+
+        <div>
+          <div style={{ fontSize: "0.7rem", marginBottom: "0.3rem" }}>
+            Linked Player
+          </div>
+          <select
+            value={card.playerId || ""}
+            onChange={(e) => {
+              const playerId = e.target.value;
+              const player = players.find((p) => p.id === playerId);
+              const nextStatValues = limitedCardStatOptions(
+                player?.game
+              ).map((option) => option.value);
+              const patch: Partial<LimitedCard> = { playerId };
+
+              if (
+                card.boostStat &&
+                !nextStatValues.includes(String(card.boostStat))
+              ) {
+                patch.boostStat = nextStatValues.includes("kills")
+                  ? "kills"
+                  : nextStatValues[0] || "kills";
+              }
+
+              onChange(patch);
+            }}
+            style={inputStyle}
+          >
+            <option value="">Choose player</option>
+            {players.map((player) => (
+              <option key={player.id} value={player.id}>
+                {player.name} · {player.game}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <div style={{ fontSize: "0.7rem", marginBottom: "0.3rem" }}>
+            Rarity
+          </div>
+          <select
+            value={card.rarity || "rare"}
+            onChange={(e) => onChange({ rarity: e.target.value })}
+            style={inputStyle}
+          >
+            {LIMITED_CARD_RARITIES.map((rarity) => (
+              <option key={rarity} value={rarity}>
+                {rarity}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <div style={{ fontSize: "0.7rem", marginBottom: "0.3rem" }}>
+            Boost Stat
+          </div>
+          <select
+            value={currentStat || statValues[0] || "kills"}
+            onChange={(e) => onChange({ boostStat: e.target.value })}
+            style={inputStyle}
+          >
+            {showCurrentStat && (
+              <option value={currentStat}>
+                {limitedCardStatLabel(currentStat)} (other game)
+              </option>
+            )}
+            {statOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <ShopTextInput
+          label="Boost Multiplier (×)"
+          type="number"
+          value={card.boostValue ?? 1.5}
+          onChange={(value) => onChange({ boostValue: Number(value) })}
+        />
+
+        <ShopTextInput
+          label="Shop Price (coins)"
+          type="number"
+          value={card.shopPrice ?? 0}
+          onChange={(value) => onChange({ shopPrice: Number(value) })}
+        />
+
+        <ShopTextInput
+          label="Transfers Price (m)"
+          type="number"
+          value={card.transferPrice ?? 0}
+          onChange={(value) => onChange({ transferPrice: Number(value) })}
+        />
+
+        <ShopTextInput
+          label="Stock (copies left)"
+          type="number"
+          value={card.stock ?? 1}
+          onChange={(value) => onChange({ stock: Number(value) })}
+        />
+      </div>
+
+      <div
+        className="admin-shop-url-grid"
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+          gap: "0.85rem",
+          marginBottom: "0.85rem",
+        }}
+      >
+        <ShopTextInput
+          label="Power-up Text (optional override)"
+          value={card.powerupText || ""}
+          onChange={(value) => onChange({ powerupText: value })}
+        />
+
+        <ShopTextInput
+          label="Image URL"
+          value={card.image || ""}
+          onChange={(value) => onChange({ image: value })}
+        />
+
+        <div>
+          <div style={{ fontSize: "0.7rem", marginBottom: "0.3rem" }}>
+            Accent Color
+          </div>
+          <input
+            type="color"
+            value={
+              card.accentColor || getLimitedCardRarityColor(card.rarity)
+            }
+            onChange={(e) => onChange({ accentColor: e.target.value })}
+            style={{
+              ...inputStyle,
+              padding: "0.3rem",
+              height: "38px",
+              cursor: "pointer",
+            }}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LimitedCardPreview({
+  card,
+  players,
+}: {
+  card: Partial<LimitedCard>;
+  players: Player[];
+}) {
+  const rarityColor = getLimitedCardRarityColor(card.rarity, card.accentColor);
+  const linkedPlayer = players.find((p) => p.id === card.playerId);
+  const imageUrl = getLimitedCardImageUrl(card.image);
+
+  return (
+    <div
+      style={{
+        width: "100%",
+        borderRadius: "16px",
+        overflow: "hidden",
+        border: `1px solid ${rarityColor}66`,
+        background: `linear-gradient(160deg, ${rarityColor}26, rgba(255,255,255,0.02)), var(--surface)`,
+        boxShadow: `0 12px 32px ${rarityColor}1f`,
+      }}
+    >
+      <div
+        style={{
+          position: "relative",
+          width: "100%",
+          aspectRatio: "4/3",
+          background: `radial-gradient(circle at 30% 20%, ${rarityColor}33, transparent 45%), #111`,
+        }}
+      >
+        {imageUrl ? (
+          <img
+            src={imageUrl}
+            alt={card.cardName || "Mastery card"}
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
+              display: "block",
+            }}
+          />
+        ) : (
+          <div
+            style={{
+              width: "100%",
+              height: "100%",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: "rgba(255,255,255,0.25)",
+              fontWeight: 900,
+              fontSize: "1.8rem",
+            }}
+          >
+            {(card.cardName || "?").slice(0, 1)}
+          </div>
+        )}
+
+        <span
+          style={{
+            position: "absolute",
+            top: "0.55rem",
+            left: "0.55rem",
+            background: "rgba(0,0,0,0.55)",
+            border: `1px solid ${rarityColor}80`,
+            color: rarityColor,
+            fontSize: "0.58rem",
+            fontWeight: 900,
+            padding: "0.2rem 0.45rem",
+            borderRadius: "999px",
+            textTransform: "uppercase",
+            letterSpacing: "0.6px",
+          }}
+        >
+          {card.rarity || "rare"}
+        </span>
+      </div>
+
+      <div style={{ padding: "0.7rem" }}>
+        <div
+          style={{
+            fontWeight: 900,
+            fontSize: "0.9rem",
+            lineHeight: 1.2,
+            marginBottom: "0.3rem",
+          }}
+        >
+          {card.cardName || "Untitled Card"}
+        </div>
+
+        <div
+          style={{
+            color: "var(--text-muted)",
+            fontSize: "0.68rem",
+            marginBottom: "0.4rem",
+          }}
+        >
+          {linkedPlayer
+            ? `${linkedPlayer.name} · ${linkedPlayer.game}`
+            : "No player linked"}
+        </div>
+
+        <div
+          style={{
+            color: "var(--accent)",
+            fontSize: "0.68rem",
+            fontWeight: 800,
+            lineHeight: 1.35,
+            minHeight: "2rem",
+            marginBottom: "0.5rem",
+          }}
+        >
+          {limitedCardPowerupText({
+            boostStat: card.boostStat,
+            boostValue: card.boostValue,
+            powerupText: card.powerupText,
+          })}
+        </div>
+
+        <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap" }}>
+          <span
+            style={{
+              background: "rgba(255,193,7,0.1)",
+              border: "1px solid rgba(255,193,7,0.25)",
+              color: "var(--accent)",
+              fontSize: "0.62rem",
+              fontWeight: 900,
+              padding: "0.22rem 0.45rem",
+              borderRadius: "999px",
+            }}
+          >
+            {Number(card.shopPrice || 0).toLocaleString()} coins
+          </span>
+
+          <span
+            style={{
+              background: "rgba(3,71,244,0.12)",
+              border: "1px solid rgba(107,159,255,0.35)",
+              color: "#8bb5ff",
+              fontSize: "0.62rem",
+              fontWeight: 900,
+              padding: "0.22rem 0.45rem",
+              borderRadius: "999px",
+            }}
+          >
+            +{Number(card.transferPrice || 0).toFixed(1)}m squad cost
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LimitedCardEditor({
+  card,
+  players,
+  saving,
+  saved,
+  onChange,
+  onSave,
+  onDelete,
+}: {
+  card: LimitedCard;
+  players: Player[];
+  saving: string | null;
+  saved: string | null;
+  onChange: (id: string, patch: Partial<LimitedCard>) => void;
+  onSave: (card: LimitedCard) => void;
+  onDelete: () => void;
+}) {
+  return (
+    <div
+      className="admin-shop-item-card"
+      style={{
+        background: "var(--surface)",
+        border: "1px solid var(--border)",
+        borderRadius: "14px",
+        padding: "1rem",
+        display: "flex",
+        flexDirection: "column",
+        gap: "0.85rem",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "flex-start",
+          gap: "0.75rem",
+        }}
+      >
+        <div style={{ minWidth: 0 }}>
+          <div
+            style={{
+              fontWeight: 800,
+              fontSize: "1rem",
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+          >
+            {card.cardName || "Untitled Card"}
+          </div>
+
+          <div
+            style={{
+              color: "var(--text-muted)",
+              fontSize: "0.75rem",
+              marginTop: "0.2rem",
+            }}
+          >
+            {card.rarity || "rare"} · stock {Number(card.stock || 0)}
+            {card.isVisible === false ? " · hidden" : ""}
+          </div>
+        </div>
+
+        <div style={{ display: "flex", gap: "0.4rem", flexShrink: 0 }}>
+          {card.showNewTag && (
+            <span
+              style={{
+                background: "var(--blue)",
+                color: "#fff",
+                fontSize: "0.62rem",
+                fontWeight: 900,
+                padding: "0.22rem 0.45rem",
+                borderRadius: "999px",
+              }}
+            >
+              NEW
+            </span>
+          )}
+
+          {card.showLeavingTodayTag && (
+            <span
+              style={{
+                background: "#0f0d1b",
+                color: "var(--accent)",
+                border: "1px solid rgba(255,193,7,0.3)",
+                fontSize: "0.62rem",
+                fontWeight: 900,
+                padding: "0.22rem 0.45rem",
+                borderRadius: "999px",
+              }}
+            >
+              LEAVING
+            </span>
+          )}
+        </div>
+      </div>
+
+      <div style={{ display: "grid", justifyItems: "center" }}>
+        <div style={{ width: "min(100%, 190px)" }}>
+          <LimitedCardPreview card={card} players={players} />
+        </div>
+      </div>
+
+      <LimitedCardFields
+        card={card}
+        players={players}
+        onChange={(patch) => onChange(card.id, patch)}
+      />
+
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: "0.75rem",
+          flexWrap: "wrap",
+          borderTop: "1px solid var(--border)",
+          paddingTop: "0.85rem",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            gap: "0.85rem",
+            flexWrap: "wrap",
+            alignItems: "center",
+          }}
+        >
+          <label style={toggleLabelStyle}>
+            <input
+              type="checkbox"
+              checked={!!card.showNewTag}
+              onChange={(e) =>
+                onChange(card.id, { showNewTag: e.target.checked })
+              }
+            />
+            NEW
+          </label>
+
+          <label style={toggleLabelStyle}>
+            <input
+              type="checkbox"
+              checked={!!card.showLeavingTodayTag}
+              onChange={(e) =>
+                onChange(card.id, { showLeavingTodayTag: e.target.checked })
+              }
+            />
+            LEAVING
+          </label>
+
+          <label style={toggleLabelStyle}>
+            <input
+              type="checkbox"
+              checked={card.isVisible !== false}
+              onChange={(e) =>
+                onChange(card.id, { isVisible: e.target.checked })
+              }
+            />
+            Visible
+          </label>
+        </div>
+
+        <div style={{ display: "flex", gap: "0.5rem" }}>
+          <button
+            onClick={() => onSave(card)}
+            disabled={saving === card.id}
+            style={{
+              background: saved === card.id ? "var(--green)" : "var(--accent)",
+              color: "#000",
+              border: "none",
+              borderRadius: "8px",
+              padding: "0.5rem 0.9rem",
+              fontWeight: 800,
+              cursor: "pointer",
+            }}
+          >
+            {saving === card.id
+              ? "Saving..."
+              : saved === card.id
+              ? "Saved"
+              : "Save"}
+          </button>
+
+          <button
+            onClick={onDelete}
+            style={{
+              background: "transparent",
+              border: "1px solid var(--border)",
+              color: "var(--red)",
+              borderRadius: "8px",
+              padding: "0.5rem 0.75rem",
+              cursor: "pointer",
+              fontWeight: 800,
+            }}
+          >
+            ✕
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StatInput({
+  label,
+  id,
+  val,
+  set,
+}: {
+  label: string;
+  id: string;
+  val: any;
+  set: any;
+}) {
+  return (
+    <div>
+      <div
+        style={{
+          fontSize: "0.75rem",
+          color: "var(--text-muted)",
+          marginBottom: "0.3rem",
+        }}
+      >
+        {label}
+      </div>
+
+      <input
+        type="number"
+        value={val[id] || ""}
+        onChange={(e) => set({ ...val, [id]: e.target.value })}
+        style={{
+          width: "100%",
+          background: "var(--bg)",
+          border: "1px solid var(--border)",
+          color: "#fff",
+          padding: "0.5rem",
+          borderRadius: "6px",
+        }}
+      />
+    </div>
+  );
+}
+
+const inputStyle = {
+  width: "100%",
+  background: "var(--bg)",
+  border: "1px solid var(--border)",
+  color: "#fff",
+  padding: "0.5rem",
+  borderRadius: "6px",
+  fontSize: "0.85rem",
+};
+
+const labelStyle = {
+  fontSize: "0.8rem",
+  color: "var(--text-muted)",
+  marginBottom: "0.4rem",
+};
+
+const smallLabelStyle = {
+  fontSize: "0.68rem",
+  marginBottom: "0.25rem",
+};
+
+const sectionTitleStyle = {
+  fontSize: "1.2rem",
+  fontWeight: 700,
+  marginBottom: "1.5rem",
+};
+
+const panelStyle = {
+  background: "var(--surface)",
+  border: "1px solid var(--border)",
+  borderRadius: "12px",
+  padding: "1.5rem",
+  display: "flex",
+  flexDirection: "column" as const,
+  gap: "1.5rem",
+};
+
+const toggleLabelStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: "0.4rem",
+  fontSize: "0.75rem",
+  color: "var(--text-muted)",
+};
+
+const smallButtonStyle = {
+  background: "var(--bg)",
+  border: "1px solid var(--border)",
+  color: "#fff",
+  width: "40px",
+  height: "40px",
+  borderRadius: "8px",
+  cursor: "pointer",
+  fontSize: "1.2rem",
+};
+
+const secondaryButtonStyle = {
+  background: "transparent",
+  border: "1px solid var(--border)",
+  color: "var(--text-muted)",
+  borderRadius: "8px",
+  padding: "0.55rem 0.75rem",
+  fontWeight: 800,
+  cursor: "pointer",
+};
+
+const primaryButtonStyle = (isSaved: boolean) => ({
+  background: isSaved ? "var(--green)" : "var(--blue)",
+  color: "#fff",
+  border: "none",
+  padding: "0.8rem",
+  borderRadius: "8px",
+  fontWeight: 700,
+  cursor: "pointer",
+});
+        {tab === "cards" && (
+          <div>
+            <h2 style={sectionTitleStyle}>Mastery Cards</h2>
+
+            <div
+              style={{
+                background:
+                  "linear-gradient(135deg, rgba(155,248,0,0.08), rgba(3,71,244,0.1)), var(--surface)",
+                border: "1px solid var(--border)",
+                borderRadius: "14px",
+                padding: "1rem",
+                marginBottom: "1rem",
+                color: "var(--text-muted)",
+                fontSize: "0.85rem",
+                lineHeight: 1.6,
+              }}
+            >
+              Design boost cards that managers buy in the shop with coins and
+              field from the player market on the transfers page — the
+              special version replaces the player&apos;s normal card in the
+              squad. Each card multiplies one stat&apos;s points for that
+              player, its transfers price replaces the player&apos;s price in
+              the squad budget, and the copy is consumed once the gameweek it
+              was used in is scored. Only one version of a player can be
+              fielded at a time.
+            </div>
+
+            <div
+              style={{
+                background: "var(--surface)",
+                border: "1px solid var(--border)",
+                borderRadius: "14px",
+                padding: "1.25rem",
+                marginBottom: "2rem",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: "1rem",
+                  marginBottom: "1rem",
+                  flexWrap: "wrap",
+                }}
+              >
+                <div>
+                  <div style={{ fontWeight: 800, fontSize: "1rem" }}>
+                    Create Mastery Card
+                  </div>
+                  <div
+                    style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}
+                  >
+                    Pick the player, the stat, and the multiplier.
+                  </div>
+                </div>
+
+                <button
+                  onClick={handleAddLimitedCard}
+                  disabled={saving === "newLimitedCard"}
+                  style={primaryButtonStyle(saved === "newLimitedCard")}
+                >
+                  {saving === "newLimitedCard"
+                    ? "Adding..."
+                    : saved === "newLimitedCard"
+                    ? "Added"
+                    : "Add Card"}
+                </button>
+              </div>
+
+              <LimitedCardFields
+                card={newCard}
+                players={players}
+                onChange={(patch) => setNewCard({ ...newCard, ...patch })}
+              />
+            </div>
+
+            {limitedCards.length === 0 ? (
+              <div
+                style={{
+                  border: "1px dashed var(--border)",
+                  borderRadius: "12px",
+                  padding: "2rem 1rem",
+                  textAlign: "center",
+                  color: "var(--text-muted)",
+                }}
+              >
+                No mastery cards yet. Create the first one above.
+              </div>
+            ) : (
+              <div
+                className="admin-shop-grid"
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fill, minmax(360px, 1fr))",
+                  gap: "1rem",
+                }}
+              >
+                {limitedCards.map((card) => (
+                  <LimitedCardEditor
+                    key={card.id}
+                    card={card}
+                    players={players}
+                    saving={saving}
+                    saved={saved}
+                    onChange={updateLimitedCardPatch}
+                    onSave={handleUpdateLimitedCard}
+                    onDelete={() => {
+                      if (confirm(`Delete "${card.cardName || "card"}"?`)) {
+                        deleteDoc(doc(db, "limitedCards", card.id)).then(() =>
+                          setLimitedCards(
+                            limitedCards.filter((c) => c.id !== card.id)
+                          )
+                        );
+                      }
+                    }}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {tab === "fixtures" && (
+          <div style={{ display: "grid", gap: "1rem", maxWidth: "1100px" }}>
+            <div
+              style={{
+                background:
+                  "linear-gradient(135deg, rgba(3,71,244,0.12), rgba(255,193,7,0.08)), var(--surface)",
+                border: "1px solid var(--border)",
+                borderRadius: "14px",
+                padding: "1rem",
+              }}
+            >
+              <h2 style={{ ...sectionTitleStyle, marginBottom: "0.5rem" }}>
+                Player Fixtures
+              </h2>
+              <p style={{ color: "var(--text-muted)", lineHeight: 1.6 }}>
+                Pair esports players for each gameweek. The Fixtures page
+                compares their saved gameweek scores automatically: win = 3
+                PTS, draw = 1 PTS, loss = 0 PTS.
+              </p>
+            </div>
+
+            <section style={panelStyle}>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
+                  gap: "0.75rem",
+                  alignItems: "end",
+                }}
+              >
+                <div>
+                  <div style={labelStyle}>Gameweek</div>
+                  <input
+                    type="number"
+                    min="1"
+                    value={fixtureGameweek}
+                    onChange={(event) =>
+                      setFixtureGameweek(
+                        Math.max(1, Number(event.target.value) || 1)
+                      )
+                    }
+                    style={inputStyle}
+                  />
+                </div>
+
+                <div>
+                  <div style={labelStyle}>Player One</div>
+                  <select
+                    value={newFixturePlayerOne}
+                    onChange={(event) => setNewFixturePlayerOne(event.target.value)}
+                    style={inputStyle}
+                  >
+                    <option value="">Choose player</option>
+                    {players.map((player) => (
+                      <option key={player.id} value={player.id}>
+                        {player.name} · {player.game}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <div style={labelStyle}>Player Two</div>
+                  <select
+                    value={newFixturePlayerTwo}
+                    onChange={(event) => setNewFixturePlayerTwo(event.target.value)}
+                    style={inputStyle}
+                  >
+                    <option value="">Choose player</option>
+                    {players.map((player) => (
+                      <option key={player.id} value={player.id}>
+                        {player.name} · {player.game}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <button
+                  onClick={handleAddFixture}
+                  disabled={saving === "newFixture"}
+                  style={{
+                    background:
+                      saved === "newFixture" ? "var(--green)" : "var(--accent)",
+                    color: "#000",
+                    border: "none",
+                    borderRadius: "8px",
+                    padding: "0.65rem 1rem",
+                    minHeight: "38px",
+                    fontWeight: 900,
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {saving === "newFixture"
+                    ? "Adding..."
+                    : saved === "newFixture"
+                    ? "Added"
+                    : "Add Fixture"}
+                </button>
+              </div>
+            </section>
+
+            <section style={panelStyle}>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: "1rem",
+                  flexWrap: "wrap",
+                }}
+              >
+                <div>
+                  <h2 style={{ ...sectionTitleStyle, marginBottom: "0.3rem" }}>
+                    GW{fixtureGameweek} Fixtures
+                  </h2>
+                  <p style={{ color: "var(--text-muted)", fontSize: "0.82rem" }}>
+                    Edit either player, move a fixture to another gameweek, or
+                    remove it.
+                  </p>
+                </div>
+                <div
+                  style={{
+                    color: "var(--text-muted)",
+                    fontSize: "0.8rem",
+                    fontWeight: 800,
+                  }}
+                >
+                  {selectedFixtures.length} fixture
+                  {selectedFixtures.length === 1 ? "" : "s"}
+                </div>
+              </div>
+
+              {selectedFixtures.length === 0 ? (
+                <div
+                  style={{
+                    border: "1px dashed var(--border)",
+                    borderRadius: "12px",
+                    padding: "2rem 1rem",
+                    textAlign: "center",
+                    color: "var(--text-muted)",
+                  }}
+                >
+                  No fixtures are scheduled for GW{fixtureGameweek} yet.
+                </div>
+              ) : (
+                <div style={{ display: "grid", gap: "0.75rem" }}>
+                  {selectedFixtures.map((fixture) => (
+                    <div
+                      key={fixture.id}
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "repeat(auto-fit, minmax(175px, 1fr))",
+                        gap: "0.65rem",
+                        alignItems: "end",
+                        padding: "0.85rem",
+                        border: "1px solid var(--border)",
+                        borderRadius: "12px",
+                        background: "rgba(255,255,255,0.025)",
+                      }}
+                    >
+                      <div>
+                        <div style={smallLabelStyle}>Gameweek</div>
+                        <input
+                          type="number"
+                          min="1"
+                          value={fixture.gameweek}
+                          onChange={(event) =>
+                            updateFixtureField(
+                              fixture.id,
+                              "gameweek",
+                              Math.max(1, Number(event.target.value) || 1)
+                            )
+                          }
+                          style={inputStyle}
+                        />
+                      </div>
+
+                      <div>
+                        <div style={smallLabelStyle}>Player One</div>
+                        <select
+                          value={fixture.playerOneId}
+                          onChange={(event) =>
+                            updateFixtureField(
+                              fixture.id,
+                              "playerOneId",
+                              event.target.value
+                            )
+                          }
+                          style={inputStyle}
+                        >
+                          <option value="">Choose player</option>
+                          {players.map((player) => (
+                            <option key={player.id} value={player.id}>
+                              {player.name} · {player.game}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <div style={smallLabelStyle}>Player Two</div>
+                        <select
+                          value={fixture.playerTwoId}
+                          onChange={(event) =>
+                            updateFixtureField(
+                              fixture.id,
+                              "playerTwoId",
+                              event.target.value
+                            )
+                          }
+                          style={inputStyle}
+                        >
+                          <option value="">Choose player</option>
+                          {players.map((player) => (
+                            <option key={player.id} value={player.id}>
+                              {player.name} · {player.game}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <button
+                        onClick={() => handleSaveFixture(fixture)}
+                        disabled={saving === fixture.id}
+                        style={{
+                          background:
+                            saved === fixture.id ? "var(--green)" : "var(--accent)",
+                          color: "#000",
+                          border: "none",
+                          borderRadius: "8px",
+                          padding: "0.6rem 0.85rem",
+                          fontWeight: 900,
+                          cursor: "pointer",
+                        }}
+                      >
+                        {saving === fixture.id
+                          ? "Saving..."
+                          : saved === fixture.id
+                          ? "Saved"
+                          : "Save"}
+                      </button>
+
+                      <button
+                        onClick={() => handleDeleteFixture(fixture)}
+                        disabled={saving === fixture.id}
+                        title={`Delete ${playerLabel(fixture.playerOneId)} vs ${playerLabel(fixture.playerTwoId)}`}
+                        style={{
+                          background: "transparent",
+                          color: "var(--red)",
+                          border: "1px solid var(--border)",
+                          borderRadius: "8px",
+                          padding: "0.6rem 0.75rem",
+                          fontWeight: 900,
+                          cursor: "pointer",
+                        }}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          </div>
+        )}
+
+        {tab === "stats" && (
+          <div
+            className="admin-stats-layout"
+            style={{
+              display: "grid",
+              gridTemplateColumns: "300px 1fr",
+              gap: "2rem",
+            }}
+          >
+            <div
+              style={{
+                background: "var(--surface)",
+                borderRadius: "12px",
+                border: "1px solid var(--border)",
+                overflow: "hidden",
+              }}
+            >
+              <div
+                style={{
+                  padding: "1rem",
+                  borderBottom: "1px solid var(--border)",
+                  fontWeight: 700,
+                }}
+              >
+                Select Player
+              </div>
+
+              <div className="admin-player-selector" style={{ maxHeight: "600px", overflowY: "auto" }}>
+                {players.map((p) => (
+                  <div
+                    key={p.id}
+                    onClick={() => setSelectedPlayerId(p.id)}
+                    style={{
+                      padding: "0.75rem 1rem",
+                      cursor: "pointer",
+                      borderBottom: "1px solid var(--border)",
+                      background:
+                        selectedPlayerId === p.id
+                          ? "rgba(3,71,244,0.15)"
+                          : "transparent",
+                    }}
+                  >
+                    <div style={{ fontWeight: 600, fontSize: "0.9rem" }}>
+                      {p.name}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: "0.7rem",
+                        color: "var(--text-muted)",
+                      }}
+                    >
+                      {p.game}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div
+              style={{
+                background: "var(--surface)",
+                borderRadius: "12px",
+                border: "1px solid var(--border)",
+                padding: "1.5rem",
+              }}
+            >
+              {activePlayer ? (
+                <div>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      marginBottom: "1.5rem",
+                    }}
+                  >
+                    <div>
+                      <h2 style={{ fontSize: "1.25rem", fontWeight: 700 }}>
+                        {activePlayer.name}
+                      </h2>
+                      <p style={{ color: "var(--accent)", fontSize: "0.8rem" }}>
+                        GW{settings?.currentGameweek} Rules
+                      </p>
+                    </div>
+
+                    <div style={{ textAlign: "right" }}>
+                      <div
+                        style={{
+                          fontSize: "0.7rem",
+                          color: "var(--text-muted)",
+                        }}
+                      >
+                        CALCULATED GW POINTS
+                      </div>
+                      <div
+                        style={{
+                          fontSize: "2rem",
+                          fontWeight: 800,
+                          color: "var(--accent)",
+                        }}
+                      >
+                        {calculatePoints(activePlayer)}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div
+                    className="admin-stats-grid"
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(3, 1fr)",
+                      gap: "1rem",
+                    }}
+                  >
+                    {["matchWin", "matchLose", "mvp", "svp", "bonus"].map(
+                      (f) => (
+                        <StatInput
+                          key={f}
+                          label={f.replace(/([A-Z])/g, " $1").trim()}
+                          id={f}
+                          val={calcStats}
+                          set={setCalcStats}
+                        />
+                      )
+                    )}
+
+                    <div
+                      style={{
+                        gridColumn: "1/-1",
+                        borderTop: "1px solid var(--border)",
+                        margin: "0.5rem 0",
+                      }}
+                    />
+
+                    {activePlayer.game === "Valorant"
+                      ? [
+                          "kills",
+                          "assists",
+                          "deaths",
+                          "firstBlood",
+                          "firstDeath",
+                          "tripleKill",
+                          "quadraKill",
+                          "ace",
+                          "clutch",
+                        ].map((f) => (
+                          <StatInput
+                            key={f}
+                            label={f.replace(/([A-Z])/g, " $1").trim()}
+                            id={f}
+                            val={calcStats}
+                            set={setCalcStats}
+                          />
+                        ))
+                      : [
+                          "kills",
+                          "assists",
+                          "deaths",
+                          "lastKills",
+                          "headKill",
+                          "healing",
+                          "damage",
+                          "blocked",
+                          "soloKills",
+                        ].map((f) => (
+                          <StatInput
+                            key={f}
+                            label={f.replace(/([A-Z])/g, " $1").trim()}
+                            id={f}
+                            val={calcStats}
+                            set={setCalcStats}
+                          />
+                        ))}
+                  </div>
+
+                  <button
+                    onClick={handleSaveStats}
+                    disabled={saving === "matchstats"}
+                    style={{
+                      width: "100%",
+                      marginTop: "2rem",
+                      background:
+                        saved === "matchstats"
+                          ? "var(--green)"
+                          : "var(--blue)",
+                      color: "#fff",
+                      border: "none",
+                      padding: "1rem",
+                      borderRadius: "8px",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {saving === "matchstats"
+                      ? "Saving..."
+                      : saved === "matchstats"
+                      ? "✓ Saved Success!"
+                      : "Save Match Stats"}
+                  </button>
+                </div>
+              ) : (
+                <div
+                  style={{
+                    height: "400px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: "var(--text-muted)",
+                  }}
+                >
+                  Select a player to start.
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {tab === "managers" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+            <div
+              style={{
+                background: "rgba(255,255,255,0.04)",
+                border: "1px solid var(--border)",
+                borderRadius: "10px",
+                padding: "1rem",
+                color: "var(--text-muted)",
+                fontSize: "0.85rem",
+              }}
+            >
+              Showing current GW points from{" "}
+              <strong style={{ color: "#fff" }}>gameweekTeams.gwPoints</strong>
+              {settings?.currentGameweek ? (
+                <>
+                  {" "}for{" "}
+                  <strong style={{ color: "#fff" }}>
+                    GW{settings.currentGameweek}
+                  </strong>
+                </>
+              ) : null}
+              .
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                gap: "1rem",
+                flexWrap: "wrap",
+                background:
+                  "linear-gradient(135deg, rgba(3,71,244,0.12), rgba(255,193,7,0.08)), var(--surface)",
+                border: "1px solid var(--border)",
+                borderRadius: "10px",
+                padding: "1rem",
+              }}
+            >
+              <div>
+                <div style={{ fontWeight: 800, marginBottom: "0.25rem" }}>
+                  Grant Ranking Coins
+                </div>
+
+                <div style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>
+                  Rewards managers based on their current GW points rank:
+                  1st 4,000¢ · 2nd 3,000¢ · 3rd 2,500¢ · 4th 1,500¢ ·
+                  5th or more 1,000¢
+                </div>
+              </div>
+
+              <button
+                onClick={handleGrantRankingCoins}
+                disabled={saving === "grantRankingCoins"}
+                style={{
+                  background:
+                    saved === "grantRankingCoins"
+                      ? "var(--green)"
+                      : "var(--blue)",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: "8px",
+                  padding: "0.75rem 1rem",
+                  fontWeight: 900,
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {saving === "grantRankingCoins"
+                  ? "Granting..."
+                  : saved === "grantRankingCoins"
+                  ? "Granted"
+                  : "Grant Coins"}
+              </button>
+            </div>
+
+            {managers.map((m) => (
+              <div
+                key={m.id}
+                style={{
+                  background: "var(--surface)",
+                  border: "1px solid var(--border)",
+                  borderRadius: "10px",
+                  padding: "1rem",
+                }}
+              >
+                <div
+                  style={{
+                    fontWeight: 700,
+                    marginBottom: "1rem",
+                    fontSize: "1.1rem",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: "1rem",
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <div>
+                    <span>{m.manager || "Unknown Manager"}</span>
+
+                    {m.lastGwCoinsEarned !== undefined &&
+                      Number(m.lastGwCoinsEarned || 0) > 0 && (
+                        <span
+                          style={{
+                            marginLeft: "0.5rem",
+                            fontSize: "0.75rem",
+                            color: "var(--accent)",
+                            fontWeight: 700,
+                          }}
+                        >
+                          Last Coins: {m.lastGwCoinsEarned}¢
+                          {m.lastGwCoinsGameweek
+                            ? ` · GW${m.lastGwCoinsGameweek}`
+                            : ""}
+                        </span>
+                      )}
+                  </div>
+
+                  <span
+                    style={{
+                      fontSize: "0.75rem",
+                      color: "var(--text-muted)",
+                      fontWeight: 500,
+                    }}
+                  >
+                    {m.ownerEmail}
+                  </span>
+                </div>
+
+                <div
+                  className="admin-manager-inputs"
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns:
+                      "repeat(6, minmax(100px, 1fr)) 100px",
+                    gap: "0.75rem",
+                    alignItems: "end",
+                    overflowX: "auto",
+                  }}
+                >
+                  <div>
+                    <div style={{ fontSize: "0.7rem" }}>Total Points</div>
+                    <input
+                      type="number"
+                      value={m.totalPoints ?? 0}
+                      onChange={(e) =>
+                        updateManagerField(
+                          m.id,
+                          "totalPoints",
+                          Number(e.target.value)
+                        )
+                      }
+                      style={inputStyle}
+                    />
+                  </div>
+
+                  <div>
+                    <div style={{ fontSize: "0.7rem" }}>
+                      GW Points
+                      {settings?.currentGameweek
+                        ? ` - GW${settings.currentGameweek}`
+                        : ""}
+                    </div>
+                    <input
+                      type="number"
+                      value={m.gameweekPoints ?? 0}
+                      onChange={(e) =>
+                        updateManagerField(
+                          m.id,
+                          "gameweekPoints",
+                          Number(e.target.value)
+                        )
+                      }
+                      style={inputStyle}
+                    />
+                  </div>
+
+                  <div>
+                    <div style={{ fontSize: "0.7rem" }}>Coins</div>
+                    <input
+                      type="number"
+                      value={m.coins ?? 0}
+                      onChange={(e) =>
+                        updateManagerField(m.id, "coins", Number(e.target.value))
+                      }
+                      style={inputStyle}
+                    />
+                  </div>
+
+                  <div>
+                    <div style={{ fontSize: "0.7rem" }}>Bank</div>
+                    <input
+                      type="number"
+                      step="0.1"
+                      value={m.Bank ?? 0}
+                      onChange={(e) =>
+                        updateManagerField(m.id, "Bank", Number(e.target.value))
+                      }
+                      style={inputStyle}
+                    />
+                  </div>
+
+                  <div>
+                    <div style={{ fontSize: "0.7rem" }}>Free Trans</div>
+                    <input
+                      type="number"
+                      value={m.freeTransfers ?? 0}
+                      onChange={(e) =>
+                        updateManagerField(
+                          m.id,
+                          "freeTransfers",
+                          Number(e.target.value)
+                        )
+                      }
+                      style={inputStyle}
+                    />
+                  </div>
+
+                  <label
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "0.45rem",
+                      fontSize: "0.7rem",
+                    }}
+                  >
+                    Leaderboard
+                    <span
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "0.45rem",
+                        minHeight: "38px",
+                        color:
+                          m.showInLeaderboard !== false
+                            ? "var(--green)"
+                            : "var(--text-muted)",
+                        fontSize: "0.8rem",
+                        fontWeight: 700,
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={m.showInLeaderboard !== false}
+                        onChange={(e) =>
+                          updateManagerField(
+                            m.id,
+                            "showInLeaderboard",
+                            e.target.checked
+                          )
+                        }
+                        style={{
+                          width: "18px",
+                          height: "18px",
+                          accentColor: "var(--blue)",
+                        }}
+                      />
+                      {m.showInLeaderboard !== false ? "Shown" : "Hidden"}
+                    </span>
+                  </label>
+
+                  <button
+                    onClick={() => handleSaveManager(m)}
+                    disabled={saving === m.id}
+                    style={{
+                      background:
+                        saved === m.id ? "var(--green)" : "var(--accent)",
+                      color: "#000",
+                      border: "none",
+                      borderRadius: "6px",
+                      padding: "0.6rem",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      width: "100%",
+                    }}
+                  >
+                    {saving === m.id
+                      ? "Saving..."
+                      : saved === m.id
+                      ? "Saved"
+                      : "Save"}
+                  </button>
+                </div>
+
+                <div
+                  style={{
+                    display: "flex",
+                    flexWrap: "wrap",
+                    alignItems: "center",
+                    gap: "0.5rem",
+                    marginTop: "0.85rem",
+                  }}
+                >
+                  <div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>
+                    Titles:
+                  </div>
+
+                  {(m.titles || []).length === 0 && (
+                    <div
+                      style={{
+                        fontSize: "0.75rem",
+                        color: "var(--text-muted)",
+                      }}
+                    >
+                      None yet
+                    </div>
+                  )}
+
+                  {(m.titles || []).map((title) => (
+                    <span
+                      key={title}
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "0.4rem",
+                        background: "rgba(255,193,7,0.08)",
+                        border: "1px solid rgba(255,193,7,0.35)",
+                        color: "var(--accent)",
+                        borderRadius: "999px",
+                        padding: "0.3rem 0.3rem 0.3rem 0.7rem",
+                        fontSize: "0.75rem",
+                        fontWeight: 800,
+                      }}
+                    >
+                      🏆 {title}
+                      <button
+                        type="button"
+                        onClick={() =>
+                          updateManagerField(
+                            m.id,
+                            "titles",
+                            (m.titles || []).filter((t) => t !== title)
+                          )
+                        }
+                        style={{
+                          background: "rgba(0,0,0,0.35)",
+                          border: "none",
+                          color: "#fff",
+                          width: "20px",
+                          height: "20px",
+                          borderRadius: "999px",
+                          cursor: "pointer",
+                          fontSize: "0.65rem",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        ✕
+                      </button>
+                    </span>
+                  ))}
+
+                  <input
+                    value={titleDrafts[m.id] || ""}
+                    onChange={(e) =>
+                      setTitleDrafts({ ...titleDrafts, [m.id]: e.target.value })
+                    }
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") addManagerTitle(m);
+                    }}
+                    placeholder="New title, e.g. Season 2025 Champion"
+                    style={{
+                      ...inputStyle,
+                      maxWidth: "280px",
+                      minHeight: "34px",
+                    }}
+                  />
+
+                  <button
+                    type="button"
+                    onClick={() => addManagerTitle(m)}
+                    style={secondaryButtonStyle}
+                  >
+                    Add Title
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {tab === "players" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
+            {players.map((p) => (
+              <div
+                key={p.id}
+                className="admin-player-row"
+                style={{
+                  background: "var(--surface)",
+                  border: "1px solid var(--border)",
+                  borderRadius: "8px",
+                  padding: "0.75rem 1rem",
+                  display: "grid",
+                  gridTemplateColumns: "1.5fr 0.7fr 2fr minmax(132px, 0.9fr) auto",
+                  gap: "0.75rem",
+                  alignItems: "center",
+                }}
+              >
+                <div>
+                  <div style={{ fontWeight: 600 }}>{p.name}</div>
+                  <div
+                    style={{
+                      fontSize: "0.75rem",
+                      color: "var(--text-muted)",
+                    }}
+                  >
+                    {p.game}
+                  </div>
+                </div>
+
+                <input
+                  type="number"
+                  step="0.1"
+                  value={p.price}
+                  onChange={(e) =>
+                    setPlayers((prev) =>
+                      prev.map((x) =>
+                        x.id === p.id
+                          ? { ...x, price: Number(e.target.value) }
+                          : x
+                      )
+                    )
+                  }
+                  style={inputStyle}
+                />
+
+                <input
+                  type="text"
+                  value={p.desc}
+                  onChange={(e) =>
+                    setPlayers((prev) =>
+                      prev.map((x) =>
+                        x.id === p.id ? { ...x, desc: e.target.value } : x
+                      )
+                    )
+                  }
+                  style={inputStyle}
+                />
+
+                <label
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "0.45rem",
+                    fontSize: "0.7rem",
+                  }}
+                >
+                  Transfers
+                  <span
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.45rem",
+                      minHeight: "38px",
+                      color:
+                        p.showInTransfers !== false
+                          ? "var(--green)"
+                          : "var(--text-muted)",
+                      fontSize: "0.8rem",
+                      fontWeight: 700,
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={p.showInTransfers !== false}
+                      onChange={(e) =>
+                        setPlayers((prev) =>
+                          prev.map((x) =>
+                            x.id === p.id
+                              ? { ...x, showInTransfers: e.target.checked }
+                              : x
+                          )
+                        )
+                      }
+                      style={{
+                        width: "18px",
+                        height: "18px",
+                        accentColor: "var(--blue)",
+                      }}
+                    />
+                    {p.showInTransfers !== false ? "Shown" : "Hidden"}
+                  </span>
+                </label>
+
+                <button
+                  onClick={async () => {
+                    setSaving(p.id);
+
+                    try {
+                      await updateDoc(doc(db, "players", p.id), {
+                        price: p.price,
+                        desc: p.desc,
+                        showInTransfers: p.showInTransfers !== false,
+                      });
+
+                      await syncCurrentGameweekScores();
+
+                      markSaved(p.id);
+                    } catch (err) {
+                      console.error(err);
+                    }
+
+                    setSaving(null);
+                  }}
+                  disabled={saving === p.id}
+                  style={{
+                    background:
+                      saved === p.id ? "var(--green)" : "var(--accent)",
+                    color: "#000",
+                    border: "none",
+                    borderRadius: "6px",
+                    padding: "0.6rem 1.2rem",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  {saving === p.id
+                    ? "Saving..."
+                    : saved === p.id
+                    ? "Saved"
+                    : "Save"}
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </Shell>
+  );
+}
+
+function LockRow({
+  title,
+  desc,
+  checked,
+  onChange,
+}: {
+  title: string;
+  desc: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <div
+      className="admin-lock-row"
+      style={{
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+      }}
+    >
+      <div>
+        <div style={{ fontWeight: 600 }}>{title}</div>
+        <div
+          style={{
+            fontSize: "0.75rem",
+            color: "var(--text-muted)",
+          }}
+        >
+          {desc}
+        </div>
+      </div>
+
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        style={{ width: "24px", height: "24px", cursor: "pointer" }}
+      />
+    </div>
+  );
+}
+
+function ShopTextInput({
+  label,
+  value,
+  onChange,
+  type = "text",
+}: {
+  label: string;
+  value: any;
+  onChange: (value: string) => void;
+  type?: string;
+}) {
+  return (
+    <div>
+      <div style={{ fontSize: "0.7rem", marginBottom: "0.3rem" }}>{label}</div>
+      <input
+        type={type}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        style={inputStyle}
+      />
+    </div>
+  );
+}
+
+function ShopItemCard({
+  item,
+  saving,
+  saved,
+  onChange,
+  onSave,
+  onDelete,
+}: {
+  item: ShopItem;
+  saving: string | null;
+  saved: string | null;
+  onChange: (id: string, field: keyof ShopItem, value: any) => void;
+  onSave: (item: ShopItem) => void;
+  onDelete: () => void;
+}) {
+  return (
+    <div
+      className="admin-shop-item-card"
+      style={{
+        background: "var(--surface)",
+        border: "1px solid var(--border)",
+        borderRadius: "14px",
+        padding: "1rem",
+        display: "flex",
+        flexDirection: "column",
+        gap: "0.85rem",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "flex-start",
+          gap: "0.75rem",
+        }}
+      >
+        <div style={{ minWidth: 0 }}>
+          <div
+            style={{
+              fontWeight: 800,
+              fontSize: "1rem",
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+          >
+            {item.itemName || "Untitled Item"}
+          </div>
+
+          <div
+            style={{
+              color: "var(--text-muted)",
+              fontSize: "0.75rem",
+              marginTop: "0.2rem",
+            }}
+          >
+            {item.itemType} · {item.section || "General"}
+          </div>
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            gap: "0.4rem",
+            flexShrink: 0,
+          }}
+        >
+          {item.showNewTag && (
+            <span
+              style={{
+                background: "var(--blue)",
+                color: "#fff",
+                fontSize: "0.62rem",
+                fontWeight: 900,
+                padding: "0.22rem 0.45rem",
+                borderRadius: "999px",
+              }}
+            >
+              NEW
+            </span>
+          )}
+
+          {item.showLeavingTodayTag && (
+            <span
+              style={{
+                background: "#0f0d1b",
+                color: "var(--accent)",
+                border: "1px solid rgba(255,193,7,0.3)",
+                fontSize: "0.62rem",
+                fontWeight: 900,
+                padding: "0.22rem 0.45rem",
+                borderRadius: "999px",
+              }}
+            >
+              LEAVING
+            </span>
+          )}
+        </div>
+      </div>
+
+      <div
+        className="admin-shop-item-fields"
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1.4fr 1fr 0.7fr",
+          gap: "0.65rem",
+        }}
+      >
+        <div>
+          <div style={smallLabelStyle}>Name</div>
+          <input
+            value={item.itemName || ""}
+            onChange={(e) => onChange(item.id, "itemName", e.target.value)}
+            style={inputStyle}
+          />
+        </div>
+
+        <div>
+          <div style={smallLabelStyle}>Type</div>
+          <select
+            value={item.itemType}
+            onChange={(e) =>
+              onChange(
+                item.id,
+                "itemType",
+                e.target.value as ShopItem["itemType"]
+              )
+            }
+            style={inputStyle}
+          >
+            <option value="avatar">Avatar</option>
+            <option value="banner">Banner</option>
+            <option value="song">Song</option>
+            <option value="title">Title</option>
+          </select>
+        </div>
+
+        <div>
+          <div style={smallLabelStyle}>Price</div>
+          <input
+            type="number"
+            value={item.price || 0}
+            onChange={(e) => onChange(item.id, "price", Number(e.target.value))}
+            style={inputStyle}
+          />
+        </div>
+      </div>
+
+      <div
+        className="admin-shop-item-pair"
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr",
+          gap: "0.65rem",
+        }}
+      >
+        <div>
+          <div style={smallLabelStyle}>Section</div>
+          <input
+            value={item.section || ""}
+            onChange={(e) => onChange(item.id, "section", e.target.value)}
+            style={inputStyle}
+          />
+        </div>
+
+        <div>
+          <div style={smallLabelStyle}>Rarity</div>
+          <input
+            value={item.rarity || ""}
+            onChange={(e) => onChange(item.id, "rarity", e.target.value)}
+            style={inputStyle}
+          />
+        </div>
+      </div>
+
+      <div
+        className="admin-shop-item-pair"
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr",
+          gap: "0.65rem",
+        }}
+      >
+        <div>
+          <div style={smallLabelStyle}>Image URL</div>
+          <input
+            value={item.previewImage || ""}
+            onChange={(e) => onChange(item.id, "previewImage", e.target.value)}
+            style={inputStyle}
+          />
+        </div>
+
+        <div>
+          <div style={smallLabelStyle}>Song URL</div>
+          <input
+            value={item.songUrl || ""}
+            onChange={(e) => onChange(item.id, "songUrl", e.target.value)}
+            style={inputStyle}
+          />
+        </div>
+      </div>
+
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: "0.75rem",
+          flexWrap: "wrap",
+          borderTop: "1px solid var(--border)",
+          paddingTop: "0.85rem",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            gap: "0.85rem",
+            flexWrap: "wrap",
+            alignItems: "center",
+          }}
+        >
+          <label style={toggleLabelStyle}>
+            <input
+              type="checkbox"
+              checked={!!item.showNewTag}
+              onChange={(e) =>
+                onChange(item.id, "showNewTag", e.target.checked)
+              }
+            />
+            NEW
+          </label>
+
+          <label style={toggleLabelStyle}>
+            <input
+              type="checkbox"
+              checked={!!item.showLeavingTodayTag}
+              onChange={(e) => onChange(item.id, "showLeavingTodayTag", e.target.checked)}
             />
             LEAVING
           </label>
