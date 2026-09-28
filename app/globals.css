@@ -420,6 +420,12 @@ textarea:focus-visible {
     border-radius: 16px !important;
   }
 
+  /* Taller player images on phones. */
+  .team-player-image,
+  .transfer-player-image {
+    aspect-ratio: 4/5 !important;
+  }
+
   .team-bench-card {
     max-width: 100% !important;
   }
@@ -814,7 +820,10 @@ textarea:focus-visible {
     grid-template-columns: minmax(0, 1fr) !important;
   }
 
-  .shop-items-grid,
+  .shop-items-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
   .inventory-grid {
     grid-template-columns: minmax(0, 1fr) !important;
   }
