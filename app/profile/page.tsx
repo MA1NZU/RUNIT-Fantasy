@@ -29,6 +29,8 @@ function ProfileContent() {
   const [team, setTeam] = useState<UserTeam | null>(null);
   const [items, setItems] = useState<Record<string, ShopItem>>({});
   const [rank, setRank] = useState<number | string>("—");
+  const [gwRank, setGwRank] = useState<number | string>("—");
+  const [nextUp, setNextUp] = useState<{ name: string; totalPoints: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const [editingName, setEditingName] = useState(false);
   const [newName, setNewName] = useState("");
@@ -54,8 +56,25 @@ function ProfileContent() {
           .map(d => d.data() as UserTeam)
           .filter(team => team.showInLeaderboard !== false)
           .sort((a, b) => (b.totalPoints || 0) - (a.totalPoints || 0));
+        setRank("—");
+        setGwRank("—");
+        setNextUp(null);
         const userIndex = allTeams.findIndex(t => t.ownerEmail === targetEmail);
-        if (userIndex !== -1) setRank(userIndex + 1);
+        if (userIndex !== -1) {
+          setRank(userIndex + 1);
+          if (userIndex > 0) {
+            const above = allTeams[userIndex - 1];
+            setNextUp({
+              name: above.manager || "the manager above",
+              totalPoints: Number(above.totalPoints || 0),
+            });
+          }
+        }
+        const gwSorted = [...allTeams].sort(
+          (a, b) => (b.gameweekPoints || 0) - (a.gameweekPoints || 0)
+        );
+        const gwIndex = gwSorted.findIndex(t => t.ownerEmail === targetEmail);
+        if (gwIndex !== -1) setGwRank(gwIndex + 1);
 
         const equippedIds = [teamData.equippedAvatar, teamData.equippedBanner, teamData.equippedSong, teamData.equippedTitle].filter(Boolean) as string[];
         if (equippedIds.length > 0) {
@@ -131,6 +150,27 @@ function ProfileContent() {
   const ytId = songItem?.songUrl ? getYouTubeId(songItem.songUrl) : null;
   const songThumbnail = ytId ? `https://img.youtube.com/vi/${ytId}/mqdefault.jpg` : null;
 
+  const overallRankNumber = typeof rank === "number" ? rank : 0;
+  const gwRankNumber = typeof gwRank === "number" ? gwRank : 0;
+  const statCards = [
+    { icon: "📊", label: "Total Points", value: Number(team.totalPoints || 0).toLocaleString(), color: "#fff" },
+    { icon: "🏆", label: "Overall Rank", value: typeof rank === "number" ? (rank === 1 ? "👑 #1" : `#${rank}`) : "—", color: "var(--accent)" },
+    { icon: "⚡", label: "GW Points", value: Number(team.gameweekPoints || 0).toLocaleString(), color: "#fff" },
+    { icon: "🎯", label: "GW Rank", value: typeof gwRank === "number" ? `#${gwRank}` : "—", color: "var(--accent)" },
+  ];
+  if (isOwnProfile) {
+    statCards.push({ icon: "🪙", label: "Coins", value: `${Number(team.coins || 0).toLocaleString()}¢`, color: "var(--accent)" });
+  }
+  const badges = [
+    { icon: "🎫", label: "Manager", desc: "Owns a team", unlocked: true },
+    { icon: "🏆", label: "Champion", desc: "Hold rank #1 overall", unlocked: overallRankNumber === 1 },
+    { icon: "🏅", label: "Podium", desc: "Reach the top 3 overall", unlocked: overallRankNumber >= 2 && overallRankNumber <= 3 },
+    { icon: "⭐", label: "GW Star", desc: "Reach the top 3 this gameweek", unlocked: gwRankNumber >= 1 && gwRankNumber <= 3 },
+    { icon: "🪙", label: "Collector", desc: "Hold 1,000+ coins", unlocked: Number(team.coins || 0) >= 1000 },
+    { icon: "🎨", label: "Stylish", desc: "Equip an avatar, banner or title", unlocked: !!(avatarItem || bannerItem || titleItem) },
+    { icon: "🎵", label: "DJ", desc: "Equip a theme song", unlocked: !!songItem },
+  ];
+
   return (
     <div className="page-container profile-page" style={{ maxWidth: "900px", margin: "0 auto" }}>
         <div className="profile-card" style={{ background: "var(--surface)", borderRadius: "24px", border: "1px solid var(--border)", overflow: "hidden", position: "relative", marginBottom: "1.5rem", boxShadow: "0 20px 50px rgba(0,0,0,0.2)" }}>
@@ -157,9 +197,46 @@ function ProfileContent() {
                 </div>
               )}
             </div>
-            <div className="profile-stats" style={{ display: "flex", justifyContent: "center", gap: "6rem", marginBottom: "3rem" }}>
-              <div style={{ textAlign: "center" }}><div style={{ fontSize: "0.7rem", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "2px", marginBottom: "0.5rem" }}>Total Points</div><div style={{ fontSize: "2rem", fontWeight: 900 }}>{team.totalPoints}</div></div>
-              <div style={{ textAlign: "center" }}><div style={{ fontSize: "0.7rem", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "2px", marginBottom: "0.5rem" }}>Rank</div><div style={{ fontSize: "2rem", fontWeight: 900, color: "var(--accent)" }}>#{rank}</div></div>
+            <div className="profile-stats" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: "0.75rem", marginBottom: "1.25rem" }}>
+              {statCards.map((stat, index) => (
+                <div key={stat.label} className="stat-card" style={{ textAlign: "center", background: "rgba(255,255,255,0.03)", border: "1px solid var(--border)", borderRadius: "16px", padding: "1rem 0.5rem", animationDelay: `${index * 0.07}s` }}>
+                  <div style={{ fontSize: "1.1rem", marginBottom: "0.35rem" }}>{stat.icon}</div>
+                  <div style={{ fontSize: "0.62rem", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "1.5px", marginBottom: "0.35rem" }}>{stat.label}</div>
+                  <div style={{ fontSize: "1.5rem", fontWeight: 900, color: stat.color }}>{stat.value}</div>
+                </div>
+              ))}
+            </div>
+            {typeof rank === "number" && rank === 1 ? (
+              <div className="rank-progress" style={{ margin: "0 auto 1.5rem", maxWidth: "520px", background: "linear-gradient(135deg, rgba(255,193,7,0.14), rgba(255,193,7,0.05))", border: "1px solid rgba(255,193,7,0.35)", borderRadius: "16px", padding: "1rem 1.25rem", textAlign: "left" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "0.75rem", marginBottom: "0.6rem" }}>
+                  <span style={{ fontWeight: 800, fontSize: "0.9rem" }}>👑 Leading the league</span>
+                  <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Keep it up!</span>
+                </div>
+                <div style={{ height: "8px", background: "rgba(0,0,0,0.35)", borderRadius: "99px", overflow: "hidden" }}>
+                  <div style={{ width: "100%", height: "100%", background: "linear-gradient(90deg, var(--accent), #ffe082)", borderRadius: "99px" }} />
+                </div>
+              </div>
+            ) : nextUp ? (
+              <div className="rank-progress" style={{ margin: "0 auto 1.5rem", maxWidth: "520px", background: "rgba(255,255,255,0.03)", border: "1px solid var(--border)", borderRadius: "16px", padding: "1rem 1.25rem", textAlign: "left" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "0.75rem", marginBottom: "0.6rem" }}>
+                  <span style={{ fontWeight: 800, fontSize: "0.9rem" }}>🎯 Chasing #{typeof rank === "number" ? rank - 1 : "?"}</span>
+                  <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", whiteSpace: "nowrap" }}>{Math.max(nextUp.totalPoints - Number(team.totalPoints || 0), 0).toLocaleString()} pts behind {nextUp.name}</span>
+                </div>
+                <div style={{ height: "8px", background: "rgba(0,0,0,0.35)", borderRadius: "99px", overflow: "hidden" }}>
+                  <div style={{ width: `${Math.min(100, Math.round((Number(team.totalPoints || 0) / Math.max(nextUp.totalPoints, 1)) * 100))}%`, height: "100%", background: "linear-gradient(90deg, var(--blue), #8bb5ff)", borderRadius: "99px", transition: "width 0.6s ease" }} />
+                </div>
+              </div>
+            ) : null}
+            <div className="profile-achievements" style={{ marginBottom: "2rem" }}>
+              <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "2px", marginBottom: "0.75rem" }}>Achievements</div>
+              <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: "0.6rem" }}>
+                {badges.map((badge, index) => (
+                  <div key={badge.label} title={badge.unlocked ? `${badge.label} — ${badge.desc}` : `Locked — ${badge.desc}`} className="badge-tile" style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.55rem 0.9rem", borderRadius: "999px", border: `1px solid ${badge.unlocked ? "rgba(255,193,7,0.35)" : "var(--border)"}`, background: badge.unlocked ? "rgba(255,193,7,0.08)" : "rgba(255,255,255,0.02)", opacity: badge.unlocked ? 1 : 0.45, filter: badge.unlocked ? "none" : "grayscale(1)", animationDelay: `${0.35 + index * 0.06}s` }}>
+                    <span style={{ fontSize: "1rem" }}>{badge.icon}</span>
+                    <span style={{ fontSize: "0.78rem", fontWeight: 800, color: badge.unlocked ? "var(--accent)" : "var(--text-muted)" }}>{badge.label}</span>
+                  </div>
+                ))}
+              </div>
             </div>
             {songItem && ytId && (
               <div className="profile-song-player" style={{ marginTop: "2rem", padding: "0.75rem 1.5rem", background: "rgba(0,0,0,0.4)", borderRadius: "100px", border: "1px solid var(--border)", display: "flex", alignItems: "center", gap: "1.5rem", textAlign: "left", maxWidth: "500px", margin: "0 auto", boxShadow: "inset 0 1px 1px rgba(255,255,255,0.05)" }}>
@@ -175,10 +252,7 @@ function ProfileContent() {
             )}
           </div>
         </div>
-        <div className="profile-action-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.5rem" }}>
-          <Link href={isOwnProfile ? "/team" : `/team?email=${targetEmail}`} style={{ background: "var(--surface)", border: "1px solid var(--border)", padding: "2rem", borderRadius: "24px", textDecoration: "none", color: "inherit", transition: "transform 0.2s" }}><div style={{ fontSize: "2rem", marginBottom: "1rem" }}>🛡️</div><div style={{ fontWeight: 900, fontSize: "1.25rem" }}>{isOwnProfile ? "My Team" : "View Team"}</div><div style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>{isOwnProfile ? "Manage players and track points." : `Scout ${team.manager}'s active players.`}</div></Link>
-          <Link href="/shop" style={{ background: "var(--surface)", border: "1px solid var(--border)", padding: "2rem", borderRadius: "24px", textDecoration: "none", color: "inherit", transition: "transform 0.2s" }}><div style={{ fontSize: "2rem", marginBottom: "1rem" }}>🛒</div><div style={{ fontWeight: 900, fontSize: "1.25rem" }}>Marketplace</div><div style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>Unlock premium profile cosmetics.</div></Link>
-        </div>
+        <Link href={isOwnProfile ? "/team" : `/team?email=${targetEmail}`} className="action-card" style={{ display: "block", background: "var(--surface)", border: "1px solid var(--border)", padding: "2rem", borderRadius: "24px", textDecoration: "none", color: "inherit", transition: "transform 0.2s, border-color 0.2s" }}><div style={{ fontSize: "2rem", marginBottom: "1rem" }}>🛡️</div><div style={{ fontWeight: 900, fontSize: "1.25rem" }}>{isOwnProfile ? "My Team" : "View Team"}</div><div style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>{isOwnProfile ? "Manage players and track points." : `Scout ${team.manager}'s active players.`}</div></Link>
         <style jsx>{`
             @keyframes rotate { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
             .audio-visualizer { display: flex; align-items: flex-end; gap: 2px; height: 10px; }
@@ -186,6 +260,13 @@ function ProfileContent() {
             .audio-visualizer span:nth-child(2) { animation-delay: 0.2s; }
             .audio-visualizer span:nth-child(3) { animation-delay: 0.4s; }
             @keyframes wave { 0%, 100% { height: 40%; } 50% { height: 100%; } }
+            @keyframes fadeUp { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
+            .stat-card { animation: fadeUp 0.5s ease both; }
+            .badge-tile { animation: fadeUp 0.5s ease both; }
+            .rank-progress { animation: fadeUp 0.5s ease both; animation-delay: 0.35s; }
+            .action-card:hover { transform: translateY(-4px); border-color: rgba(255,193,7,0.4); }
+            .profile-banner::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(105deg, transparent 40%, rgba(255,255,255,0.07) 50%, transparent 60%); background-size: 250% 100%; animation: shine 7s ease-in-out infinite; }
+            @keyframes shine { 0%, 100% { background-position: 120% 0; } 50% { background-position: -120% 0; } }
         `}</style>
       </div>
   );
