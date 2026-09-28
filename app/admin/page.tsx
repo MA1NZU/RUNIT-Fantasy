@@ -55,6 +55,7 @@ type UserTeam = {
   namez: string;
   lastGwCoinsEarned?: number;
   lastGwCoinsGameweek?: number;
+  lastGwCoinsGrantedAt?: string;
   showInLeaderboard?: boolean;
 };
 
@@ -149,13 +150,10 @@ const defaultNewCard: Partial<LimitedCard> = {
 
 const getRankPrizeCoins = (rank: number) => {
   if (rank === 1) return 4000;
-  if (rank === 2) return 2500;
-  if (rank === 3) return 1500;
-  if (rank === 4) return 1000;
-  if (rank >= 5 && rank <= 10) return 500;
-  if (rank === 11) return 300;
-  if (rank === 12) return 300;
-  if (rank === 13) return 200;
+  if (rank === 2) return 3000;
+  if (rank === 3) return 2500;
+  if (rank === 4) return 1500;
+  if (rank >= 5) return 1000;
   return 0;
 };
 
@@ -941,8 +939,9 @@ export default function AdminPage() {
       return;
     }
 
+    // Rank by this gameweek's points, not total points.
     const rankedManagers = [...managers].sort(
-      (a, b) => Number(b.totalPoints || 0) - Number(a.totalPoints || 0)
+      (a, b) => Number(b.gameweekPoints || 0) - Number(a.gameweekPoints || 0)
     );
 
     const alreadyGrantedCount = rankedManagers.filter(
@@ -952,7 +951,7 @@ export default function AdminPage() {
     const confirmMessage =
       alreadyGrantedCount > 0
         ? `Coins were already granted to ${alreadyGrantedCount} manager(s) for GW${currentGameweek}.\n\nGrant coins again anyway?`
-        : `Grant ranking coins to all managers for GW${currentGameweek}?\n\n1st: 4,000¢\n2nd: 2,500¢\n3rd: 1,500¢\n4th: 1,000¢\n5th-10th: 500¢\n11th: 300¢\n12th: 300¢\n13th: 200¢`;
+        : `Grant ranking coins to all managers for GW${currentGameweek}?\n\nRanked by GW points:\n1st: 4,000¢\n2nd: 3,000¢\n3rd: 2,500¢\n4th: 1,500¢\n5th or more: 1,000¢`;
 
     if (!confirm(confirmMessage)) return;
 
@@ -972,6 +971,7 @@ export default function AdminPage() {
           coins: newCoins,
           lastGwCoinsEarned: prizeCoins,
           lastGwCoinsGameweek: currentGameweek,
+          lastGwCoinsGrantedAt: now,
           "Updated Date": now,
         });
 
@@ -980,6 +980,7 @@ export default function AdminPage() {
           coins: newCoins,
           lastGwCoinsEarned: prizeCoins,
           lastGwCoinsGameweek: currentGameweek,
+          lastGwCoinsGrantedAt: now,
         };
       });
 
@@ -2844,9 +2845,9 @@ export default function AdminPage() {
                 </div>
 
                 <div style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>
-                  Rewards managers based on their current totalPoints rank:
-                  1st 4,000¢ · 2nd 2,500¢ · 3rd 1,500¢ · 4th 1,000¢ ·
-                  5th-10th 500¢ · 11th 300¢ · 12th 300¢ · 13th 200¢
+                  Rewards managers based on their current GW points rank:
+                  1st 4,000¢ · 2nd 3,000¢ · 3rd 2,500¢ · 4th 1,500¢ ·
+                  5th or more 1,000¢
                 </div>
               </div>
 
