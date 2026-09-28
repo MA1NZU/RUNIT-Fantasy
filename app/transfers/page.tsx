@@ -184,6 +184,7 @@ function PlayerCard({
       </div>
 
       <div
+        className="transfer-player-image"
         style={{
           position: "relative",
           zIndex: 2,
