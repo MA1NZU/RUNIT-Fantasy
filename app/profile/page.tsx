@@ -1,277 +1,1314 @@
-"use client";
-
-import { useEffect, useState, useRef, Suspense } from "react";
-import { db } from "@/lib/firebase";
-import { collection, getDocs, query, where, doc, updateDoc, orderBy } from "firebase/firestore";
-import { useAuth } from "@/lib/AuthContext";
-import Shell from "@/app/shell";
-import Link from "next/link";
-import { useSearchParams } from "next/navigation";
-
-type ShopItem = { ID: string; itemName: string; itemType: string; previewImage: string; songUrl?: string; titleText?: string; titleColor?: string; };
-type UserTeam = { id: string; manager: string; totalPoints: number; gameweekPoints: number; coins: number; equippedAvatar?: string; equippedBanner?: string; equippedSong?: string; equippedTitle?: string; ownerEmail: string; showInLeaderboard?: boolean; };
-
-declare global { interface Window { onYouTubeIframeAPIReady: () => void; YT: any; } }
-
-function getYouTubeId(url: string) {
-  const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
-  const match = url.match(regExp);
-  return (match && match[2].length === 11) ? match[2] : null;
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
 }
 
-function ProfileContent() {
-  const { user } = useAuth();
-  const searchParams = useSearchParams();
-  const queryEmail = searchParams.get("email");
-  const targetEmail = queryEmail || user?.email;
-  const isOwnProfile = !queryEmail || queryEmail === user?.email;
+:root {
+  --bg: #0f1117;
+  --surface: #13161f;
+  --border: #1e2235;
+  --text: #ffffff;
+  --text-muted: #6b7280;
+  --blue: #0347f4;
+  --blue-dim: rgba(3, 71, 244, 0.15);
+  --blue-border: rgba(3, 71, 244, 0.3);
+  --accent: #9bf800;
+  --accent-dim: rgba(155, 248, 0, 0.12);
+  --red: #ff4444;
+  --green: #44ff88;
+}
 
-  const [team, setTeam] = useState<UserTeam | null>(null);
-  const [items, setItems] = useState<Record<string, ShopItem>>({});
-  const [rank, setRank] = useState<number | string>("—");
-  const [gwRank, setGwRank] = useState<number | string>("—");
-  const [nextUp, setNextUp] = useState<{ name: string; totalPoints: number } | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [editingName, setEditingName] = useState(false);
-  const [newName, setNewName] = useState("");
-  
-  const playerRef = useRef<any>(null);
-  const [playerReady, setPlayerReady] = useState(false);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [volume, setVolume] = useState(50);
+html {
+  background: var(--bg);
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
 
-  useEffect(() => {
-    if (!targetEmail) return;
-    const loadProfile = async () => {
-      setLoading(true);
-      try {
-        const teamSnap = await getDocs(query(collection(db, "userTeams"), where("ownerEmail", "==", targetEmail)));
-        if (teamSnap.empty) { setTeam(null); setLoading(false); return; }
-        const teamData = { id: teamSnap.docs[0].id, ...teamSnap.docs[0].data() } as UserTeam;
-        setTeam(teamData);
-        setNewName(teamData.manager);
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Inter", Arial, sans-serif;
+  min-height: 100vh;
+  min-height: 100dvh;
+  overflow-x: hidden;
+}
 
-        const allTeamsSnap = await getDocs(collection(db, "userTeams"));
-        const allTeams = allTeamsSnap.docs
-          .map(d => d.data() as UserTeam)
-          .filter(team => team.showInLeaderboard !== false)
-          .sort((a, b) => (b.totalPoints || 0) - (a.totalPoints || 0));
-        setRank("—");
-        setGwRank("—");
-        setNextUp(null);
-        const userIndex = allTeams.findIndex(t => t.ownerEmail === targetEmail);
-        if (userIndex !== -1) {
-          setRank(userIndex + 1);
-          if (userIndex > 0) {
-            const above = allTeams[userIndex - 1];
-            setNextUp({
-              name: above.manager || "the manager above",
-              totalPoints: Number(above.totalPoints || 0),
-            });
-          }
-        }
-        const gwSorted = [...allTeams].sort(
-          (a, b) => (b.gameweekPoints || 0) - (a.gameweekPoints || 0)
-        );
-        const gwIndex = gwSorted.findIndex(t => t.ownerEmail === targetEmail);
-        if (gwIndex !== -1) setGwRank(gwIndex + 1);
+a {
+  color: inherit;
+  text-decoration: none;
+}
 
-        const equippedIds = [teamData.equippedAvatar, teamData.equippedBanner, teamData.equippedSong, teamData.equippedTitle].filter(Boolean) as string[];
-        if (equippedIds.length > 0) {
-          const shopSnap = await getDocs(collection(db, "shopItems"));
-          const shopMap: Record<string, ShopItem> = {};
-          shopSnap.docs.forEach(d => {
-            const data = d.data() as ShopItem;
-            if (equippedIds.includes(data.ID)) shopMap[data.ID] = data;
-          });
-          setItems(shopMap);
-        }
-      } catch (err) { console.error(err); } finally { setLoading(false); }
-    };
-    loadProfile();
-  }, [targetEmail]);
+img,
+picture,
+video,
+canvas,
+svg {
+  max-width: 100%;
+}
 
-  useEffect(() => {
-    const songItem = team?.equippedSong ? items[team.equippedSong] : null;
-    const ytId = songItem?.songUrl ? getYouTubeId(songItem.songUrl) : null;
-    if (!ytId) return;
-    const initPlayer = () => {
-        if (playerRef.current) { playerRef.current.destroy(); playerRef.current = null; }
-        playerRef.current = new window.YT.Player('yt-player-hidden', {
-            height: '0', width: '0', videoId: ytId,
-            playerVars: { controls: 0, modestbranding: 1, rel: 0, showinfo: 0 },
-            events: {
-                onReady: (event: any) => { setPlayerReady(true); event.target.setVolume(volume); },
-                onStateChange: (event: any) => setIsPlaying(event.data === window.YT.PlayerState.PLAYING)
-            }
-        });
-    }
-    if (window.YT && window.YT.Player) { initPlayer(); } 
-    else {
-        const tag = document.createElement('script');
-        tag.src = "https://www.youtube.com/iframe_api";
-        const firstScriptTag = document.getElementsByTagName('script')[0];
-        firstScriptTag.parentNode?.insertBefore(tag, firstScriptTag);
-        window.onYouTubeIframeAPIReady = initPlayer;
-    }
-    return () => { if (playerRef.current) { playerRef.current.destroy(); playerRef.current = null; } };
-  }, [team, items]);
+img,
+picture,
+video,
+canvas {
+  height: auto;
+}
 
-  const togglePlay = () => {
-    if (!playerRef.current || !playerReady) return;
-    isPlaying ? playerRef.current.pauseVideo() : playerRef.current.playVideo();
-  };
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
 
-  const handleUpdateName = async () => {
-    if (!team || !newName.trim() || !isOwnProfile) return;
-    try {
-      await updateDoc(doc(db, "userTeams", team.id), { manager: newName });
-      setTeam({ ...team, manager: newName });
-      setEditingName(false);
-    } catch (err) { console.error(err); }
-  };
+/* Keep native select menus readable in dark mode, including their option list. */
+select {
+  color-scheme: dark;
+}
 
-  const getImageUrl = (url?: string) => {
-    if (!url) return "";
-    if (url.startsWith('wix:image://v1/')) {
-      const guid = url.split('/')[3];
-      return `https://static.wixstatic.com/media/${guid}~mv2.png`;
-    }
-    return url;
-  };
+select option,
+select optgroup {
+  background-color: var(--surface);
+  color: var(--text);
+}
 
-  if (loading) return <p style={{ padding: "2rem" }}>Loading Profile...</p>;
-  if (!team) return <p style={{ padding: "2rem" }}>Profile not found.</p>;
+button,
+a,
+input,
+select,
+textarea {
+  -webkit-tap-highlight-color: transparent;
+}
 
-  const avatarItem = team.equippedAvatar ? items[team.equippedAvatar] : null;
-  const bannerItem = team.equippedBanner ? items[team.equippedBanner] : null;
-  const songItem = team.equippedSong ? items[team.equippedSong] : null;
-  const titleItem = team.equippedTitle ? items[team.equippedTitle] : null;
-  const ytId = songItem?.songUrl ? getYouTubeId(songItem.songUrl) : null;
-  const songThumbnail = ytId ? `https://img.youtube.com/vi/${ytId}/mqdefault.jpg` : null;
+button:not(:disabled),
+a[href],
+input:not(:disabled),
+select:not(:disabled),
+textarea:not(:disabled) {
+  touch-action: manipulation;
+}
 
-  const overallRankNumber = typeof rank === "number" ? rank : 0;
-  const gwRankNumber = typeof gwRank === "number" ? gwRank : 0;
-  const statCards = [
-    { icon: "📊", label: "Total Points", value: Number(team.totalPoints || 0).toLocaleString(), color: "#fff" },
-    { icon: "🏆", label: "Overall Rank", value: typeof rank === "number" ? (rank === 1 ? "👑 #1" : `#${rank}`) : "—", color: "var(--accent)" },
-    { icon: "⚡", label: "GW Points", value: Number(team.gameweekPoints || 0).toLocaleString(), color: "#fff" },
-    { icon: "🎯", label: "GW Rank", value: typeof gwRank === "number" ? `#${gwRank}` : "—", color: "var(--accent)" },
-  ];
-  if (isOwnProfile) {
-    statCards.push({ icon: "🪙", label: "Coins", value: `${Number(team.coins || 0).toLocaleString()}¢`, color: "var(--accent)" });
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid rgba(155, 248, 0, 0.85);
+  outline-offset: 3px;
+}
+
+/* App navigation */
+.site-nav-bar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  width: 100%;
+  min-width: 0;
+}
+
+.site-brand {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0.45rem;
+  text-decoration: none;
+}
+
+.site-version {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.35rem;
+  padding: 0.08rem 0.38rem;
+  border: 1px solid rgba(155, 248, 0, 0.38);
+  border-radius: 999px;
+  background: rgba(155, 248, 0, 0.1);
+  color: var(--accent);
+  font-size: 0.62rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  line-height: 1;
+}
+
+.mobile-menu-toggle,
+.mobile-nav-panel {
+  display: none;
+}
+
+.app-shell-content {
+  min-width: 0;
+  padding: 2rem;
+}
+
+.login-page {
+  min-height: 100dvh !important;
+  padding: 1.5rem;
+}
+
+.login-card {
+  width: min(100%, 400px) !important;
+}
+
+/* Shared responsive page primitives */
+.page-container,
+.inventory-page,
+.profile-page,
+.admin-page {
+  width: 100%;
+  min-width: 0;
+}
+
+.responsive-scroll {
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+
+@media (max-width: 900px) {
+  .site-nav {
+    padding: calc(0.75rem + env(safe-area-inset-top, 0px))
+      max(1rem, env(safe-area-inset-right, 0px)) 0.75rem
+      max(1rem, env(safe-area-inset-left, 0px)) !important;
   }
-  const badges = [
-    { icon: "🎫", label: "Manager", desc: "Owns a team", unlocked: true },
-    { icon: "🏆", label: "Champion", desc: "Hold rank #1 overall", unlocked: overallRankNumber === 1 },
-    { icon: "🏅", label: "Podium", desc: "Reach the top 3 overall", unlocked: overallRankNumber >= 2 && overallRankNumber <= 3 },
-    { icon: "⭐", label: "GW Star", desc: "Reach the top 3 this gameweek", unlocked: gwRankNumber >= 1 && gwRankNumber <= 3 },
-    { icon: "🪙", label: "Collector", desc: "Hold 1,000+ coins", unlocked: Number(team.coins || 0) >= 1000 },
-    { icon: "🎨", label: "Stylish", desc: "Equip an avatar, banner or title", unlocked: !!(avatarItem || bannerItem || titleItem) },
-    { icon: "🎵", label: "DJ", desc: "Equip a theme song", unlocked: !!songItem },
-  ];
 
-  return (
-    <div className="page-container profile-page" style={{ maxWidth: "900px", margin: "0 auto" }}>
-        <div className="profile-card" style={{ background: "var(--surface)", borderRadius: "24px", border: "1px solid var(--border)", overflow: "hidden", position: "relative", marginBottom: "1.5rem", boxShadow: "0 20px 50px rgba(0,0,0,0.2)" }}>
-          <div className="profile-banner" style={{ height: "240px", background: "#111", position: "relative" }}>
-            {bannerItem ? <img src={getImageUrl(bannerItem.previewImage)} style={{ width: "100%", height: "100%", objectFit: "cover" }} alt="" /> : <div style={{ width: "100%", height: "100%", background: "linear-gradient(135deg, #0347F4 0%, #7c3aed 100%)" }} />}
-            {isOwnProfile && <Link href="/inventory" style={{ position: "absolute", top: "1.25rem", right: "1.25rem", background: "rgba(0,0,0,0.6)", color: "#fff", padding: "0.5rem 1rem", borderRadius: "30px", fontSize: "0.75rem", fontWeight: 700, textDecoration: "none", backdropFilter: "blur(8px)", border: "1px solid rgba(255,255,255,0.1)" }}>Customize</Link>}
-          </div>
-          <div className="profile-card-body" style={{ padding: "0 3rem 3rem", textAlign: "center" }}>
-            <div className="profile-avatar-wrap" style={{ width: "160px", height: "120px", margin: "-80px auto 1.5rem", position: "relative" }}>
-              <div className="profile-avatar" style={{ width: "160px", height: "160px", borderRadius: "50%", border: "8px solid var(--surface)", background: "#222", overflow: "hidden", boxShadow: "0 10px 30px rgba(0,0,0,0.4)" }}>
-                {avatarItem ? <img src={getImageUrl(avatarItem.previewImage)} style={{ width: "100%", height: "100%", objectFit: "cover" }} alt="" /> : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "3.5rem", fontWeight: 800, color: "#444" }}>{team.manager.slice(0, 1)}</div>}
-              </div>
-            </div>
-            <div className="profile-name-block" style={{ marginBottom: "2.5rem", marginTop: "2.5rem" }}>
-              {editingName ? (
-                <div className="profile-name-editor" style={{ display: "flex", gap: "0.5rem", justifyContent: "center", alignItems: "center" }}>
-                  <input value={newName} onChange={e => setNewName(e.target.value)} style={{ background: "var(--bg)", border: "2px solid var(--blue)", color: "#fff", padding: "0.5rem 1rem", borderRadius: "12px", fontSize: "1.75rem", fontWeight: 800, textAlign: "center", width: "300px" }} />
-                  <button onClick={handleUpdateName} style={{ background: "var(--blue)", color: "#fff", border: "none", padding: "0.75rem 1.2rem", borderRadius: "12px", cursor: "pointer", fontWeight: 700 }}>Save</button>
-                </div>
-              ) : (
-                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "0.5rem" }}>
-                  <h1 className="profile-name" style={{ fontSize: "2.5rem", fontWeight: 900, margin: 0, display: "flex", alignItems: "center", justifyContent: "center", gap: "0.75rem", letterSpacing: "-1px" }}>{team.manager} {isOwnProfile && <button onClick={() => setEditingName(true)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: "1.2rem", opacity: 0.3 }}>✏️</button>}</h1>
-                  {titleItem && <div style={{ color: titleItem.titleColor || "var(--accent)", fontWeight: 800, fontSize: "0.9rem", textTransform: "uppercase", letterSpacing: "3px", background: "rgba(255,255,255,0.03)", padding: "0.5rem 1.5rem", borderRadius: "40px", border: "1px solid var(--border)" }}>{titleItem.titleText || titleItem.itemName}</div>}
-                </div>
-              )}
-            </div>
-            <div className="profile-stats" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: "0.75rem", marginBottom: "1.25rem" }}>
-              {statCards.map((stat, index) => (
-                <div key={stat.label} className="stat-card" style={{ textAlign: "center", background: "rgba(255,255,255,0.03)", border: "1px solid var(--border)", borderRadius: "16px", padding: "1rem 0.5rem", animationDelay: `${index * 0.07}s` }}>
-                  <div style={{ fontSize: "1.1rem", marginBottom: "0.35rem" }}>{stat.icon}</div>
-                  <div style={{ fontSize: "0.62rem", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "1.5px", marginBottom: "0.35rem" }}>{stat.label}</div>
-                  <div style={{ fontSize: "1.5rem", fontWeight: 900, color: stat.color }}>{stat.value}</div>
-                </div>
-              ))}
-            </div>
-            {typeof rank === "number" && rank === 1 ? (
-              <div className="rank-progress" style={{ margin: "0 auto 1.5rem", maxWidth: "520px", background: "linear-gradient(135deg, rgba(255,193,7,0.14), rgba(255,193,7,0.05))", border: "1px solid rgba(255,193,7,0.35)", borderRadius: "16px", padding: "1rem 1.25rem", textAlign: "left" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "0.75rem", marginBottom: "0.6rem" }}>
-                  <span style={{ fontWeight: 800, fontSize: "0.9rem" }}>👑 Leading the league</span>
-                  <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Keep it up!</span>
-                </div>
-                <div style={{ height: "8px", background: "rgba(0,0,0,0.35)", borderRadius: "99px", overflow: "hidden" }}>
-                  <div style={{ width: "100%", height: "100%", background: "linear-gradient(90deg, var(--accent), #ffe082)", borderRadius: "99px" }} />
-                </div>
-              </div>
-            ) : nextUp ? (
-              <div className="rank-progress" style={{ margin: "0 auto 1.5rem", maxWidth: "520px", background: "rgba(255,255,255,0.03)", border: "1px solid var(--border)", borderRadius: "16px", padding: "1rem 1.25rem", textAlign: "left" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "0.75rem", marginBottom: "0.6rem" }}>
-                  <span style={{ fontWeight: 800, fontSize: "0.9rem" }}>🎯 Chasing #{typeof rank === "number" ? rank - 1 : "?"}</span>
-                  <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", whiteSpace: "nowrap" }}>{Math.max(nextUp.totalPoints - Number(team.totalPoints || 0), 0).toLocaleString()} pts behind {nextUp.name}</span>
-                </div>
-                <div style={{ height: "8px", background: "rgba(0,0,0,0.35)", borderRadius: "99px", overflow: "hidden" }}>
-                  <div style={{ width: `${Math.min(100, Math.round((Number(team.totalPoints || 0) / Math.max(nextUp.totalPoints, 1)) * 100))}%`, height: "100%", background: "linear-gradient(90deg, var(--blue), #8bb5ff)", borderRadius: "99px", transition: "width 0.6s ease" }} />
-                </div>
-              </div>
-            ) : null}
-            <div className="profile-achievements" style={{ marginBottom: "2rem" }}>
-              <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "2px", marginBottom: "0.75rem" }}>Achievements</div>
-              <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: "0.6rem" }}>
-                {badges.map((badge, index) => (
-                  <div key={badge.label} title={badge.unlocked ? `${badge.label} — ${badge.desc}` : `Locked — ${badge.desc}`} className="badge-tile" style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.55rem 0.9rem", borderRadius: "999px", border: `1px solid ${badge.unlocked ? "rgba(255,193,7,0.35)" : "var(--border)"}`, background: badge.unlocked ? "rgba(255,193,7,0.08)" : "rgba(255,255,255,0.02)", opacity: badge.unlocked ? 1 : 0.45, filter: badge.unlocked ? "none" : "grayscale(1)", animationDelay: `${0.35 + index * 0.06}s` }}>
-                    <span style={{ fontSize: "1rem" }}>{badge.icon}</span>
-                    <span style={{ fontSize: "0.78rem", fontWeight: 800, color: badge.unlocked ? "var(--accent)" : "var(--text-muted)" }}>{badge.label}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-            {songItem && ytId && (
-              <div className="profile-song-player" style={{ marginTop: "2rem", padding: "0.75rem 1.5rem", background: "rgba(0,0,0,0.4)", borderRadius: "100px", border: "1px solid var(--border)", display: "flex", alignItems: "center", gap: "1.5rem", textAlign: "left", maxWidth: "500px", margin: "0 auto", boxShadow: "inset 0 1px 1px rgba(255,255,255,0.05)" }}>
-                <div id="yt-player-hidden" style={{ display: "none" }}></div>
-                <div style={{ width: "50px", height: "50px", borderRadius: "50%", background: "#000", overflow: "hidden", flexShrink: 0, border: "2px solid rgba(255,255,255,0.1)", animation: isPlaying ? "rotate 10s linear infinite" : "none" }}><img src={songThumbnail || ""} style={{ width: "100%", height: "100%", objectFit: "cover" }} alt="" /></div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                   <div style={{ fontSize: "0.6rem", color: "var(--blue)", fontWeight: 800, textTransform: "uppercase", display: "flex", alignItems: "center", gap: "0.5rem" }}>Music Player {isPlaying && <div className="audio-visualizer"><span></span><span></span><span></span></div>}</div>
-                   <div style={{ fontWeight: 700, fontSize: "1rem", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: "#fff", marginBottom: "0.25rem" }}>{songItem.itemName}</div>
-                   <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}><span style={{ fontSize: "0.8rem" }}>{volume === 0 ? "🔇" : "🔊"}</span><input type="range" min="0" max="100" value={volume} onChange={(e) => { const v = parseInt(e.target.value); setVolume(v); playerRef.current?.setVolume(v); }} style={{ flex: 1, height: "4px", accentColor: "var(--blue)", cursor: "pointer" }} /></div>
-                </div>
-                <button onClick={togglePlay} style={{ width: "44px", height: "44px", borderRadius: "50%", background: "var(--blue)", border: "none", color: "#fff", fontSize: "1.2rem", display: "flex", alignItems: "center", justifyContent: "center", cursor: playerReady ? "pointer" : "not-allowed", opacity: playerReady ? 1 : 0.5 }}>{isPlaying ? "⏸" : "▶"}</button>
-              </div>
-            )}
-          </div>
-        </div>
-        <Link href={isOwnProfile ? "/team" : `/team?email=${targetEmail}`} className="action-card" style={{ display: "block", background: "var(--surface)", border: "1px solid var(--border)", padding: "2rem", borderRadius: "24px", textDecoration: "none", color: "inherit", transition: "transform 0.2s, border-color 0.2s" }}><div style={{ fontSize: "2rem", marginBottom: "1rem" }}>🛡️</div><div style={{ fontWeight: 900, fontSize: "1.25rem" }}>{isOwnProfile ? "My Team" : "View Team"}</div><div style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>{isOwnProfile ? "Manage players and track points." : `Scout ${team.manager}'s active players.`}</div></Link>
-        <style jsx>{`
-            @keyframes rotate { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-            .audio-visualizer { display: flex; align-items: flex-end; gap: 2px; height: 10px; }
-            .audio-visualizer span { width: 2px; background: var(--blue); animation: wave 1s ease-in-out infinite; }
-            .audio-visualizer span:nth-child(2) { animation-delay: 0.2s; }
-            .audio-visualizer span:nth-child(3) { animation-delay: 0.4s; }
-            @keyframes wave { 0%, 100% { height: 40%; } 50% { height: 100%; } }
-            @keyframes fadeUp { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
-            .stat-card { animation: fadeUp 0.5s ease both; }
-            .badge-tile { animation: fadeUp 0.5s ease both; }
-            .rank-progress { animation: fadeUp 0.5s ease both; animation-delay: 0.35s; }
-            .action-card:hover { transform: translateY(-4px); border-color: rgba(255,193,7,0.4); }
-            .profile-banner::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(105deg, transparent 40%, rgba(255,255,255,0.07) 50%, transparent 60%); background-size: 250% 100%; animation: shine 7s ease-in-out infinite; }
-            @keyframes shine { 0%, 100% { background-position: 120% 0; } 50% { background-position: -120% 0; } }
-        `}</style>
-      </div>
-  );
+  .site-nav-bar {
+    justify-content: space-between;
+  }
+
+  .site-brand {
+    min-width: 0 !important;
+    font-size: 0.95rem !important;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .desktop-nav {
+    display: none !important;
+  }
+
+  .mobile-menu-toggle {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    min-height: 44px;
+    padding: 0.55rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.035);
+    color: var(--text);
+    font-size: 0.8rem;
+    font-weight: 800;
+    cursor: pointer;
+  }
+
+  .mobile-menu-toggle > span:first-child {
+    font-size: 1.25rem;
+    line-height: 1;
+  }
+
+  .mobile-nav-panel {
+    display: grid;
+    gap: 0;
+    max-height: 0;
+    opacity: 0;
+    visibility: hidden;
+    overflow: hidden;
+    pointer-events: none;
+    transition: max-height 0.2s ease, opacity 0.18s ease, margin 0.2s ease;
+  }
+
+  .mobile-nav-panel.is-open {
+    max-height: calc(100dvh - 4.5rem);
+    opacity: 1;
+    visibility: visible;
+    overflow-y: auto;
+    pointer-events: auto;
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--border);
+  }
+
+  .mobile-nav-links {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem;
+    min-height: 0;
+  }
+
+  .mobile-nav-link {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+    padding: 0.65rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.025);
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    font-weight: 700;
+  }
+
+  .mobile-nav-link.is-active {
+    border-color: rgba(107, 159, 255, 0.65);
+    background: var(--blue);
+    color: #fff;
+  }
+
+  .mobile-nav-account {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    min-width: 0;
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--border);
+    color: var(--text-muted);
+    font-size: 0.78rem;
+  }
+
+  .mobile-nav-account > span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .mobile-nav-account button {
+    flex: 0 0 auto;
+    min-height: 40px;
+    padding: 0.45rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text);
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  .app-shell-content {
+    padding: 1.25rem max(1rem, env(safe-area-inset-right, 0px))
+      calc(1.5rem + env(safe-area-inset-bottom, 0px))
+      max(1rem, env(safe-area-inset-left, 0px));
+  }
 }
 
-export default function ProfilePage() {
-  return (<Shell><Suspense fallback={<p style={{ padding: "2rem" }}>Loading...</p>}><ProfileContent /></Suspense></Shell>);
+@media (max-width: 760px) {
+  .page-hero {
+    padding: 1.25rem !important;
+    border-radius: 20px !important;
+  }
+
+  .page-hero h1 {
+    font-size: clamp(2.25rem, 13vw, 3.25rem) !important;
+    letter-spacing: -0.055em !important;
+  }
+
+  .summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 0.6rem !important;
+  }
+
+  /* Home */
+  .home-hero-grid,
+  .home-content-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 1rem !important;
+  }
+
+  .home-hero-actions > a {
+    flex: 1 1 150px;
+    min-height: 44px;
+  }
+
+  .home-deadline {
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 0.45rem !important;
+  }
+
+  .home-deadline > :last-child {
+    text-align: left !important;
+  }
+
+  .home-leaderboard-heading,
+  .home-leaderboard-row {
+    grid-template-columns: 34px minmax(0, 1fr) 52px 52px !important;
+    gap: 0.4rem !important;
+  }
+
+  .home-leaderboard-heading {
+    padding: 0 0.45rem 0.55rem !important;
+  }
+
+  .home-leaderboard-row {
+    padding: 0.65rem 0.45rem !important;
+  }
+
+  .home-leaderboard-heading > :nth-child(2),
+  .home-leaderboard-row > :nth-child(2) {
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  /* Leaderboard */
+  .leaderboard-sort-controls {
+    display: flex !important;
+    width: 100%;
+  }
+
+  .leaderboard-sort-controls > button {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 44px;
+    padding: 0.65rem 0.5rem !important;
+    white-space: normal;
+  }
+
+  .leaderboard-table-card {
+    overflow-x: visible !important;
+    padding: 0.75rem !important;
+  }
+
+  .leaderboard-table {
+    min-width: 0 !important;
+  }
+
+  .leaderboard-table-row {
+    grid-template-columns: 38px minmax(0, 1fr) 54px 54px !important;
+    gap: 0.35rem !important;
+  }
+
+  .leaderboard-table-row > :nth-child(2) {
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .leaderboard-table-row.leaderboard-table-heading {
+    padding: 0 0.35rem 0.55rem !important;
+  }
+
+  .leaderboard-table-row:not(.leaderboard-table-heading) {
+    padding: 0.7rem 0.35rem !important;
+  }
+
+  /* Team */
+  .team-summary-card {
+    overflow: visible !important;
+    padding: 0.5rem !important;
+  }
+
+  .team-summary-grid {
+    min-width: 0 !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 0.5rem !important;
+  }
+
+  .team-squad-section {
+    padding: 0.75rem !important;
+    border-radius: 20px !important;
+  }
+
+  .team-squad-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 0.65rem !important;
+  }
+
+  .team-player-card {
+    min-height: 205px !important;
+    padding: 0.55rem !important;
+    border-radius: 16px !important;
+  }
+
+  /* Taller player images on phones. */
+  .team-player-image,
+  .transfer-player-image {
+    aspect-ratio: 4/5 !important;
+  }
+
+  .team-bench-card {
+    max-width: 100% !important;
+  }
+
+  .team-stats-modal {
+    align-items: flex-end !important;
+    padding: 0.75rem !important;
+  }
+
+  .team-stats-modal-content {
+    max-height: calc(100dvh - 1.5rem) !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    border-radius: 20px !important;
+    padding: 1rem !important;
+  }
+
+  .team-stats-modal-header {
+    gap: 0.75rem !important;
+    margin-bottom: 1rem !important;
+  }
+
+  .team-stats-row {
+    grid-template-columns: minmax(0, 1fr) 56px 48px !important;
+    padding: 0.7rem 0.65rem !important;
+    font-size: 0.82rem !important;
+  }
+
+  /* Transfers */
+  .transfer-summary-card {
+    overflow: visible !important;
+    padding: 0.5rem !important;
+  }
+
+  .transfer-summary-grid {
+    min-width: 0 !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 0.5rem !important;
+  }
+
+  .transfer-squad-section,
+  .transfer-bench-section {
+    padding: 0.75rem !important;
+    border-radius: 20px !important;
+  }
+
+  .transfer-squad-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 0.65rem !important;
+  }
+
+  .transfer-player-card:not(.is-compact),
+  .transfer-empty-slot {
+    min-height: 225px !important;
+    padding: 0.55rem !important;
+    border-radius: 16px !important;
+  }
+
+  .transfer-bench-card {
+    max-width: 100% !important;
+  }
+
+  .transfer-countdown {
+    display: flex !important;
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .transfer-modal-overlay {
+    align-items: flex-end !important;
+    padding: 0.75rem !important;
+  }
+
+  .transfer-modal {
+    max-height: calc(100dvh - 1.5rem) !important;
+    border-radius: 20px !important;
+  }
+
+  .transfer-modal-header,
+  .transfer-modal-filters {
+    padding: 0.85rem !important;
+  }
+
+  .transfer-modal-filters {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .transfer-modal-results {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 0.65rem !important;
+    padding: 0.75rem !important;
+  }
+
+  .transfer-player-card.is-compact {
+    min-height: 175px !important;
+    padding: 0.45rem !important;
+  }
+
+  /* Shop */
+  .shop-hero-meta {
+    align-items: stretch !important;
+  }
+
+  .shop-refresh-timer {
+    display: flex !important;
+    justify-content: space-between;
+  }
+
+  .shop-section-header {
+    align-items: flex-start !important;
+  }
+
+  .shop-items-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 0.75rem !important;
+  }
+
+  /* Inventory */
+  .inventory-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 0.75rem !important;
+  }
+
+  .inventory-empty-state {
+    padding: 2rem 1rem !important;
+  }
+
+  /* Profile */
+  .profile-banner {
+    height: 180px !important;
+  }
+
+  .profile-card-body {
+    padding: 0 1.25rem 1.5rem !important;
+  }
+
+  .profile-avatar-wrap {
+    width: 128px !important;
+    height: 95px !important;
+    margin: -64px auto 1rem !important;
+  }
+
+  .profile-avatar {
+    width: 128px !important;
+    height: 128px !important;
+    border-width: 6px !important;
+  }
+
+  .profile-name-block {
+    margin-top: 2rem !important;
+    margin-bottom: 1.75rem !important;
+  }
+
+  .profile-name {
+    max-width: 100%;
+    flex-wrap: wrap;
+    font-size: clamp(1.9rem, 10vw, 2.5rem) !important;
+    overflow-wrap: anywhere;
+  }
+
+  .profile-name-editor {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .profile-name-editor input {
+    width: min(100%, 300px) !important;
+    min-width: 0;
+    font-size: 1.25rem !important;
+  }
+
+  .profile-stats {
+    gap: clamp(2rem, 13vw, 4rem) !important;
+    margin-bottom: 1.75rem !important;
+  }
+
+  .profile-song-player {
+    gap: 0.75rem !important;
+    padding: 0.75rem 1rem !important;
+    border-radius: 20px !important;
+  }
+
+  .profile-action-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 0.75rem !important;
+  }
+
+  .profile-action-grid > a {
+    padding: 1.25rem !important;
+  }
+
+  /* Popups */
+  .site-popup-overlay {
+    align-items: flex-end !important;
+    padding: max(0.75rem, env(safe-area-inset-top, 0px))
+      max(0.75rem, env(safe-area-inset-right, 0px))
+      max(0.75rem, env(safe-area-inset-bottom, 0px))
+      max(0.75rem, env(safe-area-inset-left, 0px)) !important;
+  }
+
+  .site-popup-card {
+    max-height: calc(100dvh - 1.5rem) !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    padding: 1.25rem !important;
+    border-radius: 20px !important;
+  }
+
+  .site-popup-actions {
+    flex-direction: column !important;
+  }
+
+  .site-popup-actions > button {
+    width: 100%;
+  }
+
+  /* Admin */
+  .admin-tabs {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem !important;
+    margin-bottom: 1.25rem !important;
+  }
+
+  .admin-tabs > button {
+    width: 100%;
+    min-height: 44px;
+    padding: 0.55rem 0.4rem !important;
+    font-size: 0.74rem;
+  }
+
+  .admin-lock-row {
+    gap: 0.75rem;
+  }
+
+  .admin-lock-row > :first-child {
+    min-width: 0;
+  }
+
+  .admin-settings-grid,
+  .admin-shop-filters,
+  .admin-shop-url-grid,
+  .admin-stats-layout {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .admin-shop-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .admin-stats-layout {
+    gap: 1rem !important;
+  }
+
+  .admin-player-selector {
+    max-height: 230px !important;
+  }
+
+  .admin-stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 0.75rem !important;
+  }
+
+  .admin-section-row {
+    grid-template-columns: minmax(0, 1fr) auto auto !important;
+    gap: 0.55rem !important;
+  }
+
+  .admin-section-row > :first-child {
+    grid-column: 1 / -1;
+  }
+
+  .admin-section-row > :nth-child(2) {
+    grid-column: 1;
+  }
+
+  .admin-manager-inputs {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 0.6rem !important;
+    overflow-x: visible !important;
+  }
+
+  .admin-manager-inputs > button {
+    grid-column: 1 / -1;
+  }
+
+  .admin-player-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 0.6rem !important;
+  }
+
+  .admin-player-row > :first-child,
+  .admin-player-row > :nth-child(3),
+  .admin-player-row > button {
+    grid-column: 1 / -1;
+  }
+
+  .admin-shop-item-fields,
+  .admin-shop-item-pair {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .login-page {
+    align-items: flex-start !important;
+    padding: max(1.25rem, env(safe-area-inset-top, 0px))
+      max(0.75rem, env(safe-area-inset-right, 0px))
+      max(1.25rem, env(safe-area-inset-bottom, 0px))
+      max(0.75rem, env(safe-area-inset-left, 0px)) !important;
+  }
+
+  .login-card {
+    margin-top: max(1.5rem, 10dvh);
+    padding: 1.5rem !important;
+    border-radius: 16px !important;
+  }
+
+  .app-shell-content {
+    padding: 1rem max(0.75rem, env(safe-area-inset-right, 0px))
+      calc(1.25rem + env(safe-area-inset-bottom, 0px))
+      max(0.75rem, env(safe-area-inset-left, 0px));
+  }
+
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+
+  button,
+  select,
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]) {
+    min-height: 44px;
+  }
+
+  .page-hero {
+    padding: 1rem !important;
+    border-radius: 18px !important;
+  }
+
+  .home-hero-actions {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .home-hero-actions > a {
+    width: 100%;
+  }
+
+  .home-leaderboard-heading,
+  .home-leaderboard-row {
+    grid-template-columns: 30px minmax(0, 1fr) 48px !important;
+  }
+
+  .home-leaderboard-heading > :nth-child(3),
+  .home-leaderboard-row > :nth-child(3) {
+    display: none;
+  }
+
+  .home-leaderboard-row > :nth-child(2) span {
+    display: none;
+  }
+
+  .leaderboard-table-row {
+    grid-template-columns: 34px minmax(0, 1fr) 50px !important;
+  }
+
+  .leaderboard-table-row > :nth-child(3) {
+    display: none;
+  }
+
+  .leaderboard-table-row > :nth-child(2) span {
+    display: none;
+  }
+
+  .team-squad-grid,
+  .transfer-squad-grid {
+    gap: 0.5rem !important;
+  }
+
+  .team-player-card {
+    min-height: 195px !important;
+  }
+
+  .transfer-player-card:not(.is-compact),
+  .transfer-empty-slot {
+    min-height: 215px !important;
+  }
+
+  .transfer-modal-results {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .shop-items-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .inventory-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .profile-banner {
+    height: 150px !important;
+  }
+
+  .profile-card-body {
+    padding: 0 1rem 1.25rem !important;
+  }
+
+  .profile-song-player {
+    align-items: center !important;
+  }
+
+  .admin-tabs {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .admin-stats-grid,
+  .admin-manager-inputs,
+  .admin-player-row {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .admin-player-row > :nth-child(2) {
+    grid-column: 1 / -1;
+  }
+}
+
+/* Larger, easier-to-scan phone layouts. */
+@media (max-width: 760px) {
+  html {
+    font-size: 17px;
+  }
+}
+
+@media (max-width: 480px) {
+  html {
+    font-size: 18px;
+  }
+
+  .site-brand {
+    font-size: 1.05rem !important;
+  }
+
+  .mobile-menu-toggle {
+    min-height: 48px;
+    padding: 0.6rem 0.85rem;
+    font-size: 0.9rem;
+  }
+
+  .mobile-nav-links {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.6rem;
+  }
+
+  .mobile-nav-link {
+    min-height: 52px;
+    padding: 0.75rem 0.9rem;
+    font-size: 1rem;
+  }
+
+  .mobile-nav-account {
+    font-size: 0.85rem;
+  }
+
+  .mobile-nav-account button {
+    min-height: 44px;
+    font-size: 0.88rem;
+  }
+
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  select,
+  textarea {
+    font-size: 17px !important;
+  }
+
+  .page-hero h1 {
+    font-size: clamp(2.5rem, 14vw, 3.4rem) !important;
+  }
+
+  .page-hero p {
+    font-size: 1.05rem !important;
+  }
+
+  .summary-grid > div {
+    padding: 1.15rem !important;
+  }
+
+  .summary-grid > div > div:last-child {
+    font-size: 0.85rem !important;
+    line-height: 1.35;
+  }
+
+  /* On phones, surface the manager and the most useful score instead of
+     squeezing a desktop table into a narrow column. */
+  .home-leaderboard-heading,
+  .leaderboard-table-heading {
+    display: none !important;
+  }
+
+  .home-leaderboard-row {
+    grid-template-columns: 34px minmax(0, 1fr) auto !important;
+    gap: 0.7rem !important;
+    padding: 0.85rem 0.65rem !important;
+  }
+
+  .home-leaderboard-row > :nth-child(2) {
+    font-size: 1rem !important;
+  }
+
+  .home-leaderboard-row > :last-child,
+  .leaderboard-table-row:not(.leaderboard-table-heading) > :last-child {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    font-size: 1.1rem !important;
+    line-height: 1.1;
+  }
+
+  .home-leaderboard-row > :last-child::before,
+  .leaderboard-table-row:not(.leaderboard-table-heading) > :last-child::before {
+    content: "Total";
+    margin-bottom: 0.15rem;
+    color: var(--text-muted);
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .leaderboard-table-row:not(.leaderboard-table-heading) {
+    grid-template-columns: 38px minmax(0, 1fr) auto !important;
+    gap: 0.7rem !important;
+    padding: 0.85rem 0.55rem !important;
+  }
+
+  .leaderboard-table-row:not(.leaderboard-table-heading) > :nth-child(2) {
+    font-size: 1rem !important;
+  }
+
+  .team-summary-grid > div,
+  .transfer-summary-grid > div {
+    padding: 1rem !important;
+  }
+
+  .team-summary-grid > div > div:first-child,
+  .transfer-summary-grid > div > div:first-child {
+    font-size: 1.8rem !important;
+  }
+
+  .team-summary-grid > div > div:last-child,
+  .transfer-summary-grid > div > div:last-child {
+    font-size: 0.8rem !important;
+    line-height: 1.3;
+  }
+
+  .team-squad-grid,
+  .transfer-squad-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 0.75rem !important;
+  }
+
+  .team-player-card {
+    min-height: 0 !important;
+    padding: 0.75rem !important;
+  }
+
+  .team-player-card > div:nth-child(3),
+  .transfer-player-card > div:nth-child(3) {
+    aspect-ratio: 16 / 9 !important;
+    margin-bottom: 0.75rem !important;
+  }
+
+  .transfer-player-card:not(.is-compact) {
+    min-height: 0 !important;
+    padding: 0.75rem !important;
+  }
+
+  .transfer-player-card.is-compact {
+    min-height: 0 !important;
+    padding: 0.65rem !important;
+  }
+
+  .transfer-empty-slot {
+    min-height: 220px !important;
+  }
+
+  .team-stats-row {
+    font-size: 0.92rem !important;
+  }
+
+  .inventory-item-card > img {
+    width: 104px !important;
+    height: 104px !important;
+  }
+}
+
+/* Icon-first navigation for compact screens. */
+.mobile-nav-sheet-title,
+.mobile-bottom-nav {
+  display: none;
+}
+
+.mobile-nav-link > svg {
+  width: 1.05rem;
+  height: 1.05rem;
+  flex: 0 0 auto;
+}
+
+@media (max-width: 900px) {
+  .site-nav-bar {
+    justify-content: center;
+  }
+
+  .mobile-menu-toggle {
+    display: none !important;
+  }
+
+  .mobile-nav-panel {
+    position: fixed;
+    right: max(0.75rem, env(safe-area-inset-right, 0px));
+    bottom: calc(5.25rem + env(safe-area-inset-bottom, 0px));
+    left: max(0.75rem, env(safe-area-inset-left, 0px));
+    z-index: 150;
+    background: rgba(19, 22, 31, 0.98);
+    border: 1px solid transparent;
+    border-radius: 20px;
+    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.38);
+  }
+
+  .mobile-nav-panel.is-open {
+    max-height: min(62dvh, 430px);
+    margin-top: 0 !important;
+    padding: 1rem !important;
+    border-color: var(--border);
+  }
+
+  .mobile-nav-sheet-title {
+    display: block;
+    margin-bottom: 0.75rem;
+    color: var(--text-muted);
+    font-size: 0.72rem;
+    font-weight: 900;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+  }
+
+  .mobile-nav-primary-links {
+    display: none !important;
+  }
+
+  .mobile-nav-more-links {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .mobile-nav-link {
+    gap: 0.65rem;
+  }
+
+  .mobile-bottom-nav {
+    position: fixed;
+    right: max(0.75rem, env(safe-area-inset-right, 0px));
+    bottom: max(0.5rem, env(safe-area-inset-bottom, 0px));
+    left: max(0.75rem, env(safe-area-inset-left, 0px));
+    z-index: 200;
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    align-items: center;
+    min-height: 64px;
+    padding: 0.35rem;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 20px;
+    background: rgba(19, 22, 31, 0.94);
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+  }
+
+  .mobile-bottom-nav-item {
+    display: grid;
+    min-width: 0;
+    min-height: 52px;
+    place-items: center;
+    border: 0;
+    border-radius: 14px;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    text-decoration: none;
+  }
+
+  .mobile-bottom-nav-item svg {
+    width: 22px;
+    height: 22px;
+  }
+
+  .mobile-bottom-nav-item.is-active {
+    background: rgba(3, 71, 244, 0.2);
+    color: var(--accent);
+  }
+
+  .mobile-bottom-nav-more.is-active {
+    color: #8bb5ff;
+  }
+
+  .app-shell-content {
+    padding-bottom: calc(6.4rem + env(safe-area-inset-bottom, 0px)) !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .mobile-bottom-nav {
+    min-height: 68px;
+    padding: 0.4rem;
+    border-radius: 18px;
+  }
+
+  .mobile-bottom-nav-item {
+    min-height: 56px;
+    border-radius: 13px;
+  }
+
+  .mobile-bottom-nav-item svg {
+    width: 24px;
+    height: 24px;
+  }
+
+  .mobile-nav-more-links {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Phone dashboard refinements (v4). */
+@media (max-width: 760px) {
+  /* Team and Transfers summaries: main score/bank on row one, three details below. */
+  .team-summary-grid,
+  .transfer-summary-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+
+  .team-summary-gw-points,
+  .transfer-summary-bank {
+    grid-column: 1 / -1;
+  }
+
+  .transfer-summary-budget {
+    display: none !important;
+  }
+
+  /* Keep player cards compact and two-wide throughout phone layouts. */
+  .team-squad-grid,
+  .transfer-squad-grid,
+  .transfer-modal-results {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 0.5rem !important;
+  }
+
+  /* The current-GW score is always visible in phone leaderboard rows. */
+  .leaderboard-table-row:not(.leaderboard-table-heading) > :nth-child(3) {
+    display: flex !important;
+  }
+}
+
+@media (max-width: 480px) {
+  /* Keep both GW and total scores visible in compact standings. */
+  .home-leaderboard-row {
+    grid-template-columns: 30px minmax(0, 1fr) minmax(38px, auto) minmax(38px, auto) !important;
+    gap: 0.45rem !important;
+  }
+
+  .leaderboard-table-row:not(.leaderboard-table-heading) {
+    grid-template-columns: 34px minmax(0, 1fr) minmax(40px, auto) minmax(40px, auto) !important;
+    gap: 0.45rem !important;
+  }
+
+  .home-leaderboard-row > :nth-child(3),
+  .home-leaderboard-row > :last-child,
+  .leaderboard-table-row:not(.leaderboard-table-heading) > :nth-child(3),
+  .leaderboard-table-row:not(.leaderboard-table-heading) > :last-child {
+    display: flex !important;
+    flex-direction: column;
+    align-items: flex-end;
+    font-size: 1.05rem !important;
+    line-height: 1.1;
+    white-space: nowrap;
+  }
+
+  .home-leaderboard-row > :nth-child(3)::before,
+  .leaderboard-table-row:not(.leaderboard-table-heading) > :nth-child(3)::before {
+    content: "GW Pts";
+    margin-bottom: 0.15rem;
+    color: var(--text-muted);
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+}
+
+/* Fixtures standings: keep every column visible on phones without horizontal scrolling. */
+@media (max-width: 760px) {
+  .fixtures-standings-card {
+    overflow-x: hidden !important;
+    padding: 0.7rem !important;
+  }
+
+  .fixtures-standings-table {
+    width: 100%;
+    min-width: 0 !important;
+  }
+
+  .fixtures-standings-row {
+    grid-template-columns: 22px minmax(0, 1fr) repeat(4, 17px) 31px 27px !important;
+    gap: 0.2rem !important;
+    align-items: center !important;
+    font-size: 12px;
+    line-height: 1.15;
+  }
+
+  .fixtures-standings-row > * {
+    min-width: 0;
+  }
+
+  .fixtures-standings-heading {
+    padding: 0 0.1rem 0.45rem !important;
+    font-size: 9px !important;
+    letter-spacing: 0 !important;
+    line-height: 1;
+    white-space: nowrap;
+  }
+
+  .fixtures-standings-row:not(.fixtures-standings-heading) {
+    padding: 0.5rem 0.1rem !important;
+  }
+
+  .fixtures-standings-rank {
+    width: 22px !important;
+    height: 22px !important;
+    border-radius: 7px !important;
+    font-size: 11px;
+  }
+
+  .fixtures-standings-player-name {
+    overflow: visible !important;
+    text-overflow: clip !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere;
+    font-size: 12px !important;
+    line-height: 1.15;
+  }
+
+  .fixtures-standings-player-game {
+    display: block;
+    margin-top: 0.12rem !important;
+    overflow-wrap: anywhere;
+    font-size: 9px !important;
+    line-height: 1.1;
+  }
+}
+
+@media (max-width: 360px) {
+  .fixtures-standings-row {
+    grid-template-columns: 20px minmax(0, 1fr) repeat(4, 16px) 29px 25px !important;
+    gap: 0.12rem !important;
+    font-size: 11px;
+  }
+
+  .fixtures-standings-heading {
+    font-size: 8px !important;
+  }
+
+  .fixtures-standings-rank {
+    width: 20px !important;
+    height: 20px !important;
+    font-size: 10px;
+  }
+
+  .fixtures-standings-player-name {
+    font-size: 11px !important;
+  }
+
+  .fixtures-standings-player-game {
+    font-size: 8px !important;
+  }
 }
