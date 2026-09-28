@@ -6,6 +6,7 @@ import { useAuth } from "@/lib/AuthContext";
 import { logout } from "@/lib/auth";
 import Link from "next/link";
 import SitePopup from "@/components/SitePopup";
+import CoinsPopup from "@/components/CoinsPopup";
 import { APP_VERSION } from "@/lib/appVersion";
 import { collection, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase";
@@ -519,6 +520,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
       <div className="app-shell-content">{children}</div>
 
       <SitePopup />
+      <CoinsPopup />
     </div>
   );
 }
