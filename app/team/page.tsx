@@ -80,10 +80,6 @@ function PlayerCard({
     (sum, entry) => sum + Number(entry.delta || 0),
     0
   );
-  const hasBoostCards = boostList.length > 0;
-  const mainBoostColor = hasBoostCards
-    ? getLimitedCardRarityColor(boostList[0].rarity, boostList[0].accentColor)
-    : "#22c55e";
   const boostedPoints = points + boostTotal;
   const shownPoints = isCaptain ? boostedPoints * 2 : boostedPoints;
 
@@ -94,21 +90,17 @@ function PlayerCard({
       style={{
         position: "relative",
         overflow: "hidden",
-        background: hasBoostCards
-          ? `linear-gradient(145deg, ${mainBoostColor}33, rgba(255,255,255,0.02)), var(--surface)`
-          : isCaptain
+        background: isCaptain
           ? "linear-gradient(145deg, rgba(3,71,244,0.18), rgba(255,193,7,0.07)), var(--surface)"
           : "linear-gradient(145deg, rgba(255,255,255,0.04), rgba(255,255,255,0.015)), var(--surface)",
         border: `1px solid ${
           isUnfit
             ? "var(--red)"
-            : hasBoostCards
-            ? `${mainBoostColor}cc`
             : isCaptain
             ? "rgba(107,159,255,0.75)"
             : "var(--border)"
         }`,
-        boxShadow: hasBoostCards ? `0 0 20px ${mainBoostColor}55` : "none",
+        boxShadow: "none",
         borderRadius: "20px",
         padding: "0.75rem",
         cursor: "pointer",
@@ -179,36 +171,10 @@ function PlayerCard({
           </span>
         )}
 
-        {boostList.map((entry, index) => {
-          const color = getLimitedCardRarityColor(
-            entry.rarity,
-            entry.accentColor
-          );
-
-          return (
-            <span
-              key={`${entry.cardId}-${index}`}
-              style={{
-                background: `${color}2e`,
-                color,
-                border: `1px solid ${color}80`,
-                fontSize: "0.62rem",
-                fontWeight: 900,
-                padding: "0.2rem 0.45rem",
-                borderRadius: "999px",
-                maxWidth: "120px",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-            >
-              ⚡ {entry.cardName || "Boost"}
-            </span>
-          );
-        })}
       </div>
 
       <div
+        className="team-player-image"
         style={{
           position: "relative",
           zIndex: 2,
@@ -482,6 +448,7 @@ function StatsModal({
           val: s("clutch"),
           pts: s("clutch") * 2,
         });
+
     } else {
       if (s("kills"))
         rows.push({
@@ -1561,17 +1528,6 @@ function TeamContent() {
                 Starting IV
               </div>
 
-              {playerIds.some((pid) => boostsForPlayer(pid).length > 0) && (
-                <div
-                  style={{
-                    fontSize: "0.7rem",
-                    color: "var(--accent)",
-                    fontWeight: 800,
-                  }}
-                >
-                  ⚡ Mastery card boost active
-                </div>
-              )}
             </div>
 
             <div
