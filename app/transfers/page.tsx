@@ -13,14 +13,14 @@ import {
   addDoc,
 } from "firebase/firestore";
 import { useAuth } from "@/lib/AuthContext";
-import Shell from "@/app/shell";
+import Shell from "@///app/shell";
 import {
   LimitedCard,
   UserLimitedCard,
   getLimitedCardImageUrl,
   getLimitedCardRarityColor,
   limitedCardPowerupText,
-} from "@/lib/limitedCards";
+} from "@//lib/limitedCards";
 
 type Player = {
   id: string;
@@ -66,6 +66,7 @@ function PlayerCard({
   onCaptain,
   onSub,
   onRemove,
+  onStats,
   compact = false,
   versionColor,
   versionImage,
@@ -77,6 +78,7 @@ function PlayerCard({
   onCaptain?: () => void;
   onSub?: () => void;
   onRemove?: () => void;
+  onStats?: () => void;
   compact?: boolean;
   versionColor?: string;
   versionImage?: string;
@@ -183,6 +185,38 @@ function PlayerCard({
         )}
       </div>
 
+      {onStats && (
+        <button
+          type="button"
+          aria-label="Player stats"
+          title="Player stats"
+          onClick={(e) => {
+            e.stopPropagation();
+            onStats();
+          }}
+          style={{
+            position: "absolute",
+            top: "0.55rem",
+            right: "0.55rem",
+            zIndex: 4,
+            width: "26px",
+            height: "26px",
+            borderRadius: "9px",
+            background: "rgba(0,0,0,0.6)",
+            border: "1px solid rgba(255,255,255,0.18)",
+            color: "#fff",
+            fontSize: "0.72rem",
+            fontWeight: 900,
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          i
+        </button>
+      )}
+
       <div
         className="transfer-player-image"
         style={{
@@ -258,13 +292,13 @@ function PlayerCard({
           zIndex: 2,
           width: "100%",
           display: "grid",
-          gridTemplateColumns: "1fr auto",
-          gap: "0.6rem",
+          gridTemplateColumns: compact ? "1fr" : "1fr auto",
+          gap: compact ? "0.35rem" : "0.6rem",
           alignItems: "center",
           marginBottom: compact ? "0.55rem" : "0.65rem",
         }}
       >
-        <div style={{ minWidth: 0, textAlign: "left" }}>
+        <div style={{ minWidth: 0, textAlign: compact ? "center" : "left" }}>
           <div
             style={{
               color: "var(--text-muted)",
@@ -295,12 +329,17 @@ function PlayerCard({
 
         <div
           style={{
-            textAlign: "right",
-            background: "rgba(255,255,255,0.045)",
-            border: "1px solid rgba(255,255,255,0.08)",
+            textAlign: "center",
+            background: compact
+              ? "transparent"
+              : "rgba(255,255,255,0.045)",
+            border: compact
+              ? "none"
+              : "1px solid rgba(255,255,255,0.08)",
             borderRadius: "13px",
-            padding: compact ? "0.42rem 0.5rem" : "0.5rem 0.65rem",
+            padding: compact ? "0" : "0.5rem 0.65rem",
             minWidth: compact ? "58px" : "68px",
+            width: compact ? "100%" : "auto",
           }}
         >
           <div
@@ -574,27 +613,49 @@ function SpecialVersionTile({
       <div
         style={{
           display: "flex",
+          flexDirection: "column",
           alignItems: "center",
-          justifyContent: "space-between",
-          gap: "0.4rem",
+          gap: "0.3rem",
           marginTop: "auto",
+          width: "100%",
         }}
       >
         <div
           style={{
-            color: "var(--accent)",
-            fontSize: "0.95rem",
-            fontWeight: 900,
-            lineHeight: 1,
+            color: "var(--text-muted)",
+            fontSize: "0.68rem",
+            fontWeight: 700,
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            maxWidth: "100%",
           }}
         >
-          {versionPrice.toFixed(1)}
+          {player.game}
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            alignItems: "baseline",
+            gap: "0.25rem",
+          }}
+        >
+          <span
+            style={{
+              color: "var(--accent)",
+              fontSize: "1.05rem",
+              fontWeight: 900,
+              lineHeight: 1,
+            }}
+          >
+            {versionPrice.toFixed(1)}
+          </span>
           <span
             style={{
               color: "var(--text-muted)",
-              fontSize: "0.55rem",
+              fontSize: "0.58rem",
               fontWeight: 800,
-              marginLeft: "0.2rem",
             }}
           >
             million
@@ -759,6 +820,13 @@ export default function TransfersPage() {
   const [error, setError] = useState("");
 
   const [isModalOpen, setIsModalOpen] = useState(false);
+
+  const [statsPlayer, setStatsPlayer] = useState<Player | null>(null);
+  const [statsDocs, setStatsDocs] = useState<any[] | null>(null);
+  const [gwTeamsForStats, setGwTeamsForStats] = useState<GWTeam[] | null>(
+    null
+  );
+  const [statsLoading, setStatsLoading] = useState(false);
   const [nextGW, setNextGW] = useState<number>(8);
   const [deadline, setDeadline] = useState<string>("");
   const [isLocked, setIsLocked] = useState(false);
@@ -1005,6 +1073,90 @@ export default function TransfersPage() {
     return matchesSearch && matchesGame;
   });
 
+  const openPlayerStats = async (p: Player) => {
+    setStatsPlayer(p);
+    setStatsLoading(true);
+
+    try {
+      if (!statsDocs) {
+        const statsSnap = await getDocs(collection(db, "playerMatchStats"));
+        setStatsDocs(statsSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      }
+
+      if (!gwTeamsForStats) {
+        const gwStatsSnap = await getDocs(
+          query(
+            collection(db, "gameweekTeams"),
+            where("gameweek", "==", currentGW)
+          )
+        );
+        setGwTeamsForStats(
+          gwStatsSnap.docs.map((d) => ({ id: d.id, ...d.data() } as GWTeam))
+        );
+      }
+    } catch (err) {
+      console.error(err);
+    }
+
+    setStatsLoading(false);
+  };
+
+  const statsForPlayer = (() => {
+    if (!statsPlayer) return null;
+
+    const aliases = new Set(
+      [statsPlayer.id, statsPlayer.ID, statsPlayer.name]
+        .filter(Boolean)
+        .map(String)
+    );
+
+    const docs = (statsDocs || []).filter((s) => {
+      const docId = String(s.id || "");
+
+      return (
+        docId.startsWith(`${statsPlayer.id}_gw`) ||
+        aliases.has(String(s.player || "")) ||
+        aliases.has(String(s.Title || ""))
+      );
+    });
+
+    const gwEntries = docs
+      .map((s) => ({
+        gw: Number(s.gameweek || 0),
+        pts: Number(s.gwPoints || 0),
+        kills: Number(s.kills || 0),
+        assists: Number(s.assists || 0),
+      }))
+      .filter((e) => e.gw > 0)
+      .sort((a, b) => a.gw - b.gw);
+
+    const totalKills = gwEntries.reduce((sum, e) => sum + e.kills, 0);
+    const totalAssists = gwEntries.reduce((sum, e) => sum + e.assists, 0);
+    const gwPointsTotal = gwEntries.reduce((sum, e) => sum + e.pts, 0);
+    const form = gwEntries.length > 0 ? gwPointsTotal / gwEntries.length : 0;
+
+    const slotAliases = [statsPlayer.id, statsPlayer.ID]
+      .filter(Boolean)
+      .map(String);
+    const totalTeams = (gwTeamsForStats || []).length;
+    const owningTeams = (gwTeamsForStats || []).filter((t) =>
+      [t.player1, t.player2, t.player3, t.player4, t.sub].some(
+        (slot) => slot && slotAliases.includes(String(slot))
+      )
+    ).length;
+    const selectedPct =
+      totalTeams > 0 ? Math.round((owningTeams / totalTeams) * 100) : null;
+
+    return {
+      gwEntries,
+      totalKills,
+      totalAssists,
+      gwPointsTotal,
+      form,
+      selectedPct,
+    };
+  })();
+
   const handlePlayerSelect = (p: Player) => {
     setError("");
 
@@ -1095,7 +1247,6 @@ export default function TransfersPage() {
       setError("This player is not currently available for transfers.");
       return;
     }
-
     // One version of a player at a time — any other fielded version of
     // the same player is swapped back to his normal card.
     const otherVersionIds = activeCardIds.filter((activeId) => {
@@ -1707,6 +1858,7 @@ export default function TransfersPage() {
                   onCaptain={() => setCaptain(pid === captain ? "" : pid)}
                   onSub={() => swapWithSub(pid)}
                   onRemove={() => removeFromSquad(pid)}
+                  onStats={() => openPlayerStats(p)}
                 />
               ) : (
                 <EmptySlot
@@ -1749,6 +1901,7 @@ export default function TransfersPage() {
                 isSub={true}
                 onCaptain={moveSubToSquad}
                 onRemove={() => setSub("")}
+                onStats={() => openPlayerStats(getPlayer(sub)!)}
               />
             ) : (
               <EmptySlot label="Add Bench" onClick={() => setIsModalOpen(true)} />
@@ -1956,7 +2109,11 @@ export default function TransfersPage() {
                           position: "relative",
                         }}
                       >
-                        <PlayerCard player={p} compact={true} />
+                        <PlayerCard
+                          player={p}
+                          compact={true}
+                          onStats={() => openPlayerStats(p)}
+                        />
 
                         {isSelected && (
                           <div
@@ -2043,6 +2200,244 @@ export default function TransfersPage() {
                   </div>
                 )}
               </div>
+            </div>
+          </div>
+        )}
+
+        {statsPlayer && (
+          <div
+            className="player-stats-overlay"
+            style={{
+              position: "fixed",
+              inset: 0,
+              background: "rgba(0,0,0,0.8)",
+              zIndex: 200,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "1rem",
+            }}
+            onClick={() => setStatsPlayer(null)}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                background: "var(--surface)",
+                border: "1px solid var(--border)",
+                borderRadius: "20px",
+                width: "100%",
+                maxWidth: "420px",
+                maxHeight: "86vh",
+                overflowY: "auto",
+                padding: "1.25rem",
+              }}
+            >
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "minmax(0, 1fr) auto",
+                  gap: "0.75rem",
+                  alignItems: "start",
+                  marginBottom: "1rem",
+                }}
+              >
+                <div style={{ minWidth: 0 }}>
+                  <div
+                    style={{
+                      fontWeight: 900,
+                      fontSize: "1.15rem",
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    {statsPlayer.name}
+                  </div>
+                  <div
+                    style={{
+                      color: "var(--text-muted)",
+                      fontSize: "0.78rem",
+                      marginTop: "0.15rem",
+                    }}
+                  >
+                    {statsPlayer.game} ·{" "}
+                    {Number(statsPlayer.price || 0).toFixed(1)}m
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => setStatsPlayer(null)}
+                  style={{
+                    background: "rgba(255,255,255,0.06)",
+                    border: "1px solid rgba(255,255,255,0.1)",
+                    color: "var(--text)",
+                    width: "34px",
+                    height: "34px",
+                    borderRadius: "12px",
+                    fontSize: "1rem",
+                    cursor: "pointer",
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
+
+              {statsLoading ? (
+                <div
+                  style={{
+                    color: "var(--text-muted)",
+                    textAlign: "center",
+                    padding: "2rem 1rem",
+                    fontWeight: 700,
+                  }}
+                >
+                  Loading player stats...
+                </div>
+              ) : statsForPlayer ? (
+                <>
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                      gap: "0.6rem",
+                      marginBottom: "1.1rem",
+                    }}
+                  >
+                    {[
+                      {
+                        label: "Total Points",
+                        value: Number(
+                          statsPlayer.totalPoints ?? 0
+                        ).toLocaleString(),
+                      },
+                      {
+                        label: "Total Kills",
+                        value: statsForPlayer.totalKills.toLocaleString(),
+                      },
+                      {
+                        label: "Total Assists",
+                        value: statsForPlayer.totalAssists.toLocaleString(),
+                      },
+                      {
+                        label: "Form (avg pts/GW)",
+                        value: statsForPlayer.form.toFixed(1),
+                      },
+                      {
+                        label:
+                          currentGW > 0
+                            ? `Selected By (GW${currentGW})`
+                            : "Selected By",
+                        value:
+                          statsForPlayer.selectedPct === null
+                            ? "—"
+                            : `${statsForPlayer.selectedPct}%`,
+                      },
+                      {
+                        label: "GWs Played",
+                        value: String(statsForPlayer.gwEntries.length),
+                      },
+                    ].map((tile) => (
+                      <div
+                        key={tile.label}
+                        style={{
+                          background: "rgba(255,255,255,0.035)",
+                          border: "1px solid var(--border)",
+                          borderRadius: "12px",
+                          padding: "0.6rem 0.5rem",
+                          textAlign: "center",
+                        }}
+                      >
+                        <div
+                          style={{
+                            fontSize: "0.58rem",
+                            color: "var(--text-muted)",
+                            textTransform: "uppercase",
+                            letterSpacing: "0.8px",
+                            fontWeight: 800,
+                            marginBottom: "0.25rem",
+                          }}
+                        >
+                          {tile.label}
+                        </div>
+                        <div style={{ fontWeight: 900, fontSize: "1.05rem" }}>
+                          {tile.value}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div
+                    style={{
+                      fontSize: "0.68rem",
+                      color: "var(--text-muted)",
+                      textTransform: "uppercase",
+                      letterSpacing: "1.2px",
+                      fontWeight: 800,
+                      marginBottom: "0.6rem",
+                    }}
+                  >
+                    Gameweek Points
+                  </div>
+
+                  {statsForPlayer.gwEntries.length === 0 ? (
+                    <div
+                      style={{
+                        color: "var(--text-muted)",
+                        fontSize: "0.82rem",
+                      }}
+                    >
+                      No gameweek stats recorded yet.
+                    </div>
+                  ) : (
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                        gap: "0.5rem",
+                      }}
+                    >
+                      {statsForPlayer.gwEntries.map((entry) => (
+                        <div
+                          key={entry.gw}
+                          style={{
+                            background: "rgba(255,255,255,0.035)",
+                            border: "1px solid var(--border)",
+                            borderRadius: "12px",
+                            padding: "0.5rem 0.4rem",
+                            textAlign: "center",
+                          }}
+                        >
+                          <div
+                            style={{
+                              fontSize: "0.62rem",
+                              color: "var(--text-muted)",
+                              fontWeight: 800,
+                              marginBottom: "0.2rem",
+                            }}
+                          >
+                            GW{entry.gw}
+                          </div>
+                          <div
+                            style={{ fontWeight: 900, fontSize: "0.95rem" }}
+                          >
+                            {entry.pts}
+                            <span
+                              style={{
+                                fontSize: "0.6rem",
+                                color: "var(--text-muted)",
+                                fontWeight: 700,
+                              }}
+                            >
+                              {" "}
+                              pts
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              ) : null}
             </div>
           </div>
         )}
