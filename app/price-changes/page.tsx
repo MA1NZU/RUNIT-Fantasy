@@ -16,6 +16,7 @@ type Player = {
   desc: string;
   image?: string;
   ID?: string;
+  showInTransfers?: boolean;
 };
 
 type StatDoc = {
@@ -166,7 +167,7 @@ export default function PriceChangesPage() {
           };
         });
 
-        setRows(built);
+        setRows(built.filter((row) => row.player.showInTransfers !== false));
       } catch (err) {
         console.error(err);
       }
@@ -235,7 +236,9 @@ export default function PriceChangesPage() {
           Every gameweek each player earns a performance score: their latest
           gameweek points measured against their current price. 100% means
           hitting par — {PAR_POINTS_PER_MILLION} points per million. Above par
-          the price is under pressure to rise, below par to fall.
+          the price is under pressure to rise, below par to fall. Display
+          only — transfer prices never change automatically, so budgets
+          always stay safe.
         </p>
 
         <div
