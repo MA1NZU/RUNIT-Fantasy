@@ -232,7 +232,7 @@ function ProfileContent() {
             <div className="profile-name-block" style={{ marginBottom: "2.5rem", marginTop: "2.5rem" }}>
               {editingName ? (
                 <div className="profile-name-editor" style={{ display: "flex", gap: "0.5rem", justifyContent: "center", alignItems: "center" }}>
-                  <input value={newName} onChange={e => setNewName(e.target.value)} style={{ background: "var(--bg)", border: "2px solid var(--blue)", color: "#fff", padding: "0.5rem 1rem", borderRadius: "12px", fontSize: "1.75rem", fontWeight: 800", textAlign: "center", width: "300px" }} />
+                  <input value={newName} onChange={e => setNewName(e.target.value)} style={{ background: "var(--bg)", border: "2px solid var(--blue)", color: "#fff", padding: "0.5rem 1rem", borderRadius: "12px", fontSize: "1.75rem", fontWeight: 800, textAlign: "center", width: "300px" }} />
                   <button onClick={handleUpdateName} style={{ background: "var(--blue)", color: "#fff", border: "none", padding: "0.75rem 1.2rem", borderRadius: "12px", cursor: "pointer", fontWeight: 700 }}>Save</button>
                 </div>
               ) : (
