@@ -236,9 +236,7 @@ export default function PriceChangesPage() {
           Every gameweek each player earns a performance score: their latest
           gameweek points measured against their current price. 100% means
           hitting par — {PAR_POINTS_PER_MILLION} points per million. Above par
-          the price is under pressure to rise, below par to fall. Display
-          only — transfer prices never change automatically, so budgets
-          always stay safe.
+          the price is under pressure to rise, below par to fall.
         </p>
 
         <div
