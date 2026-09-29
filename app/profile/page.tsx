@@ -4,7 +4,7 @@ import { useEffect, useState, useRef, Suspense } from "react";
 import { db } from "@/lib/firebase";
 import { collection, getDocs, query, where, doc, updateDoc, orderBy } from "firebase/firestore";
 import { useAuth } from "@/lib/AuthContext";
-import Shell from "@//app/shell";
+import Shell from "@///app/shell";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 
@@ -21,6 +21,7 @@ type GWTeamDoc = {
 declare global { interface Window { onYouTubeIframeAPIReady: () => void; YT: any; } }
 
 const MILESTONES = [1, 10, 25, 50, 100, 250, 500, 1000];
+const POINTS_MILESTONES = [10, 100, 250, 500, 10000, 50000];
 
 function getYouTubeId(url: string) {
   const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
@@ -204,13 +205,10 @@ function ProfileContent() {
   })();
 
   const badgeTracks = [
-    { key: "matches", label: "Matches Played", value: badgeStats.matches },
-    { key: "first-places", label: "GW #1 Finishes", value: badgeStats.firstPlaces },
-    { key: "total-points", label: "Total Points", value: Number(team.totalPoints || 0) },
+    { key: "matches", label: "Matches Played", value: badgeStats.matches, tiers: MILESTONES },
+    { key: "first-places", label: "GW #1 Finishes", value: badgeStats.firstPlaces, tiers: MILESTONES },
+    { key: "total-points", label: "Total Points", value: Number(team.totalPoints || 0), tiers: POINTS_MILESTONES },
   ];
-  if (isOwnProfile) {
-    badgeTracks.push({ key: "coins", label: "Coins", value: Number(team.coins || 0) });
-  }
 
   const statCards = [
     { label: "Total Points", value: Number(team.totalPoints || 0).toLocaleString(), color: "#fff" },
@@ -218,9 +216,6 @@ function ProfileContent() {
     { label: "GW Points", value: Number(team.gameweekPoints || 0).toLocaleString(), color: "#fff" },
     { label: "GW Rank", value: typeof gwRank === "number" ? `#${gwRank}` : "—", color: "var(--accent)" },
   ];
-  if (isOwnProfile) {
-    statCards.push({ label: "Coins", value: `${Number(team.coins || 0).toLocaleString()}¢`, color: "var(--accent)" });
-  }
   return (
     <div className="page-container profile-page" style={{ maxWidth: "900px", margin: "0 auto" }}>
         <div className="profile-card" style={{ background: "var(--surface)", borderRadius: "24px", border: "1px solid var(--border)", overflow: "hidden", position: "relative", marginBottom: "1.5rem", boxShadow: "0 20px 50px rgba(0,0,0,0.2)" }}>
@@ -237,7 +232,7 @@ function ProfileContent() {
             <div className="profile-name-block" style={{ marginBottom: "2.5rem", marginTop: "2.5rem" }}>
               {editingName ? (
                 <div className="profile-name-editor" style={{ display: "flex", gap: "0.5rem", justifyContent: "center", alignItems: "center" }}>
-                  <input value={newName} onChange={e => setNewName(e.target.value)} style={{ background: "var(--bg)", border: "2px solid var(--blue)", color: "#fff", padding: "0.5rem 1rem", borderRadius: "12px", fontSize: "1.75rem", fontWeight: 800, textAlign: "center", width: "300px" }} />
+                  <input value={newName} onChange={e => setNewName(e.target.value)} style={{ background: "var(--bg)", border: "2px solid var(--blue)", color: "#fff", padding: "0.5rem 1rem", borderRadius: "12px", fontSize: "1.75rem", fontWeight: 800", textAlign: "center", width: "300px" }} />
                   <button onClick={handleUpdateName} style={{ background: "var(--blue)", color: "#fff", border: "none", padding: "0.75rem 1.2rem", borderRadius: "12px", cursor: "pointer", fontWeight: 700 }}>Save</button>
                 </div>
               ) : (
@@ -295,7 +290,7 @@ function ProfileContent() {
               <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "2px", marginBottom: "0.75rem" }}>Badges</div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "0.75rem" }}>
                 {badgeTracks.map((track) => {
-                  const nextTier = MILESTONES.find((tier) => tier > track.value) ?? null;
+                  const nextTier = track.tiers.find((tier) => tier > track.value) ?? null;
                   const progress = nextTier ? Math.min(100, Math.round((track.value / nextTier) * 100)) : 100;
 
                   return (
@@ -305,13 +300,13 @@ function ProfileContent() {
                         <span style={{ fontSize: "0.72rem", color: "var(--text-muted)", fontWeight: 700 }}>{track.value.toLocaleString()}</span>
                       </div>
                       <div style={{ display: "flex", flexWrap: "wrap", gap: "0.35rem", marginBottom: "0.65rem" }}>
-                        {MILESTONES.map((tier) => {
+                        {track.tiers.map((tier) => {
                           const unlocked = track.value >= tier;
                           const isNext = nextTier === tier;
 
                           return (
                             <span key={tier} style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", minWidth: "30px", height: "24px", padding: "0 0.35rem", borderRadius: "8px", fontSize: "0.68rem", fontWeight: 900, background: unlocked ? "rgba(255,193,7,0.12)" : "rgba(255,255,255,0.03)", border: `1px solid ${unlocked ? "rgba(255,193,7,0.45)" : isNext ? "rgba(107,159,255,0.55)" : "var(--border)"}`, color: unlocked ? "var(--accent)" : isNext ? "#8bb5ff" : "var(--text-muted)" }}>
-                              {tier >= 1000 ? "1K" : tier}
+                              {tier >= 1000 ? `${tier / 1000}K` : tier}
                             </span>
                           );
                         })}
@@ -344,7 +339,7 @@ function ProfileContent() {
             )}
           </div>
         </div>
-        <Link href={isOwnProfile ? "/team" : `/team?email=${targetEmail}`} className="profile-team-button" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "0.3rem", background: "var(--blue)", color: "#fff", padding: "1.1rem 2rem", borderRadius: "14px", textDecoration: "none", fontWeight: 900, fontSize: "1.05rem", margin: "0 auto", maxWidth: "420px", boxShadow: "0 12px 30px rgba(3,71,244,0.35)", transition: "transform 0.2s ease, box-shadow 0.2s ease" }}>
+        <Link href={isOwnProfile ? "/team" : `/team?email=${targetEmail}`} className="profile-team-button" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "0.3rem", background: "var(--blue)", color: "#fff", padding: "1.1rem 2rem", borderRadius: "14px", textDecoration: "none", fontWeight: 900, fontSize: "1.05rem", margin: "0 auto", maxWidth: "420px", transition: "transform 0.2s ease" }}>
           <span>{isOwnProfile ? "My Team" : "View Team"}</span>
           <span style={{ fontSize: "0.78rem", fontWeight: 600, opacity: 0.85 }}>{isOwnProfile ? "Manage players and track points." : `Scout ${team.manager}'s active players.`}</span>
         </Link>
@@ -359,7 +354,13 @@ function ProfileContent() {
             .stat-card { animation: fadeUp 0.5s ease both; }
             .badge-tile { animation: fadeUp 0.5s ease both; }
             .rank-progress { animation: fadeUp 0.5s ease both; animation-delay: 0.35s; }
-            .profile-team-button:hover { transform: translateY(-3px); box-shadow: 0 16px 36px rgba(3,71,244,0.45); }
+            .profile-team-button:hover { transform: translateY(-3px); }
+            @media (max-width: 640px) {
+              .profile-stats { grid-template-columns: repeat(4, minmax(0, 1fr)) !important; gap: 0.45rem !important; }
+              .profile-stats .stat-card { padding: 0.75rem 0.25rem !important; }
+              .profile-stats .stat-card > div:first-child { font-size: 0.5rem !important; letter-spacing: 0.5px !important; margin-bottom: 0.3rem !important; }
+              .profile-stats .stat-card > div:last-child { font-size: 1.05rem !important; }
+            }
             .profile-banner::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(105deg, transparent 40%, rgba(255,255,255,0.07) 50%, transparent 60%); background-size: 250% 100%; animation: shine 7s ease-in-out infinite; }
             @keyframes shine { 0%, 100% { background-position: 120% 0; } 50% { background-position: -120% 0; } }
         `}</style>
