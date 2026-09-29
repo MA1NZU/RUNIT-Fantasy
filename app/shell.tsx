@@ -20,6 +20,7 @@ type NavIconName =
   | "shop"
   | "inventory"
   | "profile"
+  | "prices"
   | "admin"
   | "more";
 
@@ -39,6 +40,7 @@ const NAV: NavLink[] = [
   { href: "/fixtures", label: "Fixtures", icon: "fixtures" },
   { href: "/team", label: "My Team", icon: "team" },
   { href: "/transfers", label: "Transfers", icon: "transfers" },
+  { href: "/price-changes", label: "Price Changes", icon: "prices" },
   { href: "/shop", label: "Shop", icon: "shop" },
   { href: "/inventory", label: "Inventory", icon: "inventory" },
   { href: "/profile", label: "Profile", icon: "profile" },
@@ -49,6 +51,7 @@ const MOBILE_NAV_PRIORITY_HREFS = [
   "/leaderboard",
   "/team",
   "/transfers",
+  "/price-changes",
   "/fixtures",
   "/shop",
   "/inventory",
@@ -135,6 +138,13 @@ function NavigationIcon({ icon }: { icon: NavIconName }) {
         <svg {...commonProps}>
           <circle cx="12" cy="12" r="3" />
           <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.1 2.1-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56v.1h-3v-.1A1.7 1.7 0 0 0 10.7 18.64a1.7 1.7 0 0 0-1.88.34l-.06.06-2.1-2.1.06-.06A1.7 1.7 0 0 0 7.06 15a1.7 1.7 0 0 0-1.56-1.03h-.1v-3h.1A1.7 1.7 0 0 0 7.06 9.94a1.7 1.7 0 0 0-.34-1.88L6.66 8l2.1-2.1.06.06a1.7 1.7 0 0 0 1.88.34 1.7 1.7 0 0 0 1.03-1.56v-.1h3v.1a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.88-.34l.06-.06 2.1 2.1-.06.06a1.7 1.7 0 0 0-.34 1.88 1.7 1.7 0 0 0 1.56 1.03h.1v3h-.1A1.7 1.7 0 0 0 19.4 15Z" />
+        </svg>
+      );
+    case "prices":
+      return (
+        <svg {...commonProps}>
+          <path d="M3 17l5-5 4 4 8-9" />
+          <path d="M14 7h6v6" />
         </svg>
       );
     case "more":
