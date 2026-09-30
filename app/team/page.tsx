@@ -9,6 +9,7 @@ import { useSearchParams } from "next/navigation";
 import {
   LimitedCard,
   UserLimitedCard,
+  getLimitedCardImageUrl,
   getLimitedCardRarityColor,
   limitedCardBoostDelta,
 } from "@/lib/limitedCards";
@@ -63,6 +64,8 @@ function PlayerCard({
   isCaptain,
   slot,
   boostCards,
+  versionImage,
+  versionColor,
   onClick,
 }: {
   player: Player;
@@ -71,10 +74,14 @@ function PlayerCard({
   isSub?: boolean;
   slot?: string;
   boostCards?: LimitedCardBoostEntry[];
+  versionImage?: string;
+  versionColor?: string;
   onClick?: () => void;
 }) {
   const description = player.desc || "Fit to play";
   const isUnfit = description !== "Fit to play";
+  const hasVersion = Boolean(versionColor);
+  const versionColorValue = versionColor || "#ffce1b";
   const boostList = Array.isArray(boostCards) ? boostCards : [];
   const boostTotal = boostList.reduce(
     (sum, entry) => sum + Number(entry.delta || 0),
@@ -90,17 +97,21 @@ function PlayerCard({
       style={{
         position: "relative",
         overflow: "hidden",
-        background: isCaptain
+        background: hasVersion
+          ? `linear-gradient(145deg, ${versionColorValue}33, rgba(255,255,255,0.015)), var(--surface)`
+          : isCaptain
           ? "linear-gradient(145deg, rgba(3,71,244,0.18), rgba(255,193,7,0.07)), var(--surface)"
           : "linear-gradient(145deg, rgba(255,255,255,0.04), rgba(255,255,255,0.015)), var(--surface)",
         border: `1px solid ${
           isUnfit
             ? "var(--red)"
+            : hasVersion
+            ? `${versionColorValue}cc`
             : isCaptain
             ? "rgba(107,159,255,0.75)"
             : "var(--border)"
         }`,
-        boxShadow: "none",
+        boxShadow: hasVersion ? `0 0 18px ${versionColorValue}4d` : "none",
         borderRadius: "20px",
         padding: "0.75rem",
         cursor: "pointer",
@@ -185,12 +196,14 @@ function PlayerCard({
           background:
             "radial-gradient(circle at 30% 20%, rgba(255,255,255,0.08), transparent 35%), #161616",
           marginBottom: "0.8rem",
-          border: "1px solid rgba(255,255,255,0.08)",
+          border: hasVersion
+            ? `1px solid ${versionColorValue}55`
+            : "1px solid rgba(255,255,255,0.08)",
         }}
       >
-        {player.image ? (
+        {versionImage || player.image ? (
           <img
-            src={player.image}
+            src={versionImage || player.image}
             style={{
               width: "100%",
               height: "100%",
@@ -448,7 +461,6 @@ function StatsModal({
           val: s("clutch"),
           pts: s("clutch") * 2,
         });
-
     } else {
       if (s("kills"))
         rows.push({
@@ -1128,6 +1140,47 @@ function TeamContent() {
       0
     );
 
+  // The mastery card fielded on this player (if any) — its art replaces the
+  // normal player image on the card.
+  const fieldedCardForPlayer = (pid: string): LimitedCard | null => {
+    if (!currentTeam) return null;
+
+    if (Array.isArray(currentTeam.limitedCardBoosts)) {
+      const synced = currentTeam.limitedCardBoosts.find((entry) =>
+        samePlayerRef(pid, String(entry.playerId || ""))
+      );
+
+      const syncedCard = synced
+        ? limitedCardCatalog[String(synced.cardId || "")]
+        : undefined;
+
+      if (syncedCard) return syncedCard;
+    }
+
+    const attached = userCardCopies.find((copy) => {
+      const inTeam =
+        Array.isArray(currentTeam.limitedCards) &&
+        currentTeam.limitedCards.includes(copy.id);
+      const byRecord =
+        copy.status === "active" &&
+        Number(copy.gameweek || 0) === currentTeam.gameweek;
+
+      if (!inTeam && !byRecord) return false;
+
+      const card = limitedCardCatalog[String(copy.cardId || "")];
+
+      return (
+        !!card &&
+        !!String(card.playerId || "") &&
+        samePlayerRef(pid, String(card.playerId))
+      );
+    });
+
+    return attached
+      ? limitedCardCatalog[String(attached.cardId || "")] ?? null
+      : null;
+  };
+
   const calculateTeamGWPoints = (team: GWTeam) => {
     const mainPlayerIds = [
       team.player1,
@@ -1543,6 +1596,8 @@ function TeamContent() {
 
                 if (!player) return null;
 
+                const fieldedCard = fieldedCardForPlayer(pid);
+
                 return (
                   <PlayerCard
                     key={pid || i}
@@ -1551,6 +1606,19 @@ function TeamContent() {
                     isCaptain={currentTeam.captain === pid}
                     slot={`P${i + 1}`}
                     boostCards={boostsForPlayer(pid)}
+                    versionImage={
+                      fieldedCard
+                        ? getLimitedCardImageUrl(fieldedCard.image)
+                        : undefined
+                    }
+                    versionColor={
+                      fieldedCard
+                        ? getLimitedCardRarityColor(
+                            fieldedCard.rarity,
+                            fieldedCard.accentColor
+                          )
+                        : undefined
+                    }
                     onClick={() => setSelectedStatPlayerId(pid)}
                   />
                 );
