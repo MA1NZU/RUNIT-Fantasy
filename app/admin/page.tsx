@@ -874,14 +874,102 @@ export default function AdminPage() {
 
       await updateDoc(doc(db, "players", p.id), { points: pts });
 
-      await syncCurrentGameweekScores();
-
-      markSaved("matchstats");
-    } catch (err) {
-      console.error(err);
+       // Managers who never open the transfers page never get a gameweekTeams
+  // doc for the new GW, so they drop off the GW leaderboard. Roll their most
+  // recent squad over so every active manager keeps playing.
+  const fillMissingGameweekTeams = async (): Promise<number> => {
+    if (
+      !settings ||
+      settings.currentGameweek === undefined ||
+      settings.currentGameweek === null
+    ) {
+      return 0;
     }
 
-    setSaving(null);
+    const targetGW = Number(settings.currentGameweek);
+    const now = new Date().toISOString();
+
+    const [userTeamsSnap, gwTeamsSnap, userCardsSnap] = await Promise.all([
+      getDocs(collection(db, "userTeams")),
+      getDocs(collection(db, "gameweekTeams")),
+      getDocs(collection(db, "userLimitedCards")),
+    ]);
+
+    const cardStatusById = new Map<string, string>();
+
+    userCardsSnap.docs.forEach((cardDoc) => {
+      cardStatusById.set(cardDoc.id, String(cardDoc.data().status || ""));
+    });
+
+    const hasTargetGW = new Set<string>();
+    const latestByOwner = new Map<
+      string,
+      { gw: number; data: Record<string, any> }
+    >();
+
+    gwTeamsSnap.docs.forEach((gwDoc) => {
+      const data = gwDoc.data() as Record<string, any>;
+      const email = String(data.ownerEmail || "").toLowerCase();
+      const gw = Number(data.gameweek || 0);
+
+      if (!email) return;
+
+      if (gw === targetGW) {
+        hasTargetGW.add(email);
+      }
+
+      if (
+        gw > 0 &&
+        gw < targetGW &&
+        (!latestByOwner.has(email) ||
+          gw > (latestByOwner.get(email)?.gw ?? 0))
+      ) {
+        latestByOwner.set(email, { gw, data });
+      }
+    });
+
+    let created = 0;
+
+    for (const userDoc of userTeamsSnap.docs) {
+      const email = String(userDoc.data().ownerEmail || "").toLowerCase();
+
+      if (!email || hasTargetGW.has(email)) continue;
+
+      const latest = latestByOwner.get(email);
+
+      if (!latest) continue;
+
+      const source = latest.data;
+
+      // Mastery cards are consumed when a gameweek is scored, so only
+      // carry over copies that are still alive.
+      const carriedCards = (
+        Array.isArray(source.limitedCards)
+          ? (source.limitedCards as string[])
+          : []
+      ).filter((cardDocId) => cardStatusById.get(String(cardDocId)) !== "used");
+
+      await addDoc(collection(db, "gameweekTeams"), {
+        player1: source.player1 ?? "",
+        player2: source.player2 ?? "",
+        player3: source.player3 ?? "",
+        player4: source.player4 ?? "",
+        captain: source.captain ?? "",
+        sub: source.sub ?? "",
+        gameweek: targetGW,
+        ownerEmail: source.ownerEmail ?? userDoc.data().ownerEmail,
+        gwPoints: 0,
+        transfersMade: 0,
+        transferPenalty: 0,
+        limitedCards: carriedCards,
+        "Created Date": now,
+        "Updated Date": now,
+      });
+
+      created += 1;
+    }
+
+    return created;
   };
 
   const handleSaveSettings = async () => {
@@ -904,6 +992,16 @@ export default function AdminPage() {
       });
 
       markSaved("settings");
+
+      const filledTeams = await fillMissingGameweekTeams();
+
+      if (filledTeams > 0) {
+        alert(
+          `Rolled over ${filledTeams} team(s) that had no squad saved for GW${Number(
+            settings.currentGameweek
+          )}.`
+        );
+      }
     } catch (err) {
       console.error(err);
     }
