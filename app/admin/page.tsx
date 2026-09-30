@@ -17,7 +17,7 @@ import {
 } from "firebase/firestore";
 import { useAuth } from "@/lib/AuthContext";
 import { useRouter } from "next/navigation";
-import Shell from "@//app/shell";
+import Shell from "@/app/shell";
 import {
   LIMITED_CARD_RARITIES,
   LimitedCard,
@@ -27,7 +27,7 @@ import {
   limitedCardPowerupText,
   limitedCardStatLabel,
   limitedCardStatOptions,
-} from "@//lib/limitedCards";
+} from "@/lib/limitedCards";
 
 const ADMIN_EMAIL = "yahyaayman2006@gmail.com";
 
@@ -422,8 +422,8 @@ export default function AdminPage() {
 
     total += s("matchWin") * 2;
     total += s("matchLose") * -2;
-    total += s("mvp") * 8;
-    total += s("svp") * 5;
+    total += s("mvp") * 5;
+    total += s("svp") * 3;
     total += s("bonus") * 1;
 
     if (p.game === "Valorant") {
@@ -435,17 +435,17 @@ export default function AdminPage() {
       total += s("tripleKill") * 3;
       total += s("quadraKill") * 5;
       total += s("ace") * 8;
-      total += s("clutch") * 2;
+      total += s("clutch") * 1;
     } else {
       total += Math.floor(s("kills") / 3);
       total += Math.floor(s("assists") / 4);
       total += s("deaths") * -2;
-      total += Math.floor(s("lastKills") / 2);
-      total += s("headKill") * 3;
-      total += Math.floor(s("healing") / 5050);
-      total += Math.floor(s("damage") / 5050);
-      total += Math.floor(s("blocked") / 5050);
-      total += s("soloKills");
+      total += Math.floor(s("lastKills") / 3);
+      total += s("headKill") * 1;
+      total += Math.floor(s("healing") / 4500);
+      total += Math.floor(s("damage") / 4500);
+      total += Math.floor(s("blocked") / 4500);
+      total += Math.floor(s("soloKills") / 2);
     }
 
     return total;
@@ -874,7 +874,17 @@ export default function AdminPage() {
 
       await updateDoc(doc(db, "players", p.id), { points: pts });
 
-       // Managers who never open the transfers page never get a gameweekTeams
+      await syncCurrentGameweekScores();
+
+      markSaved("matchstats");
+    } catch (err) {
+      console.error(err);
+    }
+
+    setSaving(null);
+  };
+
+  // Managers who never open the transfers page never get a gameweekTeams
   // doc for the new GW, so they drop off the GW leaderboard. Roll their most
   // recent squad over so every active manager keeps playing.
   const fillMissingGameweekTeams = async (): Promise<number> => {
@@ -1089,7 +1099,7 @@ export default function AdminPage() {
 
       setManagers(
         updatedManagers.sort(
-          (a, b) => Number(b.totalPoints || 0) - Number(b.totalPoints || 0)
+          (a, b) => Number(b.totalPoints || 0) - Number(a.totalPoints || 0)
         )
       );
 
@@ -1478,7 +1488,7 @@ export default function AdminPage() {
 
     try {
       await updateDoc(doc(db, "playerFixtures", fixture.id), {
-        gameweek,
+                gameweek,
         playerOneId: fixture.playerOneId,
         playerTwoId: fixture.playerTwoId,
         "Updated Date": new Date().toISOString(),
@@ -2296,7 +2306,7 @@ export default function AdminPage() {
                   onChange={updateShopItemField}
                   onSave={handleUpdateShopItem}
                   onDelete={() => {
-                if (confirm("Delete?")) {
+                    if (confirm("Delete?")) {
                       deleteDoc(doc(db, "shopItems", item.id)).then(() =>
                         setShopItems(shopItems.filter((i) => i.id !== item.id))
                       );
@@ -2968,7 +2978,7 @@ export default function AdminPage() {
               </div>
 
               <button
-                onClick={handleGrantRankingCoins}
+                                onClick={handleGrantRankingCoins}
                 disabled={saving === "grantRankingCoins"}
                 style={{
                   background:
@@ -3396,7 +3406,7 @@ export default function AdminPage() {
                         height: "18px",
                         accentColor: "var(--blue)",
                       }}
-                        />
+                    />
                     {p.showInTransfers !== false ? "Shown" : "Hidden"}
                   </span>
                 </label>
