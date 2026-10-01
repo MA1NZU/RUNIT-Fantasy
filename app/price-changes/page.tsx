@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { db } from "@/lib/firebase";
 import { collection, getDocs } from "firebase/firestore";
 import { useAuth } from "@/lib/AuthContext";
-import Shell from "@//app/shell";
+import Shell from "@/app/shell";
 
 type Player = {
   id: string;
@@ -28,12 +28,19 @@ type StatDoc = {
 };
 
 // 100% = par: this many points per million of the player's price.
-const PAR_POINTS_PER_MILLION = 3;
+const PAR_POINTS_PER_MILLION = 2;
+
+// Cumulative performance at or above this means a price rise is due.
+const RISE_THRESHOLD = 100;
+
+// Cumulative performance below this means the price is under drop pressure.
+const FALL_THRESHOLD = 40;
 
 type PriceRow = {
   player: Player;
   lastGW: number | null;
   lastPts: number;
+  gwCount: number;
   totalPts: number;
   performance: number | null;
   status: "rising" | "steady" | "falling" | "none";
@@ -129,39 +136,57 @@ export default function PriceChangesPage() {
               aliases.has(String(s.Title || ""))
           );
 
+          // Count every gameweek played so far (the current one and all the
+          // previous ones) so progress toward a price change carries over
+          // instead of resetting when a new gameweek starts.
           const entries = docs
             .map((s) => ({
               gw: Number(s.gameweek || 0),
               pts: Number(s.gwPoints || 0),
             }))
-            .filter((e) => e.gw > 0)
+            .filter((e) => e.gw > 0 && (gw <= 0 || e.gw <= gw))
             .sort((a, b) => a.gw - b.gw);
 
-          const last = entries.length > 0 ? entries[entries.length - 1] : null;
+          // Keep the best score per gameweek in case the same gameweek was
+          // saved under more than one alias.
+          const bestByGW = new Map<number, number>();
+
+          entries.forEach((e) => {
+            bestByGW.set(e.gw, Math.max(bestByGW.get(e.gw) ?? 0, e.pts));
+          });
+
+          const played = Array.from(bestByGW.entries()).sort(
+            (a, b) => a[0] - b[0]
+          );
+
+          const total = played.reduce((sum, [, pts]) => sum + pts, 0);
+          const gwCount = played.length;
+          const last = gwCount > 0 ? played[played.length - 1] : null;
           const price = Number(p.price || 0);
 
           let performance: number | null = null;
 
-          if (last && price > 0) {
+          if (gwCount > 0 && price > 0) {
             performance = Math.round(
-              (last.pts / (price * PAR_POINTS_PER_MILLION)) * 100
+              (total / (price * PAR_POINTS_PER_MILLION)) * 100
             );
           }
 
           const status: PriceRow["status"] =
             performance === null
               ? "none"
-              : performance >= 100
+              : performance >= RISE_THRESHOLD
               ? "rising"
-              : performance >= 50
+              : performance >= FALL_THRESHOLD
               ? "steady"
               : "falling";
 
           return {
             player: p,
-            lastGW: last ? last.gw : null,
-            lastPts: last ? last.pts : 0,
-            totalPts: Number(p.totalPoints ?? 0),
+            lastGW: last ? last[0] : null,
+            lastPts: last ? last[1] : 0,
+            gwCount,
+            totalPts: gwCount > 0 ? total : Number(p.totalPoints ?? 0),
             performance,
             status,
           };
@@ -233,10 +258,13 @@ export default function PriceChangesPage() {
             maxWidth: "640px",
           }}
         >
-          Every gameweek each player earns a performance score: their latest
-          gameweek points measured against their current price. 100% means
-          hitting par — {PAR_POINTS_PER_MILLION} points per million. Above par
-          the price is under pressure to rise, below par to fall.
+          Progress toward a price change carries over: every gameweek a
+          player plays adds to their running total, so nothing resets when a
+          new gameweek starts. 100% means hitting par — {PAR_POINTS_PER_MILLION} points
+          per million of their current price, counted across every gameweek
+          they have played. Above par the price is under pressure to rise,
+          well below it to fall. Display only — transfer prices never change
+          automatically, so budgets always stay safe.
         </p>
 
         <div
@@ -388,8 +416,10 @@ export default function PriceChangesPage() {
                     }}
                   >
                     {row.player.game}
-                    {row.lastGW
-                      ? ` · scored GW${row.lastGW} · ${row.lastPts} pts`
+                    {row.gwCount > 0
+                      ? ` · ${row.totalPts} pts over ${row.gwCount} GW${
+                          row.gwCount === 1 ? "" : "s"
+                        } · last GW${row.lastGW}: ${row.lastPts} pts`
                       : " · no stats yet"}
                   </div>
                 </div>
@@ -425,7 +455,7 @@ export default function PriceChangesPage() {
                       fontWeight: 700,
                     }}
                   >
-                    <span>Form vs price</span>
+                    <span>Rise progress</span>
                     <span style={{ color: meta.color }}>
                       {row.performance === null ? "—" : `${row.performance}%`}
                     </span>
