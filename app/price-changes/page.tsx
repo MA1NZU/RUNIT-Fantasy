@@ -28,13 +28,13 @@ type StatDoc = {
 };
 
 // 100% = par: this many points per million of the player's price.
-const PAR_POINTS_PER_MILLION = 2;
+const PAR_POINTS_PER_MILLION = 3;
 
 // Cumulative performance at or above this means a price rise is due.
 const RISE_THRESHOLD = 100;
 
 // Cumulative performance below this means the price is under drop pressure.
-const FALL_THRESHOLD = 40;
+const FALL_THRESHOLD = 30;
 
 type PriceRow = {
   player: Player;
@@ -260,11 +260,10 @@ export default function PriceChangesPage() {
         >
           Progress toward a price change carries over: every gameweek a
           player plays adds to their running total, so nothing resets when a
-          new gameweek starts. 100% means hitting par — {PAR_POINTS_PER_MILLION} points
+          new gameweek starts. 100% means hitting par: {PAR_POINTS_PER_MILLION} points
           per million of their current price, counted across every gameweek
           they have played. Above par the price is under pressure to rise,
-          well below it to fall. Display only — transfer prices never change
-          automatically, so budgets always stay safe.
+          well below it to fall.
         </p>
 
         <div
