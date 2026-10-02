@@ -50,6 +50,7 @@ type GWTeam = {
   transferPenalty: number;
   limitedCards?: string[];
   limitedCardBoosts?: LimitedCardBoostEntry[];
+  substitution?: { in: string; out: string; captain?: boolean } | null;
   ownerEmail: string;
 };
 
@@ -66,6 +67,7 @@ function PlayerCard({
   boostCards,
   versionImage,
   versionColor,
+  didNotPlay,
   onClick,
 }: {
   player: Player;
@@ -76,6 +78,7 @@ function PlayerCard({
   boostCards?: LimitedCardBoostEntry[];
   versionImage?: string;
   versionColor?: string;
+  didNotPlay?: boolean;
   onClick?: () => void;
 }) {
   const description = player.desc || "Fit to play";
@@ -164,6 +167,22 @@ function PlayerCard({
             }}
           >
             {slot}
+          </span>
+        )}
+
+        {didNotPlay && (
+          <span
+            style={{
+              background: "rgba(239,68,68,0.16)",
+              color: "#f87171",
+              border: "1px solid rgba(239,68,68,0.45)",
+              fontSize: "0.62rem",
+              fontWeight: 800,
+              padding: "0.2rem 0.45rem",
+              borderRadius: "999px",
+            }}
+          >
+            DNP
           </span>
         )}
 
@@ -487,7 +506,7 @@ function StatsModal({
         rows.push({
           label: "Last Kills",
           val: s("lastKills"),
-          pts: Math.floor(s("lastKills") / 2),
+          pts: Math.floor(s("lastKills") / 3),
         });
 
       if (s("headKill"))
@@ -651,6 +670,24 @@ function StatsModal({
             </div>
           </div>
         </div>
+
+        {stats?.played === false && (
+          <div
+            style={{
+              marginTop: "0.9rem",
+              padding: "0.6rem 0.9rem",
+              background: "rgba(239,68,68,0.12)",
+              border: "1px solid rgba(239,68,68,0.4)",
+              borderRadius: "10px",
+              color: "#f87171",
+              fontSize: "0.8rem",
+              fontWeight: 800,
+            }}
+          >
+            Did not play this gameweek — scored 0 points, the bench player
+            took his spot
+          </div>
+        )}
 
         <div
           style={{
@@ -875,7 +912,7 @@ function TeamContent() {
   >(null);
 
   useEffect(() => {
-    if (!targetEmail) return;
+        if (!targetEmail) return;
 
     const loadData = async () => {
       setLoading(true);
@@ -1074,6 +1111,15 @@ function TeamContent() {
     return selectedGW === currentGW ? Number(p.points || 0) : 0;
   };
 
+  // A starter the admin marked as "did not play" (the "Played this
+  // gameweek?" switch in the admin stats tab) scores 0 points and the
+  // bench player takes over his spot.
+  const didNotPlay = (id: string) => {
+    if (!id) return false;
+
+    return getStatsFor(id)?.played === false;
+  };
+
   // Limited cards attached to this gameweek's squad. After the admin
   // syncs scores the team doc carries limitedCardBoosts — the exact boosts
   // that were applied. Before that (own team only) the boost is computed
@@ -1109,6 +1155,10 @@ function TeamContent() {
       const boostPlayerId = String(card.playerId || "");
 
       if (!boostPlayerId || !samePlayerRef(pid, boostPlayerId)) return;
+
+      // A card on a starter who did not play never boosts — same rule the
+      // admin score sync uses.
+      if (didNotPlay(pid)) return;
       if (seenCardIds.has(copy.cardId)) return;
 
       seenCardIds.add(copy.cardId);
@@ -1181,6 +1231,34 @@ function TeamContent() {
       : null;
   };
 
+  // The bench player covers the first starter (player1 → player4 order)
+  // the admin marked as "did not play". If that spot was the captain, the
+  // bench player scores the ×2. Mirrors the admin score sync exactly.
+  const substitutionFor = (team: GWTeam) => {
+    const mainPlayerIds = [
+      team.player1,
+      team.player2,
+      team.player3,
+      team.player4,
+    ].filter(Boolean);
+
+    const subId = String(team.sub || "");
+
+    if (!subId) return null;
+
+    if (mainPlayerIds.some((pid) => samePlayerRef(pid, subId))) return null;
+
+    const missing = mainPlayerIds.find((pid) => didNotPlay(pid));
+
+    if (!missing) return null;
+
+    return {
+      in: subId,
+      out: missing,
+      captain: team.captain === missing,
+    };
+  };
+
   const calculateTeamGWPoints = (team: GWTeam) => {
     const mainPlayerIds = [
       team.player1,
@@ -1189,7 +1267,20 @@ function TeamContent() {
       team.player4,
     ].filter(Boolean);
 
+    const subForPlayerId = substitutionFor(team)?.out || null;
+
     return mainPlayerIds.reduce((total, pid) => {
+      // The bench player steps in for the starter who did not play.
+      if (subForPlayerId && samePlayerRef(pid, subForPlayerId)) {
+        const subPoints = getPoints(String(team.sub || ""));
+
+        if (team.captain === pid) {
+          return total + subPoints * 2;
+        }
+
+        return total + subPoints;
+      }
+
       const points = getPoints(pid) + getBoostTotal(pid);
 
       if (team.captain === pid) {
@@ -1203,6 +1294,15 @@ function TeamContent() {
   const calculatedGWPoints = currentTeam ? calculateTeamGWPoints(currentTeam) : 0;
   const storedGWPoints = Number(currentTeam?.gwPoints || 0);
   const displayGWPoints = storedGWPoints || calculatedGWPoints;
+
+  // After the admin syncs, the team doc records the substitution that was
+  // applied. Before that (own team preview) it is computed live.
+  const storedSubstitution = currentTeam?.substitution || null;
+  const activeSubstitution = storedSubstitution?.in
+    ? storedSubstitution
+    : currentTeam
+    ? substitutionFor(currentTeam)
+    : null;
 
   const squadValue = playerIds.reduce((sum, pid) => {
     const p = players[pid];
@@ -1602,9 +1702,10 @@ function TeamContent() {
                   <PlayerCard
                     key={pid || i}
                     player={player}
-                    points={getPoints(pid)}
+                    points={didNotPlay(pid) ? 0 : getPoints(pid)}
                     isCaptain={currentTeam.captain === pid}
                     slot={`P${i + 1}`}
+                    didNotPlay={didNotPlay(pid)}
                     boostCards={boostsForPlayer(pid)}
                     versionImage={
                       fieldedCard
@@ -1652,10 +1753,28 @@ function TeamContent() {
                 <PlayerCard
                   player={players[currentTeam.sub]}
                   points={getPoints(currentTeam.sub)}
-                  slot="BENCH"
+                  slot={activeSubstitution ? "SUB IN" : "BENCH"}
                   onClick={() => setSelectedStatPlayerId(currentTeam.sub)}
                 />
               </div>
+
+              {activeSubstitution && (
+                <div
+                  style={{
+                    marginTop: "0.75rem",
+                    fontSize: "0.72rem",
+                    fontWeight: 800,
+                    color: "var(--green)",
+                  }}
+                >
+                  ✓ Subbed in for{" "}
+                  {players[activeSubstitution.out]?.name ||
+                    activeSubstitution.out}
+                  {activeSubstitution.captain
+                    ? " · scores ×2 (captain spot)"
+                    : ""}
+                </div>
+              )}
             </section>
           )}
         </>
