@@ -28,7 +28,7 @@ type StatDoc = {
 };
 
 // 100% = par: this many points per million of the player's price.
-const PAR_POINTS_PER_MILLION = 3;
+const PAR_POINTS_PER_MILLION = 6;
 
 // Cumulative performance at or above this means a price rise is due.
 const RISE_THRESHOLD = 100;
