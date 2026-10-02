@@ -381,14 +381,14 @@ function StatsModal({
       rows.push({
         label: "MVP",
         val: s("mvp"),
-        pts: s("mvp") * 8,
+        pts: s("mvp") * 5,
       });
 
     if (s("svp"))
       rows.push({
         label: "SVP",
         val: s("svp"),
-        pts: s("svp") * 5,
+        pts: s("svp") * 3,
       });
 
     if (s("bonus"))
@@ -459,7 +459,7 @@ function StatsModal({
         rows.push({
           label: "Clutch",
           val: s("clutch"),
-          pts: s("clutch") * 2,
+          pts: s("clutch") * 1,
         });
     } else {
       if (s("kills"))
@@ -494,35 +494,35 @@ function StatsModal({
         rows.push({
           label: "Head Kill",
           val: s("headKill"),
-          pts: s("headKill") * 3,
+          pts: s("headKill") * 1,
         });
 
       if (s("healing"))
         rows.push({
           label: "Healing",
           val: s("healing"),
-          pts: Math.floor(s("healing") / 5050),
+          pts: Math.floor(s("healing") / 4500),
         });
 
       if (s("damage"))
         rows.push({
           label: "Damage",
           val: s("damage"),
-          pts: Math.floor(s("damage") / 5050),
+          pts: Math.floor(s("damage") / 4500),
         });
 
       if (s("blocked"))
         rows.push({
           label: "Blocked",
           val: s("blocked"),
-          pts: Math.floor(s("blocked") / 5050),
+          pts: Math.floor(s("blocked") / 4500),
         });
 
       if (s("soloKills"))
         rows.push({
           label: "Solo Kills",
           val: s("soloKills"),
-          pts: s("soloKills"),
+          pts: Math.floor(s("solokills") / 2),
         });
     }
 
