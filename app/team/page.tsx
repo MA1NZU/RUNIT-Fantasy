@@ -522,7 +522,7 @@ function StatsModal({
         rows.push({
           label: "Solo Kills",
           val: s("soloKills"),
-          pts: Math.floor(s("solokills") / 2),
+          pts: Math.floor(s("soloKills") / 2),
         });
     }
 
