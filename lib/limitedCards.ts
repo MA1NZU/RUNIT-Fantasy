@@ -171,9 +171,9 @@ export function statPointsFor(
     case "matchLose":
       return value * -2;
     case "mvp":
-      return value * 8;
-    case "svp":
       return value * 5;
+    case "svp":
+      return value * 3;
     case "bonus":
       return value;
     case "kills":
@@ -193,19 +193,19 @@ export function statPointsFor(
     case "ace":
       return value * 8;
     case "clutch":
-      return value * 2;
+      return value * 1;
     case "lastKills":
-      return Math.floor(value / 2);
+      return Math.floor(value / 3);
     case "headKill":
-      return value * 3;
+      return value * 1;
     case "healing":
-      return Math.floor(value / 5050);
+      return Math.floor(value / 4500);
     case "damage":
-      return Math.floor(value / 5050);
+      return Math.floor(value / 4500);
     case "blocked":
-      return Math.floor(value / 5050);
+      return Math.floor(value / 4500);
     case "soloKills":
-      return value;
+      return Math.floor(value / 2);
     default:
       return 0;
   }
