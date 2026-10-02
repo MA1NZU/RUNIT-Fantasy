@@ -31,6 +31,30 @@ import {
 
 const ADMIN_EMAIL = "yahyaayman2006@gmail.com";
 
+// Every per-gameweek stat field the admin stats form can save.
+const MATCH_STAT_KEYS = [
+  "matchWin",
+  "matchLose",
+  "mvp",
+  "svp",
+  "bonus",
+  "kills",
+  "assists",
+  "deaths",
+  "firstBlood",
+  "firstDeath",
+  "tripleKill",
+  "quadraKill",
+  "ace",
+  "clutch",
+  "lastKills",
+  "headKill",
+  "healing",
+  "damage",
+  "blocked",
+  "soloKills",
+];
+
 type Player = {
   id: string;
   name: string;
@@ -224,6 +248,11 @@ export default function AdminPage() {
 
   const [selectedPlayerId, setSelectedPlayerId] = useState("");
   const [calcStats, setCalcStats] = useState<Record<string, string>>({});
+  const [playerPlayed, setPlayerPlayed] = useState(true);
+  const [savedStats, setSavedStats] = useState<{
+    gw: number;
+    byId: Record<string, any>;
+  }>({ gw: -1, byId: {} });
   const [newItem, setNewItem] = useState<Partial<ShopItem>>({
     ...defaultNewItem,
   });
@@ -356,6 +385,23 @@ export default function AdminPage() {
             .sort((a, b) => (a.name || "").localeCompare(b.name || ""))
         );
 
+        const savedStatsSnap = await getDocs(
+          query(
+            collection(db, "playerMatchStats"),
+            where("gameweek", "==", activeGW)
+          )
+        );
+
+        const savedStatsById: Record<string, any> = {};
+
+        savedStatsSnap.docs.forEach((d) => {
+          const playerId = d.id.split("_gw")[0];
+
+          if (playerId) savedStatsById[playerId] = d.data();
+        });
+
+        setSavedStats({ gw: activeGW, byId: savedStatsById });
+
         setFixtures(
           fixturesSnap.docs
             .map((fixtureDoc) => {
@@ -414,6 +460,16 @@ export default function AdminPage() {
   const markSaved = (key: string) => {
     setSaved(key);
     setTimeout(() => setSaved(null), 2000);
+  };
+
+  // Saved match stats for a player in the current gameweek — used to
+  // pre-fill the stats form and show the IN/OUT chip in the player list.
+  const savedStatsFor = (p: { id: string }) => {
+    const gw = Number(settings?.currentGameweek);
+
+    if (savedStats.gw !== gw) return undefined;
+
+    return savedStats.byId[p.id];
   };
 
   const calculatePoints = (p: Player) => {
@@ -617,6 +673,20 @@ export default function AdminPage() {
         if (canonical) statsByCanonical.set(canonical, data);
       });
 
+      // The admin marks a starter "did not play" with the "Played this
+      // gameweek?" switch in the stats tab. That starter scores 0 points
+      // and the bench player takes over his spot in every squad fielding
+      // him.
+      const playerDidNotPlay = (playerId: any) => {
+        const key = String(playerId || "");
+        if (!key) return false;
+
+        const canonical = aliasToCanonical.get(key) || key;
+        const stats = statsByCanonical.get(canonical);
+
+        return !!stats && stats.played === false;
+      };
+
       const attachedLimitedCards = userLimitedCardsSnap.docs.map(
         (userCardDoc) => {
           const data = userCardDoc.data();
@@ -702,6 +772,10 @@ export default function AdminPage() {
 
           if (!boostPlayerId || !mainCanonicalIds.has(boostPlayerId)) return;
 
+          // A card on a starter who did not play keeps waiting, exactly
+          // like a card on a benched player — no boost, no consumption.
+          if (playerDidNotPlay(boostPlayerId)) return;
+
           // One boost per card per gameweek: a second copy of the same card
           // is still consumed but never boosts twice.
           if (boostedCardIds.has(userCard.cardId)) {
@@ -740,11 +814,50 @@ export default function AdminPage() {
           }
         });
 
+        // Bench substitution: the bench player covers the first starter
+        // (player1 → player4 order) the admin marked as "did not play".
+        // If that spot was the captain, the bench player scores the ×2.
+        const subId = String(team.sub || "");
+        let subForPlayerId: string | null = null;
+
+        if (
+          subId &&
+          !mainPlayerIds.some((mainPlayerId) =>
+            samePlayer(mainPlayerId, subId)
+          )
+        ) {
+          const missing = mainPlayerIds.find((mainPlayerId) =>
+            playerDidNotPlay(mainPlayerId)
+          );
+
+          if (missing) subForPlayerId = missing;
+        }
+
+        const substitution = subForPlayerId
+          ? {
+              in: subId,
+              out: subForPlayerId,
+              captain: samePlayer(subForPlayerId, team.captain),
+            }
+          : null;
+
         const newGwPoints = mainPlayerIds.reduce((total, playerId) => {
           const canonical =
             aliasToCanonical.get(String(playerId || "")) ||
             String(playerId || "");
           const boost = boostByPlayerId[canonical] || 0;
+
+          // The bench player steps in for the starter who did not play.
+          if (subForPlayerId && samePlayer(playerId, subForPlayerId)) {
+            const subPoints = getPlayerPoints(subId);
+
+            if (samePlayer(playerId, team.captain)) {
+              return total + subPoints * 2;
+            }
+
+            return total + subPoints;
+          }
+
           const playerPoints = getPlayerPoints(playerId) + boost;
 
           if (samePlayer(playerId, team.captain)) {
@@ -757,10 +870,21 @@ export default function AdminPage() {
         const oldGwPoints = Number(team.gwPoints || 0);
         const difference = newGwPoints - oldGwPoints;
 
+        const sameSubstitution = (a: any, b: any) =>
+          String(a?.in || "") === String(b?.in || "") &&
+          String(a?.out || "") === String(b?.out || "") &&
+          Boolean(a?.captain) === Boolean(b?.captain);
+
+        const substitutionChanged = !sameSubstitution(
+          team.substitution,
+          substitution
+        );
+
         if (
           difference === 0 &&
           consumedCardRefs.length === 0 &&
-          appliedBoosts.length === 0
+          appliedBoosts.length === 0 &&
+          !substitutionChanged
         ) {
           return;
         }
@@ -768,11 +892,13 @@ export default function AdminPage() {
         if (
           difference !== 0 ||
           appliedBoosts.length > 0 ||
-          consumedCardRefs.length > 0
+          consumedCardRefs.length > 0 ||
+          substitutionChanged
         ) {
           batch.update(teamDoc.ref, {
             gwPoints: newGwPoints,
             limitedCardBoosts: appliedBoosts,
+            substitution,
             "Updated Date": now,
           });
 
@@ -853,7 +979,7 @@ export default function AdminPage() {
 
     setSaving("matchstats");
 
-    const pts = calculatePoints(p);
+    const pts = playerPlayed ? calculatePoints(p) : 0;
 
     try {
       const statId = `${p.id}_gw${settings.currentGameweek}`;
@@ -866,6 +992,7 @@ export default function AdminPage() {
           Title: p.name,
           game: p.game,
           gameweek: settings.currentGameweek,
+          played: playerPlayed,
           gwPoints: pts,
           UpdatedDate: new Date().toISOString(),
         },
@@ -873,6 +1000,33 @@ export default function AdminPage() {
       );
 
       await updateDoc(doc(db, "players", p.id), { points: pts });
+
+      // Keep the saved-stats map in sync so the player list chip and the
+      // form pre-fill reflect this save immediately.
+      setSavedStats((prev) => {
+        const gw = Number(settings.currentGameweek);
+
+        return {
+          gw,
+          byId:
+            prev.gw === gw
+              ? {
+                  ...prev.byId,
+                  [p.id]: {
+                    ...calcStats,
+                    played: playerPlayed,
+                    gwPoints: pts,
+                  },
+                }
+              : {
+                  [p.id]: {
+                    ...calcStats,
+                    played: playerPlayed,
+                    gwPoints: pts,
+                  },
+                },
+        };
+      });
 
       await syncCurrentGameweekScores();
 
@@ -972,7 +1126,7 @@ export default function AdminPage() {
         transfersMade: 0,
         transferPenalty: 0,
         limitedCards: carriedCards,
-        "Created Date": now,
+        "Created date": now,
         "Updated Date": now,
       });
 
@@ -1003,6 +1157,31 @@ export default function AdminPage() {
 
       markSaved("settings");
 
+      // The stats form pre-fill follows the gameweek, so reload the saved
+      // match stats for the (possibly changed) current gameweek.
+      try {
+        const newGW = Number(settings.currentGameweek);
+
+        const savedStatsSnap = await getDocs(
+          query(
+            collection(db, "playerMatchStats"),
+            where("gameweek", "==", newGW)
+          )
+        );
+
+        const savedStatsById: Record<string, any> = {};
+
+        savedStatsSnap.docs.forEach((d) => {
+          const playerId = d.id.split("_gw")[0];
+
+          if (playerId) savedStatsById[playerId] = d.data();
+        });
+
+        setSavedStats({ gw: newGW, byId: savedStatsById });
+      } catch (statsErr) {
+        console.error(statsErr);
+      }
+
       const filledTeams = await fillMissingGameweekTeams();
 
       if (filledTeams > 0) {
@@ -1018,8 +1197,7 @@ export default function AdminPage() {
 
     setSaving(null);
   };
-
-  const handleSaveManager = async (m: UserTeam) => {
+    const handleSaveManager = async (m: UserTeam) => {
     setSaving(m.id);
 
     try {
@@ -1488,7 +1666,7 @@ export default function AdminPage() {
 
     try {
       await updateDoc(doc(db, "playerFixtures", fixture.id), {
-                gameweek,
+        gameweek,
         playerOneId: fixture.playerOneId,
         playerTwoId: fixture.playerTwoId,
         "Updated Date": new Date().toISOString(),
@@ -2219,7 +2397,7 @@ export default function AdminPage() {
               >
                 <ShopTextInput
                   label="Image URL"
-                  value={newItem.previewImage || ""}
+                                value={newItem.previewImage || ""}
                   onChange={(value) =>
                     setNewItem({
                       ...newItem,
@@ -2739,7 +2917,37 @@ export default function AdminPage() {
                 {players.map((p) => (
                   <div
                     key={p.id}
-                    onClick={() => setSelectedPlayerId(p.id)}
+                    onClick={() => {
+                      setSelectedPlayerId(p.id);
+
+                      const gw = Number(settings?.currentGameweek);
+                      const saved =
+                        savedStats.gw === gw
+                          ? savedStats.byId[p.id]
+                          : undefined;
+
+                      if (saved) {
+                        const loaded: Record<string, string> = {};
+
+                        MATCH_STAT_KEYS.forEach((key) => {
+                          const value = saved[key];
+
+                          if (
+                            value !== undefined &&
+                            value !== null &&
+                            String(value) !== ""
+                          ) {
+                            loaded[key] = String(value);
+                          }
+                        });
+
+                        setCalcStats(loaded);
+                        setPlayerPlayed(saved.played !== false);
+                      } else {
+                        setCalcStats({});
+                        setPlayerPlayed(true);
+                      }
+                    }}
                     style={{
                       padding: "0.75rem 1rem",
                       cursor: "pointer",
@@ -2750,8 +2958,18 @@ export default function AdminPage() {
                           : "transparent",
                     }}
                   >
-                    <div style={{ fontWeight: 600, fontSize: "0.9rem" }}>
-                      {p.name}
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: "0.5rem",
+                      }}
+                    >
+                      <span style={{ fontWeight: 600, fontSize: "0.9rem" }}>
+                        {p.name}
+                      </span>
+                      <SavedStatChip saved={savedStatsFor(p)} />
                     </div>
                     <div
                       style={{
@@ -2809,10 +3027,64 @@ export default function AdminPage() {
                           color: "var(--accent)",
                         }}
                       >
-                        {calculatePoints(activePlayer)}
+                        {playerPlayed
+                          ? calculatePoints(activePlayer)
+                          : 0}
                       </div>
                     </div>
                   </div>
+
+                  <label
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.6rem",
+                      padding: "0.8rem 1rem",
+                      background: "var(--bg)",
+                      border: `1px solid ${
+                        playerPlayed
+                          ? "var(--border)"
+                          : "rgba(239,68,68,0.55)"
+                      }`,
+                      borderRadius: "8px",
+                      cursor: "pointer",
+                      marginBottom: "1.25rem",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={playerPlayed}
+                      onChange={(e) => setPlayerPlayed(e.target.checked)}
+                      style={{
+                        width: "1.05rem",
+                        height: "1.05rem",
+                        accentColor: "var(--accent)",
+                        cursor: "pointer",
+                      }}
+                    />
+                    <span
+                      style={{
+                        fontSize: "0.85rem",
+                        fontWeight: 800,
+                        color: "#fff",
+                      }}
+                    >
+                      Played this gameweek?
+                    </span>
+                    <span
+                      style={{
+                        fontSize: "0.72rem",
+                        fontWeight: 700,
+                        marginLeft: "auto",
+                        color: playerPlayed ? "var(--green)" : "#f87171",
+                        textAlign: "right",
+                      }}
+                    >
+                      {playerPlayed
+                        ? "YES — his stats count"
+                        : "NO — scores 0, bench player subs in"}
+                    </span>
+                  </label>
 
                   <div
                     className="admin-stats-grid"
@@ -2978,7 +3250,7 @@ export default function AdminPage() {
               </div>
 
               <button
-                                onClick={handleGrantRankingCoins}
+                onClick={handleGrantRankingCoins}
                 disabled={saving === "grantRankingCoins"}
                 style={{
                   background:
@@ -3325,7 +3597,7 @@ export default function AdminPage() {
                   alignItems: "center",
                 }}
               >
-                <div>
+                            <div>
                   <div style={{ fontWeight: 600 }}>{p.name}</div>
                   <div
                     style={{
@@ -4351,6 +4623,46 @@ function LimitedCardEditor({
         </div>
       </div>
     </div>
+  );
+}
+
+function SavedStatChip({ saved }: { saved?: any }) {
+  if (!saved) return null;
+
+  if (saved.played === false) {
+    return (
+      <span
+        style={{
+          background: "rgba(239,68,68,0.15)",
+          color: "#f87171",
+          border: "1px solid rgba(239,68,68,0.45)",
+          fontSize: "0.6rem",
+          fontWeight: 800,
+          padding: "0.15rem 0.4rem",
+          borderRadius: "999px",
+          whiteSpace: "nowrap",
+        }}
+      >
+        OUT
+      </span>
+    );
+  }
+
+  return (
+    <span
+      style={{
+        background: "rgba(34,197,94,0.15)",
+        color: "var(--green)",
+        border: "1px solid rgba(34,197,94,0.4)",
+        fontSize: "0.6rem",
+        fontWeight: 800,
+        padding: "0.15rem 0.4rem",
+        borderRadius: "999px",
+        whiteSpace: "nowrap",
+      }}
+    >
+      ✓ {Number(saved.gwPoints || 0)} PTS
+    </span>
   );
 }
 
