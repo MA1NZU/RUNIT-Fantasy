@@ -177,7 +177,7 @@ export function statPointsFor(
     case "bonus":
       return value;
     case "kills":
-      return isValorant ? Math.floor(value / 2) : Math.floor(value / 4);
+      return isValorant ? Math.floor(value / 2) : Math.floor(value / 3);
     case "assists":
       return isValorant ? Math.floor(value / 2) : Math.floor(value / 4);
     case "deaths":
