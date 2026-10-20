@@ -177,7 +177,7 @@ export function statPointsFor(
     case "bonus":
       return value;
     case "kills":
-      return isValorant ? Math.floor(value / 2) : Math.floor(value / 3);
+      return isValorant ? Math.floor(value / 2) : Math.floor(value / 4);
     case "assists":
       return isValorant ? Math.floor(value / 2) : Math.floor(value / 4);
     case "deaths":
@@ -199,11 +199,11 @@ export function statPointsFor(
     case "headKill":
       return value * 1;
     case "healing":
-      return Math.floor(value / 4500);
+      return Math.floor(value / 6000);
     case "damage":
-      return Math.floor(value / 4500);
+      return Math.floor(value / 6000);
     case "blocked":
-      return Math.floor(value / 4500);
+      return Math.floor(value / 6000);
     case "soloKills":
       return Math.floor(value / 2);
     default:
