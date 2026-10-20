@@ -493,7 +493,7 @@ export default function AdminPage() {
       total += s("ace") * 8;
       total += s("clutch") * 1;
     } else {
-      total += Math.floor(s("kills") / 4);
+      total += Math.floor(s("kills") / 3);
       total += Math.floor(s("assists") / 4);
       total += s("deaths") * -2;
       total += Math.floor(s("lastKills") / 3);
