@@ -485,7 +485,7 @@ function StatsModal({
         rows.push({
           label: "Kills",
           val: s("kills"),
-          pts: Math.floor(s("kills") / 4),
+          pts: Math.floor(s("kills") / 3),
         });
 
       if (s("assists"))
