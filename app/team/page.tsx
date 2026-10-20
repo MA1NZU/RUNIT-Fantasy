@@ -485,7 +485,7 @@ function StatsModal({
         rows.push({
           label: "Kills",
           val: s("kills"),
-          pts: Math.floor(s("kills") / 3),
+          pts: Math.floor(s("kills") / 4),
         });
 
       if (s("assists"))
@@ -520,21 +520,21 @@ function StatsModal({
         rows.push({
           label: "Healing",
           val: s("healing"),
-          pts: Math.floor(s("healing") / 4500),
+          pts: Math.floor(s("healing") / 6000),
         });
 
       if (s("damage"))
         rows.push({
           label: "Damage",
           val: s("damage"),
-          pts: Math.floor(s("damage") / 4500),
+          pts: Math.floor(s("damage") / 6000),
         });
 
       if (s("blocked"))
         rows.push({
           label: "Blocked",
           val: s("blocked"),
-          pts: Math.floor(s("blocked") / 4500),
+          pts: Math.floor(s("blocked") / 6000),
         });
 
       if (s("soloKills"))
