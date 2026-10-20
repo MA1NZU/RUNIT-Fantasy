@@ -493,14 +493,14 @@ export default function AdminPage() {
       total += s("ace") * 8;
       total += s("clutch") * 1;
     } else {
-      total += Math.floor(s("kills") / 3);
+      total += Math.floor(s("kills") / 4);
       total += Math.floor(s("assists") / 4);
       total += s("deaths") * -2;
       total += Math.floor(s("lastKills") / 3);
       total += s("headKill") * 1;
-      total += Math.floor(s("healing") / 4500);
-      total += Math.floor(s("damage") / 4500);
-      total += Math.floor(s("blocked") / 4500);
+      total += Math.floor(s("healing") / 6000);
+      total += Math.floor(s("damage") / 6000);
+      total += Math.floor(s("blocked") / 6000);
       total += Math.floor(s("soloKills") / 2);
     }
 
