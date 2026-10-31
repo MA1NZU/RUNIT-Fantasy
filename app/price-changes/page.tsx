@@ -285,8 +285,7 @@ export default function PriceChangesPage() {
           new gameweek starts. 100% means hitting par — {parPointsPerMillion} points
           per million of their current price, counted across every gameweek
           they have played. Above par the price is under pressure to rise,
-          well below it to fall. Display only — transfer prices never change
-          automatically, so budgets always stay safe.
+          well below it to fall.
         </p>
 
         <div
