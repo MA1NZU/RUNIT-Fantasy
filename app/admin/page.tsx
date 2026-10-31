@@ -14,6 +14,7 @@ import {
   deleteDoc,
   writeBatch,
   increment,
+  serverTimestamp,
 } from "firebase/firestore";
 import { useAuth } from "@/lib/AuthContext";
 import { useRouter } from "next/navigation";
@@ -55,6 +56,34 @@ const MATCH_STAT_KEYS = [
   "soloKills",
 ];
 
+const CHALLENGE_REWARD_TYPES = [
+  { value: "coins", label: "Coins" },
+  { value: "song", label: "Song" },
+  { value: "title", label: "Title" },
+  { value: "avatar", label: "Avatar" },
+  { value: "banner", label: "Banner" },
+] as const;
+
+const defaultNewChallenge: Partial<Challenge> = {
+  name: "",
+  description: "",
+  rewardType: "coins",
+  rewardShopItemId: "",
+  rewardCoins: 500,
+  statKey: "kills",
+  threshold: 20,
+  gameweek: 0,
+  isActive: true,
+};
+
+function challengeStatLabel(statKey?: string) {
+  const spaced = String(statKey || "")
+    .replace(/([A-Z])/g, " $1")
+    .trim();
+
+  return spaced ? spaced.charAt(0).toUpperCase() + spaced.slice(1) : "Stat";
+}
+
 type Player = {
   id: string;
   name: string;
@@ -65,6 +94,7 @@ type Player = {
   desc: string;
   ID?: string;
   showInTransfers?: boolean;
+  linkedManagerEmail?: string;
 };
 
 type UserTeam = {
@@ -94,6 +124,9 @@ type Settings = {
   lockShop?: boolean;
   lockFixtures?: boolean;
   hiddenPages?: string[];
+  priceChangesPar?: number;
+  priceChangesRiseThreshold?: number;
+  priceChangesFallThreshold?: number;
 };
 
 type ShopItem = {
@@ -124,6 +157,33 @@ type PlayerFixture = {
   playerTwoId: string;
 };
 
+type Challenge = {
+  id: string;
+  name: string;
+  description: string;
+  rewardType: "coins" | "song" | "title" | "avatar" | "banner";
+  rewardShopItemId: string;
+  rewardCoins: number;
+  statKey: string;
+  threshold: number;
+  gameweek: number;
+  isActive: boolean;
+};
+
+type ChallengeCompletion = {
+  id: string;
+  challengeId: string;
+  challengeName?: string;
+  ownerEmail: string;
+  playerId: string;
+  playerName?: string;
+  gameweek: number;
+  rewardType?: string;
+  rewardShopItemId?: string;
+  rewardCoins?: number;
+  grantedAt?: string;
+};
+
 type Tab =
   | "players"
   | "fixtures"
@@ -134,6 +194,7 @@ type Tab =
   | "cards"
   | "sections"
   | "settings"
+  | "challenges"
   | "locks";
 
 const HIDEABLE_PAGE_OPTIONS = [
@@ -144,6 +205,7 @@ const HIDEABLE_PAGE_OPTIONS = [
   { href: "/shop", label: "Shop" },
   { href: "/inventory", label: "Inventory" },
   { href: "/profile", label: "Profile" },
+  { href: "/challenges", label: "Challenges" },
 ] as const;
 
 const defaultNewItem: Partial<ShopItem> = {
@@ -259,6 +321,14 @@ export default function AdminPage() {
 
   const [newCard, setNewCard] = useState<Partial<LimitedCard>>({
     ...defaultNewCard,
+  });
+
+  const [challenges, setChallenges] = useState<Challenge[]>([]);
+  const [challengeCompletions, setChallengeCompletions] = useState<
+    ChallengeCompletion[]
+  >([]);
+  const [newChallenge, setNewChallenge] = useState<Partial<Challenge>>({
+    ...defaultNewChallenge,
   });
 
   const [shopSearch, setShopSearch] = useState("");
@@ -402,6 +472,28 @@ export default function AdminPage() {
 
         setSavedStats({ gw: activeGW, byId: savedStatsById });
 
+        const challengesSnap = await getDocs(collection(db, "challenges"));
+
+        setChallenges(
+          challengesSnap.docs
+            .map((d) => ({ id: d.id, ...d.data() } as Challenge))
+            .sort(
+              (a, b) =>
+                Number(b.gameweek || 0) - Number(a.gameweek || 0) ||
+                (a.name || "").localeCompare(b.name || "")
+            )
+        );
+
+        const completionsSnap = await getDocs(
+          collection(db, "challengeCompletions")
+        );
+
+        setChallengeCompletions(
+          completionsSnap.docs.map(
+            (d) => ({ id: d.id, ...d.data() } as ChallengeCompletion)
+          )
+        );
+
         setFixtures(
           fixturesSnap.docs
             .map((fixtureDoc) => {
@@ -498,9 +590,9 @@ export default function AdminPage() {
       total += s("deaths") * -2;
       total += Math.floor(s("lastKills") / 3);
       total += s("headKill") * 1;
-      total += Math.floor(s("healing") / 6000);
-      total += Math.floor(s("damage") / 6000);
-      total += Math.floor(s("blocked") / 6000);
+      total += Math.floor(s("healing") / 4500);
+      total += Math.floor(s("damage") / 4500);
+      total += Math.floor(s("blocked") / 4500);
       total += Math.floor(s("soloKills") / 2);
     }
 
@@ -972,6 +1064,253 @@ export default function AdminPage() {
     }
   };
 
+  // Challenges: rewards for player performance. Runs automatically every
+  // time match stats are saved (and from the "Check Now" button in the
+  // challenges tab). Safe to re-run — one completion document per
+  // challenge + player + gameweek means rewards are never granted twice.
+  const checkChallengeCompletions = async (): Promise<number> => {
+    if (
+      !settings ||
+      settings.currentGameweek === undefined ||
+      settings.currentGameweek === null
+    ) {
+      return 0;
+    }
+
+    const gw = Number(settings.currentGameweek);
+    const now = new Date().toISOString();
+
+    const [
+      challengesSnap,
+      statsSnap,
+      playersSnap,
+      userTeamsSnap,
+      completionsSnap,
+    ] = await Promise.all([
+      getDocs(collection(db, "challenges")),
+      getDocs(
+        query(
+          collection(db, "playerMatchStats"),
+          where("gameweek", "==", gw)
+        )
+      ),
+      getDocs(collection(db, "players")),
+      getDocs(collection(db, "userTeams")),
+      getDocs(collection(db, "challengeCompletions")),
+    ]);
+
+    const activeChallenges = challengesSnap.docs
+      .map((d) => ({ id: d.id, ...d.data() } as Challenge))
+      .filter((c) => c.isActive !== false && Number(c.gameweek || 0) === gw);
+
+    if (activeChallenges.length === 0) return 0;
+
+    // Player lookup: stats docs can reference players by id, ID or name.
+    const playerDataById = new Map<string, any>();
+
+    playersSnap.docs.forEach((playerDoc) => {
+      playerDataById.set(playerDoc.id, playerDoc.data());
+    });
+
+    const aliasToCanonical = new Map<string, string>();
+
+    playersSnap.docs.forEach((playerDoc) => {
+      const data = playerDoc.data();
+
+      [playerDoc.id, data.ID, data.name, data.Title]
+        .map((v) => String(v || ""))
+        .filter(Boolean)
+        .forEach((alias) => aliasToCanonical.set(alias, playerDoc.id));
+    });
+
+    const userTeamsByEmail: Record<string, { ref: any; data: any }[]> = {};
+
+    userTeamsSnap.docs.forEach((userTeamDoc) => {
+      const data = userTeamDoc.data();
+      const email = String(data.ownerEmail || "").trim().toLowerCase();
+
+      if (!email) return;
+
+      if (!userTeamsByEmail[email]) userTeamsByEmail[email] = [];
+
+      userTeamsByEmail[email].push({ ref: userTeamDoc.ref, data });
+    });
+
+    // Only players linked to a manager account can earn rewards.
+    const candidates: {
+      playerId: string;
+      playerName: string;
+      stats: any;
+      linkedEmail: string;
+    }[] = [];
+
+    statsSnap.docs.forEach((statDoc) => {
+      const data = statDoc.data();
+
+      // A player marked "did not play" never completes challenges.
+      if (data.played === false) return;
+
+      const alias = String(data.player || data.Title || "");
+      const docPlayerId = String(statDoc.id.split("_gw")[0] || "");
+      const canonical =
+        aliasToCanonical.get(alias) ||
+        aliasToCanonical.get(docPlayerId) ||
+        docPlayerId ||
+        alias;
+      const playerData = playerDataById.get(canonical);
+      const linkedEmail = String(
+        playerData?.linkedManagerEmail || ""
+      ).trim().toLowerCase();
+
+      if (!linkedEmail) return;
+
+      candidates.push({
+        playerId: canonical,
+        playerName: String(playerData?.name || data.Title || ""),
+        stats: data,
+        linkedEmail,
+      });
+    });
+
+    if (candidates.length === 0) return 0;
+
+    const existingCompletionIds = new Set(
+      completionsSnap.docs.map((d) => d.id)
+    );
+
+    // What each manager already owns, so item rewards never duplicate.
+    const ownedItemIdsByEmail: Record<string, Set<string>> = {};
+    const emailsToCheck = Array.from(
+      new Set(candidates.map((candidate) => candidate.linkedEmail))
+    );
+
+    for (const email of emailsToCheck) {
+      try {
+        const inventorySnap = await getDocs(
+          query(
+            collection(db, "userInventory"),
+            where("ownerEmail", "==", email)
+          )
+        );
+
+        const owned = new Set<string>();
+
+        inventorySnap.docs.forEach((inventoryDoc) => {
+          const data = inventoryDoc.data();
+          const itemId = String(data.itemId || data.itemID || data.item || data.ID || ""
+          );
+
+          if (itemId) owned.add(itemId);
+        });
+
+        ownedItemIdsByEmail[email] = owned;
+      } catch {
+        ownedItemIdsByEmail[email] = new Set();
+      }
+    }
+
+    const shopItemByExternalId = new Map<string, ShopItem>();
+
+    shopItems.forEach((item) => {
+      shopItemByExternalId.set(String(item.ID || ""), item);
+      shopItemByExternalId.set(String(item.id || ""), item);
+    });
+
+    const batch = writeBatch(db);
+    let operationCount = 0;
+    let grantedCount = 0;
+    const newCompletions: ChallengeCompletion[] = [];
+
+    activeChallenges.forEach((challenge) => {
+      const threshold = Number(challenge.threshold || 0);
+
+      if (threshold <= 0) return;
+
+      candidates.forEach((candidate) => {
+        const value = Number(candidate.stats[challenge.statKey] || 0);
+
+        if (!(value >= threshold)) return;
+
+        const completionId = `${challenge.id}_${candidate.playerId}_gw${gw}`;
+
+        if (existingCompletionIds.has(completionId)) return;
+        existingCompletionIds.add(completionId);
+
+        const managerTeams = userTeamsByEmail[candidate.linkedEmail] || [];
+        const ownerUid = String(managerTeams[0]?.data?.ownerUid || "");
+
+        if (challenge.rewardType === "coins") {
+          const rewardCoins = Number(challenge.rewardCoins || 0);
+
+          if (rewardCoins > 0) {
+            managerTeams.forEach((team) => {
+              batch.update(team.ref, {
+                coins: increment(rewardCoins),
+                "Updated Date": now,
+              });
+
+              operationCount += 1;
+            });
+          }
+        } else {
+          const itemId = String(challenge.rewardShopItemId || "");
+          const owned = ownedItemIdsByEmail[candidate.linkedEmail];
+
+          if (itemId && owned && !owned.has(itemId)) {
+            owned.add(itemId);
+
+            const item = shopItemByExternalId.get(itemId);
+            const inventoryId = ownerUid
+              ? `${ownerUid}_${encodeURIComponent(itemId)}`
+              : `${encodeURIComponent(candidate.linkedEmail)}_${encodeURIComponent(itemId)}`;
+
+            batch.set(doc(db, "userInventory", inventoryId), {
+              ownerUid,
+              ownerEmail: candidate.linkedEmail,
+              itemId,
+              itemName: String(item?.itemName || ""),
+              itemType: String(item?.itemType || challenge.rewardType || ""),
+              purchaseDate: serverTimestamp(),
+              acquiredAt: serverTimestamp(),
+              equipped: false,
+              source: "challenge",
+            });
+
+            operationCount += 1;
+          }
+        }
+
+        const completion = {
+          id: completionId,
+          challengeId: challenge.id,
+          challengeName: String(challenge.name || ""),
+          ownerEmail: candidate.linkedEmail,
+          playerId: candidate.playerId,
+          playerName: candidate.playerName,
+          gameweek: gw,
+          rewardType: String(challenge.rewardType || "coins"),
+          rewardShopItemId: String(challenge.rewardShopItemId || ""),
+          rewardCoins: Number(challenge.rewardCoins || 0),
+          grantedAt: now,
+        };
+
+        batch.set(doc(db, "challengeCompletions", completionId), completion);
+
+        newCompletions.push(completion as ChallengeCompletion);
+        operationCount += 1;
+        grantedCount += 1;
+      });
+    });
+
+    if (operationCount > 0) {
+      await batch.commit();
+
+      setChallengeCompletions((prev) => [...prev, ...newCompletions]);
+    }
+
+    return grantedCount;
+  };
+
   const handleSaveStats = async () => {
     const p = players.find((x) => x.id === selectedPlayerId);
 
@@ -1029,6 +1368,13 @@ export default function AdminPage() {
       });
 
       await syncCurrentGameweekScores();
+
+      // Challenge rewards are checked automatically after every stats save.
+      try {
+        await checkChallengeCompletions();
+      } catch (challengeErr) {
+        console.error("Challenge check failed:", challengeErr);
+      }
 
       markSaved("matchstats");
     } catch (err) {
@@ -1126,7 +1472,7 @@ export default function AdminPage() {
         transfersMade: 0,
         transferPenalty: 0,
         limitedCards: carriedCards,
-        "Created date": now,
+        "Created Date": now,
         "Updated Date": now,
       });
 
@@ -1153,6 +1499,18 @@ export default function AdminPage() {
         hiddenPages: Array.isArray(settings.hiddenPages)
           ? settings.hiddenPages
           : [],
+        priceChangesPar: Math.max(
+          0.1,
+          Number(settings.priceChangesPar ?? 2) || 0.1
+        ),
+        priceChangesRiseThreshold: Math.max(
+          0,
+          Number(settings.priceChangesRiseThreshold ?? 100) || 0
+        ),
+        priceChangesFallThreshold: Math.max(
+          0,
+          Number(settings.priceChangesFallThreshold ?? 40) || 0
+        ),
       });
 
       markSaved("settings");
@@ -1197,7 +1555,8 @@ export default function AdminPage() {
 
     setSaving(null);
   };
-    const handleSaveManager = async (m: UserTeam) => {
+
+  const handleSaveManager = async (m: UserTeam) => {
     setSaving(m.id);
 
     try {
@@ -1443,6 +1802,139 @@ export default function AdminPage() {
       markSaved(card.id);
     } catch (err) {
       console.error(err);
+    }
+
+    setSaving(null);
+  };
+
+  const updateChallengePatch = (id: string, patch: Partial<Challenge>) => {
+    setChallenges((prev) =>
+      prev.map((c) => (c.id === id ? { ...c, ...patch } : c))
+    );
+  };
+
+  const handleAddChallenge = async () => {
+    if (!newChallenge.name) return alert("Challenge name required");
+
+    if (Number(newChallenge.threshold || 0) <= 0) {
+      return alert("Threshold must be at least 1");
+    }
+
+    if (
+      newChallenge.rewardType === "coins" &&
+      Number(newChallenge.rewardCoins || 0) <= 0
+    ) {
+      return alert("Choose a coin reward amount");
+    }
+
+    if (newChallenge.rewardType !== "coins" && !newChallenge.rewardShopItemId) {
+      return alert("Choose the shop item reward");
+    }
+
+    setSaving("newChallenge");
+
+    try {
+      const id = Math.random().toString(36).slice(2, 11);
+      const gw =
+        Number(newChallenge.gameweek) ||
+        Number(settings?.currentGameweek) ||
+        1;
+      const isCoins = newChallenge.rewardType === "coins";
+
+      const data = {
+        name: newChallenge.name,
+        description: newChallenge.description || "",
+        rewardType: newChallenge.rewardType || "coins",
+        rewardShopItemId: isCoins ? "" : String(newChallenge.rewardShopItemId),
+        rewardCoins: isCoins ? Number(newChallenge.rewardCoins || 0) : 0,
+        statKey: newChallenge.statKey || "kills",
+        threshold: Number(newChallenge.threshold || 0),
+        gameweek: gw,
+        isActive: newChallenge.isActive !== false,
+        "Created Date": new Date().toISOString(),
+      };
+
+      await setDoc(doc(db, "challenges", id), data);
+
+      setChallenges((prev) =>
+        [...prev, { id, ...data } as Challenge].sort(
+          (a, b) =>
+            Number(b.gameweek || 0) - Number(a.gameweek || 0) ||
+            (a.name || "").localeCompare(b.name || "")
+        )
+      );
+
+      setNewChallenge({ ...defaultNewChallenge });
+
+      markSaved("newChallenge");
+    } catch (err) {
+      console.error(err);
+    }
+
+    setSaving(null);
+  };
+
+  const handleUpdateChallenge = async (challenge: Challenge) => {
+    setSaving(challenge.id);
+
+    try {
+      const isCoins = challenge.rewardType === "coins";
+
+      await updateDoc(doc(db, "challenges", challenge.id), {
+        name: challenge.name || "",
+        description: challenge.description || "",
+        rewardType: challenge.rewardType || "coins",
+        rewardShopItemId: isCoins
+          ? ""
+          : String(challenge.rewardShopItemId || ""),
+        rewardCoins: isCoins ? Number(challenge.rewardCoins || 0) : 0,
+        statKey: challenge.statKey || "kills",
+        threshold: Number(challenge.threshold || 0),
+        gameweek: Number(challenge.gameweek || 0),
+        isActive: challenge.isActive !== false,
+        "Updated Date": new Date().toISOString(),
+      });
+
+      markSaved(challenge.id);
+    } catch (err) {
+      console.error(err);
+    }
+
+    setSaving(null);
+  };
+
+  const handleDeleteChallenge = async (challenge: Challenge) => {
+    if (!confirm(`Delete "${challenge.name || "challenge"}?"`)) return;
+
+    setSaving(challenge.id);
+
+    try {
+      await deleteDoc(doc(db, "challenges", challenge.id));
+      setChallenges((prev) => prev.filter((c) => c.id !== challenge.id));
+    } catch (err) {
+      console.error("Failed to delete challenge:", err);
+      alert("Failed to delete the challenge. Check the console for details.");
+    }
+
+    setSaving(null);
+  };
+
+  const handleCheckChallenges = async () => {
+    setSaving("checkChallenges");
+
+    try {
+      const granted = await checkChallengeCompletions();
+
+      alert(
+        granted > 0
+          ? `Granted ${granted} challenge reward${granted === 1 ? "" : "s"}.`
+          : "No new challenge completions found."
+      );
+
+      markSaved("checkChallenges");
+    } catch (err) {
+      console.error("Challenge check failed:", err);
+      alert("Challenge check failed. Check the console for details.");
     }
 
     setSaving(null);
@@ -1835,6 +2327,7 @@ export default function AdminPage() {
             "fixtures",
             "pages",
             "stats",
+            "challenges",
             "managers",
             "shop",
             "cards",
@@ -1904,7 +2397,7 @@ export default function AdminPage() {
               <button
                 onClick={handleSaveSettings}
                 disabled={saving === "settings"}
-                style={primaryButtonStyle(saved === "settings")}
+                             style={primaryButtonStyle(saved === "settings")}
               >
                 {saving === "settings"
                   ? "Saving..."
@@ -2043,6 +2536,55 @@ export default function AdminPage() {
                       setSettings({
                         ...settings,
                         shopRefreshAt: e.target.value,
+                      })
+                    }
+                    style={inputStyle}
+                  />
+                </div>
+
+                <div>
+                  <div style={labelStyle}>Price Changes · Par</div>
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0.1"
+                    value={settings.priceChangesPar ?? 2}
+                    onChange={(e) =>
+                      setSettings({
+                        ...settings,
+                        priceChangesPar: Number(e.target.value),
+                      })
+                    }
+                    style={inputStyle}
+                  />
+                </div>
+
+                <div>
+                  <div style={labelStyle}>Price Rise Threshold (%)</div>
+                  <input
+                    type="number"
+                    min="0"
+                    value={settings.priceChangesRiseThreshold ?? 100}
+                    onChange={(e) =>
+                      setSettings({
+                        ...settings,
+                        priceChangesRiseThreshold: Number(e.target.value),
+                      })
+                    }
+                    style={inputStyle}
+                  />
+                </div>
+
+                <div>
+                  <div style={labelStyle}>Price Fall Threshold (%)</div>
+                  <input
+                    type="number"
+                    min="0"
+                    value={settings.priceChangesFallThreshold ?? 40}
+                    onChange={(e) =>
+                      setSettings({
+                        ...settings,
+                        priceChangesFallThreshold: Number(e.target.value),
                       })
                     }
                     style={inputStyle}
@@ -2397,7 +2939,7 @@ export default function AdminPage() {
               >
                 <ShopTextInput
                   label="Image URL"
-                                value={newItem.previewImage || ""}
+                  value={newItem.previewImage || ""}
                   onChange={(value) =>
                     setNewItem({
                       ...newItem,
@@ -3197,6 +3739,176 @@ export default function AdminPage() {
           </div>
         )}
 
+        {tab === "challenges" && (
+          <div>
+            <h2 style={sectionTitleStyle}>Player Challenges</h2>
+
+            <div
+              style={{
+                background:
+                  "linear-gradient(135deg, rgba(155,248,0,0.08), rgba(3,71,244,0.1)), var(--surface)",
+                border: "1px solid var(--border)",
+                borderRadius: "14px",
+                padding: "1rem",
+                marginBottom: "1rem",
+                color: "var(--text-muted)",
+                fontSize: "0.85rem",
+                lineHeight: 1.6,
+              }}
+            >
+              Challenges are targets for esports players — for example
+              "get 25+ kills in a gameweek". Link players to manager accounts
+              in the Players tab, and whenever a linked player's stats meet
+              the threshold, the manager automatically earns the reward
+              (coins or a shop item). The check runs every time you save
+              match stats — use the button below to re-check after linking
+              accounts or editing challenges.
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                gap: "1rem",
+                flexWrap: "wrap",
+                background: "var(--surface)",
+                border: "1px solid var(--border)",
+                borderRadius: "14px",
+                padding: "1rem",
+                marginBottom: "2rem",
+              }}
+            >
+              <div>
+                <div style={{ fontWeight: 800, marginBottom: "0.25rem" }}>
+                  Check GW{settings?.currentGameweek} Completions
+                </div>
+                <div style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>
+                  Re-runs the reward check for the current gameweek. Safe to
+                  click any time — rewards are never granted twice.
+                </div>
+              </div>
+
+              <button
+                onClick={handleCheckChallenges}
+                disabled={saving === "checkChallenges"}
+                style={{
+                  background:
+                    saved === "checkChallenges"
+                      ? "var(--green)"
+                      : "var(--blue)",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: "8px",
+                  padding: "0.75rem 1rem",
+                  fontWeight: 900,
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {saving === "checkChallenges"
+                  ? "Checking..."
+                  : saved === "checkChallenges"
+                  ? "Checked"
+                  : "Check Now"}
+              </button>
+            </div>
+
+            <div
+              style={{
+                background: "var(--surface)",
+                border: "1px solid var(--border)",
+                borderRadius: "14px",
+                padding: "1.25rem",
+                marginBottom: "2rem",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: "1rem",
+                  marginBottom: "1rem",
+                  flexWrap: "wrap",
+                }}
+              >
+                <div>
+                  <div style={{ fontWeight: 800, fontSize: "1rem" }}>
+                    Create Challenge
+                  </div>
+                  <div
+                    style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}
+                  >
+                    Pick the stat, the threshold, and the reward.
+                  </div>
+                </div>
+
+                <button
+                  onClick={handleAddChallenge}
+                  disabled={saving === "newChallenge"}
+                  style={primaryButtonStyle(saved === "newChallenge")}
+                >
+                  {saving === "newChallenge"
+                    ? "Adding..."
+                    : saved === "newChallenge"
+                    ? "Added"
+                    : "Add Challenge"}
+                </button>
+              </div>
+
+              <ChallengeFields
+                challenge={newChallenge}
+                shopItems={shopItems}
+                currentGW={Number(settings?.currentGameweek) || 0}
+                onChange={(patch) =>
+                  setNewChallenge({ ...newChallenge, ...patch })
+                }
+              />
+            </div>
+
+            {challenges.length === 0 ? (
+              <div
+                style={{
+                  border: "1px dashed var(--border)",
+                  borderRadius: "12px",
+                  padding: "2rem 1rem",
+                  textAlign: "center",
+                  color: "var(--text-muted)",
+                }}
+              >
+                No challenges yet. Create the first one above.
+              </div>
+            ) : (
+              <div
+                className="admin-shop-grid"
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fill, minmax(360px, 1fr))",
+                  gap: "1rem",
+                }}
+              >
+                {challenges.map((challenge) => (
+                  <ChallengeEditor
+                    key={challenge.id}
+                    challenge={challenge}
+                    shopItems={shopItems}
+                    currentGW={Number(settings?.currentGameweek) || 0}
+                    saving={saving}
+                    saved={saved}
+                    completions={challengeCompletions.filter(
+                      (completion) => completion.challengeId === challenge.id
+                    )}
+                    onChange={updateChallengePatch}
+                    onSave={handleUpdateChallenge}
+                    onDelete={() => handleDeleteChallenge(challenge)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {tab === "managers" && (
           <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
             <div
@@ -3592,12 +4304,13 @@ export default function AdminPage() {
                   borderRadius: "8px",
                   padding: "0.75rem 1rem",
                   display: "grid",
-                  gridTemplateColumns: "1.5fr 0.7fr 2fr minmax(132px, 0.9fr) auto",
+                  gridTemplateColumns:
+                    "1.25fr 0.6fr 1.6fr 1.5fr minmax(118px, 0.8fr) auto",
                   gap: "0.75rem",
                   alignItems: "center",
                 }}
               >
-                            <div>
+                <div>
                   <div style={{ fontWeight: 600 }}>{p.name}</div>
                   <div
                     style={{
@@ -3637,6 +4350,25 @@ export default function AdminPage() {
                   }
                   style={inputStyle}
                 />
+
+                <div>
+                  <div style={{ fontSize: "0.7rem" }}>Manager Email</div>
+                  <input
+                    type="email"
+                    value={p.linkedManagerEmail || ""}
+                    placeholder="Link a manager account"
+                    onChange={(e) =>
+                      setPlayers((prev) =>
+                        prev.map((x) =>
+                          x.id === p.id
+                            ? { ...x, linkedManagerEmail: e.target.value }
+                            : x
+                        )
+                      )
+                    }
+                    style={inputStyle}
+                  />
+                </div>
 
                 <label
                   style={{
@@ -3692,6 +4424,9 @@ export default function AdminPage() {
                         price: p.price,
                         desc: p.desc,
                         showInTransfers: p.showInTransfers !== false,
+                        linkedManagerEmail: String(
+                          p.linkedManagerEmail || ""
+                        ).trim().toLowerCase(),
                       });
 
                       await syncCurrentGameweekScores();
@@ -4062,7 +4797,7 @@ function ShopItemCard({
               fontWeight: 800,
               cursor: "pointer",
             }}
-          >
+           >
             {saving === item.id
               ? "Saving..."
               : saved === item.id
@@ -4602,6 +5337,346 @@ function LimitedCardEditor({
             {saving === card.id
               ? "Saving..."
               : saved === card.id
+              ? "Saved"
+              : "Save"}
+          </button>
+
+          <button
+            onClick={onDelete}
+            style={{
+              background: "transparent",
+              border: "1px solid var(--border)",
+              color: "var(--red)",
+              borderRadius: "8px",
+              padding: "0.5rem 0.75rem",
+              cursor: "pointer",
+              fontWeight: 800,
+            }}
+          >
+            ✕
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ChallengeFields({
+  challenge,
+  shopItems,
+  currentGW,
+  onChange,
+}: {
+  challenge: Partial<Challenge>;
+  shopItems: ShopItem[];
+  currentGW?: number;
+  onChange: (patch: Partial<Challenge>) => void;
+}) {
+  const isCoins = challenge.rewardType === "coins";
+  const rewardItems = shopItems.filter(
+    (item) => item.itemType === challenge.rewardType
+  );
+  const currentItemId = String(challenge.rewardShopItemId || "");
+  const showCurrentItem =
+    !!currentItemId &&
+    !rewardItems.some((item) => String(item.ID) === currentItemId);
+
+  return (
+    <div>
+      <div
+        className="admin-shop-form-grid"
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+          gap: "0.85rem",
+          marginBottom: "0.85rem",
+        }}
+      >
+        <ShopTextInput
+          label="Challenge Name"
+          value={challenge.name || ""}
+          onChange={(value) => onChange({ name: value })}
+        />
+
+        <div>
+          <div style={{ fontSize: "0.7rem", marginBottom: "0.3rem" }}>
+            Gameweek
+          </div>
+          <input
+            type="number"
+            min="1"
+            value={Number(challenge.gameweek) || currentGW || 1}
+            onChange={(e) => onChange({ gameweek: Number(e.target.value) })}
+            style={inputStyle}
+          />
+        </div>
+
+        <div>
+          <div style={{ fontSize: "0.7rem", marginBottom: "0.3rem" }}>
+            Statistic
+          </div>
+          <select
+            value={challenge.statKey || "kills"}
+            onChange={(e) => onChange({ statKey: e.target.value })}
+            style={inputStyle}
+          >
+            {MATCH_STAT_KEYS.map((statKey) => (
+              <option key={statKey} value={statKey}>
+                {challengeStatLabel(statKey)}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <ShopTextInput
+          label="Threshold (≥ to complete)"
+          type="number"
+          value={challenge.threshold ?? 20}
+          onChange={(value) => onChange({ threshold: Number(value) })}
+        />
+
+        <div>
+          <div style={{ fontSize: "0.7rem", marginBottom: "0.3rem" }}>
+            Reward Type
+          </div>
+          <select
+            value={challenge.rewardType || "coins"}
+            onChange={(e) =>
+              onChange({
+                rewardType: e.target.value as Challenge["rewardType"],
+                rewardShopItemId: "",
+              })
+            }
+            style={inputStyle}
+          >
+            {CHALLENGE_REWARD_TYPES.map((type) => (
+              <option key={type.value} value={type.value}>
+                {type.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {isCoins ? (
+          <ShopTextInput
+            label="Coins Reward"
+            type="number"
+            value={challenge.rewardCoins ?? 500}
+            onChange={(value) => onChange({ rewardCoins: Number(value) })}
+          />
+        ) : (
+          <div>
+            <div style={{ fontSize: "0.7rem", marginBottom: "0.3rem" }}>
+              Reward Item
+            </div>
+            <select
+              value={currentItemId}
+              onChange={(e) => onChange({ rewardShopItemId: e.target.value })}
+              style={inputStyle}
+            >
+              <option value="">Choose item</option>
+              {showCurrentItem && (
+                <option value={currentItemId}>
+                  {currentItemId} (other type)
+                </option>
+              )}
+              {rewardItems.map((item) => (
+                <option key={item.id} value={item.ID}>
+                  {item.itemName}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+      </div>
+
+      <div
+        className="admin-shop-url-grid"
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+          gap: "0.85rem",
+          marginBottom: "0.85rem",
+        }}
+      >
+        <ShopTextInput
+          label="Description (shown to managers)"
+          value={challenge.description || ""}
+          onChange={(value) => onChange({ description: value })}
+        />
+      </div>
+    </div>
+  );
+}
+
+function ChallengeEditor({
+  challenge,
+  shopItems,
+  currentGW,
+  saving,
+  saved,
+  completions,
+  onChange,
+  onSave,
+  onDelete,
+}: {
+  challenge: Challenge;
+  shopItems: ShopItem[];
+  currentGW?: number;
+  saving: string | null;
+  saved: string | null;
+  completions: ChallengeCompletion[];
+  onChange: (id: string, patch: Partial<Challenge>) => void;
+  onSave: (challenge: Challenge) => void;
+  onDelete: () => void;
+}) {
+  return (
+    <div
+      className="admin-shop-item-card"
+      style={{
+        background: "var(--surface)",
+        border: "1px solid var(--border)",
+        borderRadius: "14px",
+        padding: "1rem",
+        display: "flex",
+        flexDirection: "column",
+        gap: "0.85rem",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "flex-start",
+          gap: "0.75rem",
+        }}
+      >
+        <div style={{ minWidth: 0 }}>
+          <div
+            style={{
+              fontWeight: 800,
+              fontSize: "1rem",
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+          >
+            {challenge.name || "Untitled Challenge"}
+          </div>
+
+          <div
+            style={{
+              color: "var(--text-muted)",
+              fontSize: "0.75rem",
+              marginTop: "0.2rem",
+            }}
+          >
+            GW{Number(challenge.gameweek || 0)} ·{" "}
+            {challengeStatLabel(challenge.statKey)} ≥{" "}
+            {Number(challenge.threshold || 0)}
+            {challenge.isActive === false ? " · inactive" : ""}
+          </div>
+        </div>
+
+        <span
+          style={{
+            background:
+              completions.length > 0
+                ? "rgba(34,197,94,0.15)"
+                : "rgba(255,255,255,0.05)",
+            border:
+              completions.length > 0
+                ? "1px solid rgba(34,197,94,0.4)"
+                : "1px solid var(--border)",
+            color:
+              completions.length > 0 ? "var(--green)" : "var(--text-muted)",
+            fontSize: "0.62rem",
+            fontWeight: 900,
+            padding: "0.22rem 0.45rem",
+            borderRadius: "999px",
+            whiteSpace: "nowrap",
+            flexShrink: 0,
+          }}
+        >
+          {completions.length > 0
+            ? `✓ ${completions.length} COMPLETED`
+            : "NO COMPLETIONS"}
+        </span>
+      </div>
+
+      <ChallengeFields
+        challenge={challenge}
+        shopItems={shopItems}
+        currentGW={currentGW}
+        onChange={(patch) => onChange(challenge.id, patch)}
+      />
+
+      {completions.length > 0 && (
+        <div
+          style={{
+            fontSize: "0.72rem",
+            color: "var(--text-muted)",
+            lineHeight: 1.6,
+            wordBreak: "break-word",
+          }}
+        >
+          {completions
+            .slice()
+            .sort((a, b) =>
+              String(b.grantedAt || "").localeCompare(String(a.grantedAt || ""))
+            )
+            .slice(0, 4)
+            .map(
+              (completion) =>
+                `${completion.ownerEmail} · ${completion.playerName || "player"}`
+            )
+            .join(" · ")}
+          {completions.length > 4
+            ? ` · +${completions.length - 4} more`
+            : ""}
+        </div>
+      )}
+
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: "0.75rem",
+          flexWrap: "wrap",
+          borderTop: "1px solid var(--border)",
+          paddingTop: "0.85rem",
+        }}
+      >
+        <label style={toggleLabelStyle}>
+          <input
+            type="checkbox"
+            checked={challenge.isActive !== false}
+            onChange={(e) =>
+              onChange(challenge.id, { isActive: e.target.checked })
+            }
+          />
+          Active
+        </label>
+
+        <div style={{ display: "flex", gap: "0.5rem" }}>
+          <button
+            onClick={() => onSave(challenge)}
+            disabled={saving === challenge.id}
+            style={{
+              background:
+                saved === challenge.id ? "var(--green)" : "var(--accent)",
+              color: "#000",
+              border: "none",
+              borderRadius: "8px",
+              padding: "0.5rem 0.9rem",
+              fontWeight: 800,
+              cursor: "pointer",
+            }}
+          >
+            {saving === challenge.id
+              ? "Saving..."
+              : saved === challenge.id
               ? "Saved"
               : "Save"}
           </button>
