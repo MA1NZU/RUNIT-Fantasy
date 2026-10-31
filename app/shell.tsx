@@ -21,6 +21,7 @@ type NavIconName =
   | "inventory"
   | "profile"
   | "prices"
+  | "challenges"
   | "admin"
   | "more";
 
@@ -41,6 +42,7 @@ const NAV: NavLink[] = [
   { href: "/team", label: "My Team", icon: "team" },
   { href: "/transfers", label: "Transfers", icon: "transfers" },
   { href: "/price-changes", label: "Price Changes", icon: "prices" },
+  { href: "/challenges", label: "Challenges", icon: "challenges" },
   { href: "/shop", label: "Shop", icon: "shop" },
   { href: "/inventory", label: "Inventory", icon: "inventory" },
   { href: "/profile", label: "Profile", icon: "profile" },
@@ -52,6 +54,7 @@ const MOBILE_NAV_PRIORITY_HREFS = [
   "/team",
   "/transfers",
   "/price-changes",
+  "/challenges",
   "/fixtures",
   "/shop",
   "/inventory",
@@ -145,6 +148,14 @@ function NavigationIcon({ icon }: { icon: NavIconName }) {
         <svg {...commonProps}>
           <path d="M3 17l5-5 4 4 8-9" />
           <path d="M14 7h6v6" />
+        </svg>
+      );
+    case "challenges":
+      return (
+        <svg {...commonProps}>
+          <path d="M8 21h8M12 17v4" />
+          <path d="M7 4h10v5a5 5 0 0 1-10 0Z" />
+          <path d="M7 6H4v1a3 3 0 0 0 3 3M17 6h3v1a3 3 0 0 1-3 3" />
         </svg>
       );
     case "more":
