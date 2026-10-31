@@ -27,14 +27,16 @@ type StatDoc = {
   gwPoints?: number;
 };
 
-// 100% = par: this many points per million of the player's price.
-const PAR_POINTS_PER_MILLION = 9;
+// Defaults used until the admin saves different values in the admin
+// panel (Settings -> Price Changes). 100% = par: this many points per
+// million of the player's price.
+const DEFAULT_PAR_POINTS_PER_MILLION = 2;
 
 // Cumulative performance at or above this means a price rise is due.
-const RISE_THRESHOLD = 100;
+const DEFAULT_RISE_THRESHOLD = 100;
 
 // Cumulative performance below this means the price is under drop pressure.
-const FALL_THRESHOLD = 50;
+const DEFAULT_FALL_THRESHOLD = 40;
 
 type PriceRow = {
   player: Player;
@@ -90,6 +92,11 @@ export default function PriceChangesPage() {
   const [sortBy, setSortBy] = useState<"performance" | "price" | "points">(
     "performance"
   );
+  const [parPointsPerMillion, setParPointsPerMillion] = useState(
+    DEFAULT_PAR_POINTS_PER_MILLION
+  );
+  const [riseThreshold, setRiseThreshold] = useState(DEFAULT_RISE_THRESHOLD);
+  const [fallThreshold, setFallThreshold] = useState(DEFAULT_FALL_THRESHOLD);
 
   useEffect(() => {
     if (!user?.email) return;
@@ -105,18 +112,35 @@ export default function PriceChangesPage() {
         ]);
 
         let gw = 0;
+        let par = DEFAULT_PAR_POINTS_PER_MILLION;
+        let rise = DEFAULT_RISE_THRESHOLD;
+        let fall = DEFAULT_FALL_THRESHOLD;
 
         if (!settingsSnap.empty) {
-          const raw = settingsSnap.docs[0].data().currentGameweek;
+          const settingsData = settingsSnap.docs[0].data();
+          const raw = settingsData.currentGameweek;
           const parsed = Number(raw);
 
           gw =
             raw !== undefined && raw !== null && Number.isFinite(parsed)
               ? parsed
               : 0;
+
+          // The admin tunes these in the admin panel (Settings -> Price
+          // Changes); fall back to the defaults when never saved.
+          const rawPar = Number(settingsData.priceChangesPar);
+          const rawRise = Number(settingsData.priceChangesRiseThreshold);
+          const rawFall = Number(settingsData.priceChangesFallThreshold);
+
+          if (Number.isFinite(rawPar) && rawPar > 0) par = rawPar;
+          if (Number.isFinite(rawRise) && rawRise >= 0) rise = rawRise;
+          if (Number.isFinite(rawFall) && rawFall >= 0) fall = rawFall;
         }
 
         setCurrentGW(gw);
+        setParPointsPerMillion(par);
+        setRiseThreshold(rise);
+        setFallThreshold(fall);
 
         const stats = statsSnap.docs.map(
           (d) => ({ id: d.id, ...d.data() } as StatDoc)
@@ -167,17 +191,15 @@ export default function PriceChangesPage() {
           let performance: number | null = null;
 
           if (gwCount > 0 && price > 0) {
-            performance = Math.round(
-              (total / (price * PAR_POINTS_PER_MILLION)) * 100
-            );
+            performance = Math.round((total / (price * par)) * 100);
           }
 
           const status: PriceRow["status"] =
             performance === null
               ? "none"
-              : performance >= RISE_THRESHOLD
+              : performance >= rise
               ? "rising"
-              : performance >= FALL_THRESHOLD
+              : performance >= fall
               ? "steady"
               : "falling";
 
@@ -260,10 +282,11 @@ export default function PriceChangesPage() {
         >
           Progress toward a price change carries over: every gameweek a
           player plays adds to their running total, so nothing resets when a
-          new gameweek starts. 100% means hitting par: {PAR_POINTS_PER_MILLION} points
+          new gameweek starts. 100% means hitting par — {parPointsPerMillion} points
           per million of their current price, counted across every gameweek
           they have played. Above par the price is under pressure to rise,
-          well below it to fall.
+          well below it to fall. Display only — transfer prices never change
+          automatically, so budgets always stay safe.
         </p>
 
         <div
