@@ -323,9 +323,7 @@ export default function ChallengesPage() {
                 fontSize: "0.9rem",
               }}
             >
-              Hit the target with a player linked to your account and the
-              reward lands straight in your inventory or coin balance — no
-              claiming needed.
+              Complete player challenges and earn limited-time rewards and coins.
             </p>
 
             {availableGWs.length > 0 && (
