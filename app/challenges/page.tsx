@@ -374,10 +374,7 @@ export default function ChallengesPage() {
               marginBottom: "1rem",
             }}
           >
-            Your account is not linked to a player yet. Challenges are
-            completed by esports players — ask the admin to link your account
-            to your player so you can earn rewards. You can still see every
-            challenge below.
+            Complete Player Challenges and earn Limited-Time rewards and coins!
           </div>
         )}
 
