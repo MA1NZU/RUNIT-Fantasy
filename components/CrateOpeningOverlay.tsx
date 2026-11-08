@@ -682,19 +682,25 @@ export default function CrateOpeningOverlay({
           <div
             className={`crate-reveal${tier.rainbow ? " crate-rainbow" : ""}`}
           >
-            {tier.rays && <div className="crate-rays crate-rays--reveal" />}
-            {tier.beam && <div className="crate-beam crate-beam--reveal" />}
-
             <div className="crate-reveal-chip">{tier.label}</div>
 
-            <div className="crate-item-card">
-              {itemImage ? (
-                <img src={itemImage} alt={result.item.itemName} />
-              ) : (
-                <span className="crate-item-fallback">
-                  {(result.item.itemName || "?").slice(0, 1)}
-                </span>
+            <div className="crate-reveal-art">
+              {tier.rays && (
+                <div className="crate-rays crate-rays--reveal" />
               )}
+              {tier.beam && (
+                <div className="crate-beam crate-beam--reveal" />
+              )}
+
+              <div className="crate-item-card">
+                {itemImage ? (
+                  <img src={itemImage} alt={result.item.itemName} />
+                ) : (
+                  <span className="crate-item-fallback">
+                    {(result.item.itemName || "?").slice(0, 1)}
+                  </span>
+                )}
+              </div>
             </div>
 
             <div className="crate-reveal-name">
@@ -790,7 +796,7 @@ export default function CrateOpeningOverlay({
           }}
         />
       )}
-
+      
       <style jsx>{`
         .crate-overlay {
           position: fixed;
@@ -886,26 +892,54 @@ export default function CrateOpeningOverlay({
           pointer-events: none;
         }
 
+        .crate-reveal-art {
+          position: relative;
+          z-index: 1;
+          display: flex;
+          justify-content: center;
+        }
+
+        /* Light beams: a conic sunburst with a radial mask, so the beams
+           fade in from behind the crate and dissolve at their tips — no
+           hard circle silhouette. */
         .crate-rays {
           position: absolute;
-          width: 430px;
-          height: 430px;
+          top: 50%;
+          left: 50%;
+          width: 540px;
+          height: 540px;
+          margin: -270px 0 0 -270px;
           border-radius: 999px;
           background: repeating-conic-gradient(
             from 0deg,
-            var(--rc-glow) 0deg 6deg,
-            transparent 6deg 24deg
+            var(--rc-glow) 0deg 4deg,
+            transparent 4deg 26deg
           );
-          opacity: 0.5;
-          animation: crate-spin 7s linear infinite;
+          -webkit-mask-image: radial-gradient(
+            circle,
+            transparent 20%,
+            rgba(0, 0, 0, 0.9) 38%,
+            rgba(0, 0, 0, 0.9) 58%,
+            transparent 82%
+          );
+          mask-image: radial-gradient(
+            circle,
+            transparent 20%,
+            rgba(0, 0, 0, 0.9) 38%,
+            rgba(0, 0, 0, 0.9) 58%,
+            transparent 82%
+          );
+          animation: crate-spin 9s linear infinite,
+            crate-rays-breathe 2.4s ease-in-out infinite;
           pointer-events: none;
         }
 
         .crate-rays--reveal {
-          width: 520px;
-          height: 520px;
-          opacity: 0.32;
-          position: absolute;
+          width: 620px;
+          height: 620px;
+          margin: -310px 0 0 -310px;
+          animation: crate-spin 16s linear infinite,
+            crate-rays-breathe 2.8s ease-in-out infinite;
         }
 
         .crate-flash {
@@ -986,6 +1020,18 @@ export default function CrateOpeningOverlay({
           animation: crate-reveal-in 0.5s cubic-bezier(0.2, 1.4, 0.4, 1) both;
         }
 
+        /* All reveal text stays above the rays/beam light effects. */
+        .crate-reveal-chip,
+        .crate-reveal-name,
+        .crate-reveal-type,
+        .crate-song-note,
+        .crate-hype,
+        .crate-reveal-actions,
+        .crate-reveal-coins {
+          position: relative;
+          z-index: 2;
+        }
+
         .crate-reveal-chip {
           margin-bottom: 1.1rem;
           padding: 0.3rem 0.8rem;
@@ -1000,6 +1046,8 @@ export default function CrateOpeningOverlay({
         }
 
         .crate-item-card {
+          position: relative;
+          z-index: 1;
           width: 210px;
           height: 210px;
           border-radius: 24px;
@@ -1113,7 +1161,7 @@ export default function CrateOpeningOverlay({
           border: 1px solid var(--border, rgba(255, 255, 255, 0.14));
           color: var(--text-muted, #94a3b8);
           border-radius: 999px;
-          padding: 0.4rem 1rem;
+          padding: "0.4rem 1rem";
           font-size: 0.75rem;
           font-weight: 800;
           cursor: pointer;
@@ -1238,6 +1286,16 @@ export default function CrateOpeningOverlay({
         @keyframes crate-spin {
           to {
             transform: rotate(360deg);
+          }
+        }
+
+        @keyframes crate-rays-breathe {
+          0%,
+          100% {
+            opacity: 0.35;
+          }
+          50% {
+            opacity: 0.75;
           }
         }
 
