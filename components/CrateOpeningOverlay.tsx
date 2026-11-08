@@ -518,7 +518,7 @@ export default function CrateOpeningOverlay({
           } catch {}
 
           setSongPlaying(false);
-        }, 15000);
+        }, 30000);
       } catch {
         setSongPlaying(false);
       }
