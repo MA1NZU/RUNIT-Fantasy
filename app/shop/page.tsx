@@ -19,6 +19,15 @@ import {
   getLimitedCardRarityColor,
   limitedCardPowerupText,
 } from "@/lib/limitedCards";
+import {
+  Crate,
+  crateOdds,
+  crateRarityRank,
+  crateRaritySummary,
+  drawCrateItem,
+  getCrateImageUrl,
+} from "@/lib/crates";
+import CrateOpeningOverlay, { CrateResult } from "@/components/CrateOpeningOverlay";
 
 type ShopItem = {
   ID: string;
@@ -27,6 +36,7 @@ type ShopItem = {
   price: number;
   previewImage: string;
   songUrl?: string;
+  songPreviewStart?: number | string | null;
   rarity: string;
   section: string;
   isVisible: boolean;
@@ -200,6 +210,13 @@ export default function ShopPage() {
   const [buying, setBuying] = useState<string | null>(null);
   const [limitedCards, setLimitedCards] = useState<LimitedCard[]>([]);
   const [buyingCard, setBuyingCard] = useState<string | null>(null);
+  const [crates, setCrates] = useState<Crate[]>([]);
+  const [allShopItems, setAllShopItems] = useState<ShopItem[]>([]);
+  const [crateModalCrate, setCrateModalCrate] = useState<Crate | null>(null);
+  const [openingCrate, setOpeningCrate] = useState<Crate | null>(null);
+  const [crateResult, setCrateResult] = useState<CrateResult | null>(null);
+  const [openingCrateRun, setOpeningCrateRun] = useState(0);
+  const [openingCrateBusy, setOpeningCrateBusy] = useState(false);
   const [isLocked, setIsLocked] = useState(false);
   const [accountReady, setAccountReady] = useState(false);
   const [shopError, setShopError] = useState("");
@@ -237,16 +254,22 @@ export default function ShopPage() {
       setUserCoins(null);
       setManagerTeam(null);
       setOwnedIds([]);
+      setCrates([]);
+      setAllShopItems([]);
+      setCrateModalCrate(null);
+      setOpeningCrate(null);
+      setCrateResult(null);
       setAccountReady(false);
       setShopError("");
       setAccountError("");
 
-      const [itemsResult, settingsResult, sectionsResult, cardsResult] =
+      const [itemsResult, settingsResult, sectionsResult, cardsResult, cratesResult] =
         await Promise.allSettled([
           getDocs(collection(db, "shopItems")),
           getDocs(collection(db, "settings")),
           getDocs(collection(db, "shopSections")),
           getDocs(collection(db, "limitedCards")),
+          getDocs(collection(db, "crates")),
         ]);
 
       if (!active) return;
@@ -255,7 +278,8 @@ export default function ShopPage() {
         itemsResult.status === "rejected" ||
         settingsResult.status === "rejected" ||
         sectionsResult.status === "rejected" ||
-        cardsResult.status === "rejected";
+        cardsResult.status === "rejected" ||
+        cratesResult.status === "rejected";
 
       if (itemsResult.status === "rejected") {
         console.error("Unable to load shop items:", itemsResult.reason);
@@ -273,9 +297,13 @@ export default function ShopPage() {
         console.error("Unable to load limited cards:", cardsResult.reason);
       }
 
+      if (cratesResult.status === "rejected") {
+        console.error("Unable to load crates:", cratesResult.reason);
+      }
+
       if (publicLoadFailed) {
         setShopError(
-          "Some shop data could not be loaded. Check that signed-in managers can read shopItems, shopSections, limitedCards, and settings in Firestore."
+          "Some shop data could not be loaded. Check that signed-in managers can read shopItems, shopSections, limitedCards, crates, and settings in Firestore."
         );
       }
 
@@ -289,6 +317,23 @@ export default function ShopPage() {
         });
 
         setSectionOrders(orderMap);
+      }
+
+      if (cratesResult.status === "fulfilled") {
+        setCrates(
+          cratesResult.value.docs
+            .map((crateDoc) => {
+              const data = crateDoc.data() as Partial<Crate>;
+
+              return {
+                ...data,
+                id: crateDoc.id,
+                items: Array.isArray(data.items) ? data.items : [],
+              } as Crate;
+            })
+            .filter((crate) => crate.isVisible !== false)
+            .sort((a, b) => (a.name || "").localeCompare(b.name || ""))
+        );
       }
 
       if (cardsResult.status === "fulfilled") {
@@ -330,6 +375,10 @@ export default function ShopPage() {
         });
 
         const availableItems = allItems.filter((item) => item.isVisible !== false);
+
+        // Crate contents resolve against every item, including hidden ones,
+        // so a crate keeps working after its item leaves the public shop.
+        setAllShopItems(allItems);
 
         const grouped = availableItems.reduce((acc, item) => {
           const section = item.section || "General";
@@ -386,14 +435,17 @@ export default function ShopPage() {
           : []),
       ];
 
-      const managerDoc = teamDocs.find((teamDoc) => {
-        const data = teamDoc.data();
-
-        return (
-          String(data.ownerUid || "") === userUid ||
-          normalizeEmail(data.ownerEmail) === normalizedUserEmail
+      // Prefer a doc that carries this manager's own ownerUid: the purchase
+      // transaction writes to this doc, and the uid branch of the Firestore
+      // rules always accepts it even if ownerEmail casing differs.
+      const managerDoc =
+        teamDocs.find(
+          (teamDoc) => String(teamDoc.data().ownerUid || "") === userUid
+        ) ||
+        teamDocs.find(
+          (teamDoc) =>
+            normalizeEmail(teamDoc.data().ownerEmail) === normalizedUserEmail
         );
-      });
 
       const canReadManager =
         teamsByUidResult.status === "fulfilled" ||
@@ -848,7 +900,7 @@ export default function ShopPage() {
             : c
         )
       );
-
+      
       alert("Card purchased! Field him from the transfers player market.");
     } catch (err) {
       const message = err instanceof Error ? err.message : "";
@@ -878,6 +930,166 @@ export default function ShopPage() {
       }
     } finally {
       setBuyingCard(null);
+    }
+  };
+
+  const handleOpenCrate = async (crate: Crate) => {
+    const userEmail = String(user?.email || "").trim();
+    const normalizedUserEmail = normalizeEmail(userEmail);
+    const userUid = user?.uid;
+    const price = Number(crate.price || 0);
+
+    if (!userEmail || !userUid) return;
+
+    if (!managerTeam || userCoins === null || !accountReady) {
+      alert(
+        "Your manager coins are not available yet. Reload after checking Firestore access."
+      );
+      return;
+    }
+
+    if (!Number.isFinite(price) || price < 0) {
+      alert("This crate has an invalid price. Ask an admin to update it.");
+      return;
+    }
+
+    const contents = (crate.items || []).filter((entry) =>
+      String(entry.itemId || "")
+    );
+
+    if (contents.length === 0) {
+      alert("This crate is empty. Ask the admin to add items to it.");
+      return;
+    }
+
+    if (userCoins < price) {
+      alert("Not enough coins!");
+      return;
+    }
+
+    const drawn = drawCrateItem(crate.items);
+
+    if (!drawn) {
+      alert("This crate is empty. Ask the admin to add items to it.");
+      return;
+    }
+
+    const shopItem =
+      allShopItems.find(
+        (item) => String(item.ID) === String(drawn.itemId)
+      ) || null;
+
+    setOpeningCrateBusy(true);
+
+    try {
+      const outcome = await runTransaction(db, async (transaction) => {
+        const teamRef = doc(db, "userTeams", managerTeam.id);
+        const inventoryRef = doc(
+          db,
+          "userInventory",
+          `${userUid}_${encodeURIComponent(String(drawn.itemId))}`
+        );
+        const [teamSnap, inventorySnap] = await Promise.all([
+          transaction.get(teamRef),
+          transaction.get(inventoryRef),
+        ]);
+
+        if (!teamSnap.exists()) {
+          throw new Error("MANAGER_NOT_FOUND");
+        }
+
+        const teamData = teamSnap.data();
+        const ownsManagerRecord =
+          String(teamData.ownerUid || "") === userUid ||
+          normalizeEmail(teamData.ownerEmail) === normalizedUserEmail;
+
+        if (!ownsManagerRecord) {
+          throw new Error("MANAGER_MISMATCH");
+        }
+
+        const currentCoins = Number(teamData.coins || 0);
+
+        if (!Number.isFinite(currentCoins) || currentCoins < price) {
+          throw new Error("NOT_ENOUGH_COINS");
+        }
+
+        const nextCoins = currentCoins - price;
+
+        transaction.update(teamRef, {
+          coins: nextCoins,
+          "Updated Date": serverTimestamp(),
+        });
+
+        let alreadyOwned = false;
+
+        if (inventorySnap.exists()) {
+          alreadyOwned = true;
+        } else {
+          transaction.set(inventoryRef, {
+            ownerUid: userUid,
+            ownerEmail: userEmail,
+            itemId: String(drawn.itemId),
+            itemName: String(shopItem?.itemName || drawn.itemName || ""),
+            itemType: String(shopItem?.itemType || drawn.itemType || ""),
+            purchaseDate: serverTimestamp(),
+            acquiredAt: serverTimestamp(),
+            equipped: false,
+            source: "crate",
+            crateId: crate.id,
+            crateName: String(crate.name || ""),
+          });
+        }
+
+        return { nextCoins, alreadyOwned };
+      });
+
+      setUserCoins(outcome.nextCoins);
+      setManagerTeam((current) =>
+        current ? { ...current, coins: outcome.nextCoins } : current
+      );
+
+      if (!outcome.alreadyOwned) {
+        setOwnedIds((current) =>
+          Array.from(new Set([...current, String(drawn.itemId)]))
+        );
+      }
+
+      setCrateModalCrate(null);
+      setOpeningCrate(crate);
+      setCrateResult({
+        item: {
+          ID: String(drawn.itemId),
+          itemName: String(
+            shopItem?.itemName || drawn.itemName || "Shop item"
+          ),
+          itemType: String(shopItem?.itemType || drawn.itemType || ""),
+          previewImage: String(shopItem?.previewImage || drawn.image || ""),
+          rarity: String(drawn.rarity || ""),
+          songUrl: shopItem?.songUrl || "",
+          songPreviewStart: shopItem?.songPreviewStart ?? null,
+        },
+        rarity: String(drawn.rarity || ""),
+        alreadyOwned: outcome.alreadyOwned,
+      });
+      setOpeningCrateRun((run) => run + 1);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "";
+
+      if (message === "NOT_ENOUGH_COINS") {
+        alert("Not enough coins!");
+      } else if (
+        message === "MANAGER_NOT_FOUND" ||
+        message === "MANAGER_MISMATCH"
+      ) {
+        alert(
+          "Your manager record could not be verified. Ask the admin to check your ownerEmail."
+        );
+      } else {
+        console.error("Crate opening failed:", err);
+        alert("Crate opening failed. Check your Firestore access and try again.");
+      }
+    } finally {
+      setOpeningCrateBusy(false);
     }
   };
 
@@ -1155,6 +1367,74 @@ export default function ShopPage() {
                   userCoins={userCoins}
                   isBuying={buyingCard === card.ID}
                   onBuy={handleBuyCard}
+                />
+              ))}
+            </div>
+          </section>
+        )}
+
+        {crates.length > 0 && (
+          <section style={{ marginBottom: "3rem" }}>
+            <div
+              className="shop-section-header"
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                gap: "1rem",
+                marginBottom: "1rem",
+                flexWrap: "wrap",
+              }}
+            >
+              <div>
+                <div
+                  style={{
+                    fontSize: "0.75rem",
+                    color: "var(--text-muted)",
+                    textTransform: "uppercase",
+                    letterSpacing: "1px",
+                    fontWeight: 900,
+                    marginBottom: "0.25rem",
+                  }}
+                >
+                  Section
+                </div>
+
+                <h2 style={{ fontSize: "1.35rem", fontWeight: 900, margin: 0 }}>
+                  Crates
+                </h2>
+              </div>
+
+              <div
+                style={{
+                  color: "var(--text-muted)",
+                  fontSize: "0.8rem",
+                  background: "rgba(255,255,255,0.045)",
+                  border: "1px solid rgba(255,255,255,0.08)",
+                  borderRadius: "999px",
+                  padding: "0.45rem 0.7rem",
+                  fontWeight: 800,
+                }}
+              >
+                {crates.length} crate{crates.length === 1 ? "" : "s"}
+              </div>
+            </div>
+
+            <div
+              className="shop-items-grid"
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))",
+                gap: "1.25rem",
+              }}
+            >
+              {crates.map((crate) => (
+                <CrateTile
+                  key={crate.id}
+                  crate={crate}
+                  accountReady={accountReady}
+                  userCoins={userCoins}
+                  onOpen={() => setCrateModalCrate(crate)}
                 />
               ))}
             </div>
@@ -1484,7 +1764,38 @@ export default function ShopPage() {
           ))
         )}
 
-        {/* Hidden YouTube player used for song previews. */}
+        {crateModalCrate && (
+          <CrateContentsModal
+            crate={crateModalCrate}
+            accountReady={accountReady}
+            userCoins={userCoins}
+            isBusy={openingCrateBusy}
+            onOpen={() => handleOpenCrate(crateModalCrate)}
+            onClose={() => setCrateModalCrate(null)}
+          />
+        )}
+
+        {openingCrate && crateResult && (
+          <CrateOpeningOverlay
+            key={openingCrateRun}
+            crate={openingCrate}
+            result={crateResult}
+            coinsLeft={userCoins}
+            canOpenAnother={
+              accountReady &&
+              userCoins !== null &&
+              userCoins >= Number(openingCrate.price || 0)
+            }
+            isBusy={openingCrateBusy}
+            onOpenAnother={() => handleOpenCrate(openingCrate)}
+            onClose={() => {
+              setOpeningCrate(null);
+              setCrateResult(null);
+            }}
+          />
+        )}
+
+                {/* Hidden YouTube player used for song previews. */}
         <div
           id="shop-song-preview-player"
           style={{
@@ -1789,6 +2100,567 @@ function LimitedCardShopTile({
             ? "NOT ENOUGH COINS"
             : `Buy · ${price.toLocaleString()} Coins`}
         </button>
+      </div>
+    </div>
+  );
+}
+
+function CrateTile({
+  crate,
+  accountReady,
+  userCoins,
+  onOpen,
+}: {
+  crate: Crate;
+  accountReady: boolean;
+  userCoins: number | null;
+  onOpen: () => void;
+}) {
+  const price = Number(crate.price || 0);
+  const itemCount = (crate.items || []).length;
+  const imageUrl = getCrateImageUrl(crate.image);
+  const summary = crateRaritySummary(crate.items);
+  const canOpen =
+    accountReady &&
+    userCoins !== null &&
+    Number.isFinite(price) &&
+    userCoins >= price &&
+    itemCount > 0;
+
+  return (
+    <div
+      style={{
+        position: "relative",
+        overflow: "hidden",
+        background:
+          "linear-gradient(160deg, rgba(255,193,7,0.09), rgba(255,255,255,0.02)), var(--surface)",
+        border: "1px solid rgba(255,193,7,0.35)",
+        borderRadius: "20px",
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
+      <div
+        style={{
+          position: "absolute",
+          top: "0.75rem",
+          left: "0.75rem",
+          display: "flex",
+          gap: "0.35rem",
+          zIndex: 3,
+          flexWrap: "wrap",
+        }}
+      >
+        {crate.showNewTag && (
+          <span
+            style={{
+              background: "var(--blue)",
+              color: "#fff",
+              fontSize: "0.62rem",
+              fontWeight: 900,
+              padding: "0.2rem 0.45rem",
+              borderRadius: "999px",
+            }}
+          >
+            NEW
+          </span>
+        )}
+
+        {crate.showLeavingTodayTag && (
+          <span
+            style={{
+              background: "#0f0d1b",
+              color: "var(--accent)",
+              border: "1px solid rgba(255,193,7,0.3)",
+              fontSize: "0.62rem",
+              fontWeight: 900,
+              padding: "0.2rem 0.45rem",
+              borderRadius: "999px",
+            }}
+          >
+            LEAVING TODAY
+          </span>
+        )}
+      </div>
+
+      <div
+        style={{
+          width: "100%",
+          aspectRatio: "4/3",
+          background:
+            "radial-gradient(circle at 30% 20%, rgba(255,193,7,0.14), transparent 45%), #111",
+          borderBottom: "1px solid var(--border)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        {imageUrl ? (
+          <img
+            src={imageUrl}
+            alt={crate.name}
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
+              display: "block",
+            }}
+          />
+        ) : (
+          <span style={{ fontSize: "3.4rem", lineHeight: 1 }}>📦</span>
+        )}
+      </div>
+
+      <div
+        style={{
+          padding: "1rem",
+          display: "flex",
+          flexDirection: "column",
+          gap: "0.45rem",
+          flex: 1,
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "0.6rem",
+          }}
+        >
+          <div
+            style={{
+              fontSize: "0.62rem",
+              fontWeight: 900,
+              textTransform: "uppercase",
+              letterSpacing: "0.7px",
+              color: "var(--accent)",
+            }}
+          >
+            Crate
+          </div>
+
+          <div
+            style={{
+              fontSize: "0.62rem",
+              color: "var(--text-muted)",
+              fontWeight: 900,
+              textTransform: "uppercase",
+              letterSpacing: "0.7px",
+            }}
+          >
+            {itemCount} item{itemCount === 1 ? "" : "s"}
+          </div>
+        </div>
+
+        <div style={{ fontWeight: 900, fontSize: "1rem", lineHeight: 1.2 }}>
+          {crate.name}
+        </div>
+
+        {crate.description && (
+          <div
+            style={{
+              color: "var(--text-muted)",
+              fontSize: "0.72rem",
+              lineHeight: 1.5,
+              display: "-webkit-box",
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: "vertical",
+              overflow: "hidden",
+            }}
+          >
+            {crate.description}
+          </div>
+        )}
+
+        <div
+          style={{
+            display: "flex",
+            gap: "0.35rem",
+            flexWrap: "wrap",
+            marginTop: "0.15rem",
+          }}
+        >
+          {summary.map(({ tier, chance }) => (
+            <span
+              key={tier.key}
+              style={{
+                background: "rgba(255,255,255,0.045)",
+                border: `1px solid ${tier.color}55`,
+                color: tier.color,
+                fontSize: "0.6rem",
+                fontWeight: 900,
+                padding: "0.18rem 0.4rem",
+                borderRadius: "999px",
+                textTransform: "uppercase",
+                letterSpacing: "0.4px",
+              }}
+            >
+              {tier.label} {(chance * 100).toFixed(0)}%
+            </span>
+          ))}
+        </div>
+
+        <button
+          onClick={onOpen}
+          disabled={!canOpen}
+          title={
+            itemCount === 0
+              ? "This crate is empty."
+              : !accountReady
+              ? "Your manager coins are unavailable. Check Firestore access and reload."
+              : undefined
+          }
+          style={{
+            marginTop: "auto",
+            width: "100%",
+            padding: "0.75rem",
+            borderRadius: "12px",
+            border: "none",
+            fontWeight: 900,
+            cursor: canOpen ? "pointer" : "not-allowed",
+            background: !canOpen
+              ? "rgba(255,255,255,0.08)"
+              : "var(--accent)",
+            color: !canOpen ? "var(--text-muted)" : "#000",
+          }}
+        >
+          {itemCount === 0
+            ? "EMPTY CRATE"
+            : !accountReady
+            ? "COINS UNAVAILABLE"
+            : userCoins !== null && userCoins < price
+            ? "NOT ENOUGH COINS"
+            : `Open · ${price.toLocaleString()} Coins`}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function CrateContentsModal({
+  crate,
+  accountReady,
+  userCoins,
+  isBusy,
+  onOpen,
+  onClose,
+}: {
+  crate: Crate;
+  accountReady: boolean;
+  userCoins: number | null;
+  isBusy: boolean;
+  onOpen: () => void;
+  onClose: () => void;
+}) {
+  const price = Number(crate.price || 0);
+  const odds = crateOdds(crate.items);
+  const summary = crateRaritySummary(crate.items);
+
+  const sorted = [...odds].sort(
+    (a, b) =>
+      crateRarityRank(b.item.rarity) - crateRarityRank(a.item.rarity)
+  );
+
+  const canAfford =
+    accountReady && userCoins !== null && userCoins >= price;
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+
+    window.addEventListener("keydown", onKey);
+
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 9998,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "1rem",
+        background: "rgba(2,6,23,0.82)",
+      }}
+      onClick={onClose}
+    >
+      <div
+        style={{
+          width: "min(92vw, 560px)",
+          maxHeight: "86vh",
+          overflowY: "auto",
+          background: "var(--surface)",
+          border: "1px solid var(--border)",
+          borderRadius: "20px",
+          padding: "1.25rem",
+        }}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "0.85rem",
+            marginBottom: "0.85rem",
+          }}
+        >
+          <div
+            style={{
+              width: "64px",
+              height: "64px",
+              borderRadius: "14px",
+              overflow: "hidden",
+              flexShrink: 0,
+              border: "1px solid rgba(255,193,7,0.35)",
+              background:
+                "radial-gradient(circle at 30% 20%, rgba(255,193,7,0.16), transparent 55%), #111",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: "1.8rem",
+            }}
+          >
+            {getCrateImageUrl(crate.image) ? (
+              <img
+                src={getCrateImageUrl(crate.image)}
+                alt={crate.name}
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "cover",
+                  display: "block",
+                }}
+              />
+            ) : (
+              "📦"
+            )}
+          </div>
+
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontWeight: 900, fontSize: "1.15rem" }}>
+              {crate.name}
+            </div>
+
+            <div
+              style={{
+                color: "var(--accent)",
+                fontSize: "0.8rem",
+                fontWeight: 900,
+                marginTop: "0.15rem",
+              }}
+            >
+              {price.toLocaleString()} Coins per open
+            </div>
+          </div>
+        </div>
+
+        {crate.description && (
+          <div
+            style={{
+              color: "var(--text-muted)",
+              fontSize: "0.82rem",
+              lineHeight: 1.6,
+              marginBottom: "0.85rem",
+            }}
+          >
+            {crate.description}
+          </div>
+        )}
+
+        <div
+          style={{
+            display: "flex",
+            gap: "0.4rem",
+            flexWrap: "wrap",
+            marginBottom: "0.85rem",
+          }}
+        >
+          {summary.map(({ tier, count, chance }) => (
+            <span
+              key={tier.key}
+              style={{
+                background: "rgba(255,255,255,0.045)",
+                border: `1px solid ${tier.color}55`,
+                color: tier.color,
+                fontSize: "0.62rem",
+                fontWeight: 900,
+                padding: "0.22rem 0.45rem",
+                borderRadius: "999px",
+                textTransform: "uppercase",
+                letterSpacing: "0.4px",
+              }}
+            >
+              {tier.label}: {count} · {(chance * 100).toFixed(1)}%
+            </span>
+          ))}
+        </div>
+
+        <div
+          style={{
+            fontSize: "0.7rem",
+            color: "var(--text-muted)",
+            fontWeight: 800,
+            textTransform: "uppercase",
+            letterSpacing: "0.8px",
+            marginBottom: "0.5rem",
+          }}
+        >
+          Possible items — rarest first
+        </div>
+
+        <div style={{ display: "grid", gap: "0.5rem" }}>
+          {sorted.map(({ item, tier, chance }) => (
+            <div
+              key={item.itemId}
+              style={{
+                display: "grid",
+                gridTemplateColumns: "42px 1fr auto",
+                gap: "0.65rem",
+                alignItems: "center",
+                padding: "0.5rem 0.6rem",
+                border: "1px solid var(--border)",
+                borderRadius: "12px",
+                background: "rgba(255,255,255,0.025)",
+              }}
+            >
+              <div
+                style={{
+                  width: "42px",
+                  height: "42px",
+                  borderRadius: "10px",
+                  overflow: "hidden",
+                  background: "#161616",
+                  border: `1px solid ${tier.color}55`,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontWeight: 900,
+                  color: "rgba(255,255,255,0.25)",
+                  fontSize: "0.9rem",
+                }}
+              >
+                {getCrateImageUrl(item.image) ? (
+                  <img
+                    src={getCrateImageUrl(item.image)}
+                    alt=""
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      objectFit: "cover",
+                      display: "block",
+                    }}
+                  />
+                ) : (
+                  (item.itemName || "?").slice(0, 1)
+                )}
+              </div>
+
+              <div style={{ minWidth: 0 }}>
+                <div
+                  style={{
+                    fontWeight: 800,
+                    fontSize: "0.85rem",
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  }}
+                >
+                  {item.itemName || "Shop item"}
+                </div>
+
+                <div
+                  style={{
+                    fontSize: "0.65rem",
+                    color: tier.color,
+                    fontWeight: 900,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.5px",
+                  }}
+                >
+                  {tier.label} · {item.itemType}
+                </div>
+              </div>
+
+              <div
+                style={{
+                  fontSize: "0.85rem",
+                  fontWeight: 900,
+                  color: "var(--accent)",
+                }}
+              >
+                {(chance * 100).toFixed(1)}%
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "0.75rem",
+            flexWrap: "wrap",
+            marginTop: "1.1rem",
+          }}
+        >
+          <div
+            style={{
+              fontSize: "0.75rem",
+              color: "var(--text-muted)",
+              fontWeight: 700,
+            }}
+          >
+            Balance:{" "}
+            {userCoins === null ? "—" : userCoins.toLocaleString()} Coins
+          </div>
+
+          <div style={{ display: "flex", gap: "0.5rem" }}>
+            <button
+              type="button"
+              onClick={onClose}
+              style={{
+                padding: "0.65rem 0.9rem",
+                borderRadius: "12px",
+                border: "1px solid var(--border)",
+                background: "transparent",
+                color: "var(--text-muted)",
+                fontWeight: 900,
+                cursor: "pointer",
+              }}
+            >
+              Cancel
+            </button>
+
+            <button
+              type="button"
+              onClick={onOpen}
+              disabled={!canAfford || isBusy}
+              style={{
+                padding: "0.65rem 1.1rem",
+                borderRadius: "12px",
+                border: "none",
+                background: !canAfford || isBusy
+                  ? "rgba(255,255,255,0.08)"
+                  : "var(--accent)",
+                color: !canAfford || isBusy ? "var(--text-muted)" : "#000",
+                fontWeight: 900,
+                cursor: !canAfford || isBusy ? "not-allowed" : "pointer",
+              }}
+            >
+              {isBusy
+                ? "Opening..."
+                : canAfford
+                ? `Open · ${price.toLocaleString()} Coins`
+                : "Not enough coins"}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
