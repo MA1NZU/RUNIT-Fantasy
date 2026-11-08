@@ -710,14 +710,14 @@ export default function CrateOpeningOverlay({
             <div className="crate-reveal-type">
               {String(result.item.itemType || "item").toUpperCase()}
               {result.alreadyOwned
-                ? " · DUPLICATE — already in your inventory"
+                ? " · DUPLICATE"
                 : " · added to your inventory"}
             </div>
 
             {isSongResult && (
               <div className="crate-song-note">
                 {songPlaying
-                  ? "♪ Playing the best part of the track…"
+                  ? "♪ Playing track…"
                   : "♪ Song reward"}
               </div>
             )}
