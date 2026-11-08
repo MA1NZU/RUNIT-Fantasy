@@ -29,6 +29,17 @@ import {
   limitedCardStatLabel,
   limitedCardStatOptions,
 } from "@/lib/limitedCards";
+import {
+  CRATE_RARITIES,
+  Crate,
+  CrateItem,
+  crateOdds,
+  crateRarityRank,
+  crateRaritySummary,
+  getCrateImageUrl,
+  getCrateRarityTier,
+  normalizeCrateRarity,
+} from "@/lib/crates";
 
 const ADMIN_EMAIL = "yahyaayman2006@gmail.com";
 
@@ -137,6 +148,7 @@ type ShopItem = {
   price: number;
   previewImage: string;
   songUrl?: string;
+  songPreviewStart?: number | string | null;
   rarity: string;
   section: string;
   isVisible: boolean;
@@ -192,6 +204,7 @@ type Tab =
   | "managers"
   | "shop"
   | "cards"
+  | "crates"
   | "sections"
   | "settings"
   | "challenges"
@@ -230,6 +243,17 @@ const defaultNewCard: Partial<LimitedCard> = {
   boostValue: 1.5,
   powerupText: "",
   stock: 1,
+  isVisible: true,
+  showNewTag: false,
+  showLeavingTodayTag: false,
+};
+
+const defaultNewCrate: Partial<Crate> = {
+  name: "",
+  description: "",
+  price: 500,
+  image: "",
+  items: [],
   isVisible: true,
   showNewTag: false,
   showLeavingTodayTag: false,
@@ -323,6 +347,11 @@ export default function AdminPage() {
     ...defaultNewCard,
   });
 
+  const [crates, setCrates] = useState<Crate[]>([]);
+  const [newCrate, setNewCrate] = useState<Partial<Crate>>({
+    ...defaultNewCrate,
+  });
+
   const [challenges, setChallenges] = useState<Challenge[]>([]);
   const [challengeCompletions, setChallengeCompletions] = useState<
     ChallengeCompletion[]
@@ -358,6 +387,7 @@ export default function AdminPage() {
           sectionsSnap,
           fixturesSnap,
           limitedCardsSnap,
+          cratesSnap,
         ] = await Promise.all([
           getDocs(collection(db, "players")),
           getDocs(collection(db, "userTeams")),
@@ -366,6 +396,7 @@ export default function AdminPage() {
           getDocs(collection(db, "shopSections")),
           getDocs(collection(db, "playerFixtures")),
           getDocs(collection(db, "limitedCards")),
+          getDocs(collection(db, "crates")),
         ]);
 
         let activeGW = 7;
@@ -400,6 +431,20 @@ export default function AdminPage() {
           limitedCardsSnap.docs
             .map((d) => ({ id: d.id, ...d.data() } as LimitedCard))
             .sort((a, b) => (a.cardName || "").localeCompare(b.cardName || ""))
+        );
+
+        setCrates(
+          cratesSnap.docs
+            .map((d) => {
+              const data = d.data() as Partial<Crate>;
+
+              return {
+                ...data,
+                id: d.id,
+                items: Array.isArray(data.items) ? data.items : [],
+              } as Crate;
+            })
+            .sort((a, b) => (a.name || "").localeCompare(b.name || ""))
         );
 
         const sectionMap: Record<string, ShopSection> = {};
@@ -452,7 +497,7 @@ export default function AdminPage() {
         setPlayers(
           pSnap.docs
             .map((d) => ({ id: d.id, ...d.data() } as Player))
-            .sort((a, b) => (a.name || "").localeCompare(b.name || ""))
+            .sort((a, b) => (a.name || "").localeCompare(b.name))
         );
 
         const savedStatsSnap = await getDocs(
@@ -1153,7 +1198,7 @@ export default function AdminPage() {
       const alias = String(data.player || data.Title || "");
       const docPlayerId = String(statDoc.id.split("_gw")[0] || "");
       const canonical =
-        aliasToCanonical.get(alias) ||
+                aliasToCanonical.get(alias) ||
         aliasToCanonical.get(docPlayerId) ||
         docPlayerId ||
         alias;
@@ -1197,7 +1242,8 @@ export default function AdminPage() {
 
         inventorySnap.docs.forEach((inventoryDoc) => {
           const data = inventoryDoc.data();
-          const itemId = String(data.itemId || data.itemID || data.item || data.ID || ""
+          const itemId = String(
+            data.itemId || data.itemID || data.item || data.ID || ""
           );
 
           if (itemId) owned.add(itemId);
@@ -1807,6 +1853,107 @@ export default function AdminPage() {
     setSaving(null);
   };
 
+  const normalizeCrateItems = (
+    items?: CrateItem[] | null
+  ): CrateItem[] =>
+    (Array.isArray(items) ? items : [])
+      .filter((entry) => String(entry.itemId || ""))
+      .map((entry) => ({
+        itemId: String(entry.itemId || ""),
+        itemName: String(entry.itemName || ""),
+        itemType: String(entry.itemType || ""),
+        rarity: String(entry.rarity || "common"),
+        image: String(entry.image || ""),
+      }));
+
+  const updateCratePatch = (id: string, patch: Partial<Crate>) => {
+    setCrates((prev) =>
+      prev.map((crate) => (crate.id === id ? { ...crate, ...patch } : crate))
+    );
+  };
+
+  const handleAddCrate = async () => {
+    if (!newCrate.name) return alert("Crate name required");
+
+    if ((newCrate.items || []).length === 0) {
+      return alert("Add at least one item to the crate");
+    }
+
+    setSaving("newCrate");
+
+    try {
+      const id = Math.random().toString(36).slice(2, 11);
+
+      const data = {
+        name: newCrate.name,
+        description: newCrate.description || "",
+        price: Number(newCrate.price || 0),
+        image: newCrate.image || "",
+        items: normalizeCrateItems(newCrate.items),
+        isVisible: newCrate.isVisible !== false,
+        showNewTag: !!newCrate.showNewTag,
+        showLeavingTodayTag: !!newCrate.showLeavingTodayTag,
+        "Created Date": new Date().toISOString(),
+      };
+
+      await setDoc(doc(db, "crates", id), data);
+
+      setCrates((prev) =>
+        [...prev, { id, ...data } as Crate].sort((a, b) =>
+          (a.name || "").localeCompare(b.name || "")
+        )
+      );
+
+      setNewCrate({ ...defaultNewCrate });
+
+      markSaved("newCrate");
+    } catch (err) {
+      console.error(err);
+    }
+
+    setSaving(null);
+  };
+
+  const handleUpdateCrate = async (crate: Crate) => {
+    setSaving(crate.id);
+
+    try {
+      await updateDoc(doc(db, "crates", crate.id), {
+        name: crate.name || "",
+        description: crate.description || "",
+        price: Number(crate.price || 0),
+        image: crate.image || "",
+        items: normalizeCrateItems(crate.items),
+        isVisible: crate.isVisible !== false,
+        showNewTag: !!crate.showNewTag,
+        showLeavingTodayTag: !!crate.showLeavingTodayTag,
+        "Updated Date": new Date().toISOString(),
+      });
+
+      markSaved(crate.id);
+    } catch (err) {
+      console.error(err);
+    }
+
+    setSaving(null);
+  };
+
+  const handleDeleteCrate = async (crate: Crate) => {
+    if (!confirm(`Delete "${crate.name || "crate"}"?`)) return;
+
+    setSaving(crate.id);
+
+    try {
+      await deleteDoc(doc(db, "crates", crate.id));
+      setCrates((prev) => prev.filter((c) => c.id !== crate.id));
+    } catch (err) {
+      console.error("Failed to delete crate:", err);
+      alert("Failed to delete the crate. Check the console for details.");
+    }
+
+    setSaving(null);
+  };
+
   const updateChallengePatch = (id: string, patch: Partial<Challenge>) => {
     setChallenges((prev) =>
       prev.map((c) => (c.id === id ? { ...c, ...patch } : c))
@@ -1904,7 +2051,7 @@ export default function AdminPage() {
   };
 
   const handleDeleteChallenge = async (challenge: Challenge) => {
-    if (!confirm(`Delete "${challenge.name || "challenge"}?"`)) return;
+    if (!confirm(`Delete "${challenge.name || "challenge"}"?`)) return;
 
     setSaving(challenge.id);
 
@@ -2251,7 +2398,7 @@ export default function AdminPage() {
         const sectionCompare = String(a.section || "").localeCompare(
           String(b.section || "")
         );
-
+        
         if (sectionCompare !== 0) return sectionCompare;
 
         return String(a.itemName || "").localeCompare(String(b.itemName || ""));
@@ -2331,6 +2478,7 @@ export default function AdminPage() {
             "managers",
             "shop",
             "cards",
+            "crates",
             "sections",
             "settings",
             "locks",
@@ -2397,7 +2545,7 @@ export default function AdminPage() {
               <button
                 onClick={handleSaveSettings}
                 disabled={saving === "settings"}
-                             style={primaryButtonStyle(saved === "settings")}
+                style={primaryButtonStyle(saved === "settings")}
               >
                 {saving === "settings"
                   ? "Saving..."
@@ -2955,6 +3103,18 @@ export default function AdminPage() {
                     setNewItem({ ...newItem, songUrl: value })
                   }
                 />
+
+                <ShopTextInput
+                  label="Song Preview Start (s) — crates"
+                  type="number"
+                  value={newItem.songPreviewStart ?? ""}
+                  onChange={(value) =>
+                    setNewItem({
+                      ...newItem,
+                      songPreviewStart: value === "" ? "" : Number(value),
+                    })
+                  }
+                />
               </div>
 
               <div
@@ -3161,6 +3321,120 @@ export default function AdminPage() {
           </div>
         )}
 
+        {tab === "crates" && (
+          <div>
+            <h2 style={sectionTitleStyle}>Shop Crates</h2>
+
+            <div
+              style={{
+                background:
+                  "linear-gradient(135deg, rgba(255,193,7,0.08), rgba(3,71,244,0.1)), var(--surface)",
+                border: "1px solid var(--border)",
+                borderRadius: "14px",
+                padding: "1rem",
+                marginBottom: "1rem",
+                color: "var(--text-muted)",
+                fontSize: "0.85rem",
+                lineHeight: 1.6,
+              }}
+            >
+              Crates are bought with coins in the shop and burst open into one
+              random item from their contents. Each item's rarity sets its drop
+              chance — the rarer the item, the harder it is to pull. Rarer
+              pulls also get longer, louder opening animations, and song
+              rewards play a snippet of the track when they are revealed. Set
+              where a song's snippet starts with the "Song Preview Start"
+              field on the shop item.
+            </div>
+
+            <div
+              style={{
+                background: "var(--surface)",
+                border: "1px solid var(--border)",
+                borderRadius: "14px",
+                padding: "1.25rem",
+                marginBottom: "2rem",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: "1rem",
+                  marginBottom: "1rem",
+                  flexWrap: "wrap",
+                }}
+              >
+                <div>
+                  <div style={{ fontWeight: 800, fontSize: "1rem" }}>
+                    Create Crate
+                  </div>
+                  <div
+                    style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}
+                  >
+                    Name it, price it, and fill it with shop items.
+                  </div>
+                </div>
+
+                <button
+                  onClick={handleAddCrate}
+                  disabled={saving === "newCrate"}
+                  style={primaryButtonStyle(saved === "newCrate")}
+                >
+                  {saving === "newCrate"
+                    ? "Adding..."
+                    : saved === "newCrate"
+                    ? "Added"
+                    : "Add Crate"}
+                </button>
+              </div>
+
+              <CrateFields
+                crate={newCrate}
+                shopItems={shopItems}
+                onChange={(patch) => setNewCrate({ ...newCrate, ...patch })}
+              />
+            </div>
+
+            {crates.length === 0 ? (
+              <div
+                style={{
+                  border: "1px dashed var(--border)",
+                  borderRadius: "12px",
+                  padding: "2rem 1rem",
+                  textAlign: "center",
+                  color: "var(--text-muted)",
+                }}
+              >
+                No crates yet. Create the first one above.
+              </div>
+            ) : (
+              <div
+                className="admin-shop-grid"
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fill, minmax(360px, 1fr))",
+                  gap: "1rem",
+                }}
+              >
+                {crates.map((crate) => (
+                  <CrateEditor
+                    key={crate.id}
+                    crate={crate}
+                    shopItems={shopItems}
+                    saving={saving}
+                    saved={saved}
+                    onChange={updateCratePatch}
+                    onSave={handleUpdateCrate}
+                    onDelete={() => handleDeleteCrate(crate)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {tab === "fixtures" && (
           <div style={{ display: "grid", gap: "1rem", maxWidth: "1100px" }}>
             <div
@@ -3324,7 +3598,7 @@ export default function AdminPage() {
                     >
                       <div>
                         <div style={smallLabelStyle}>Gameweek</div>
-                        <input
+                                                <input
                           type="number"
                           min="1"
                           value={fixture.gameweek}
@@ -4524,7 +4798,7 @@ function ShopTextInput({
       <input
         type={type}
         value={value}
-        onChange={(e) => onChange(e.target.value)}
+                onChange={(e) => onChange(e.target.value)}
         style={inputStyle}
       />
     </div>
@@ -4734,6 +5008,45 @@ function ShopItemCard({
       </div>
 
       <div
+        className="admin-shop-item-pair"
+        style={{
+          display: "grid",
+          gridTemplateColumns: "minmax(180px, 240px) 1fr",
+          gap: "0.65rem",
+        }}
+      >
+        <div>
+          <div style={smallLabelStyle}>Song Preview Start (s)</div>
+          <input
+            type="number"
+            min="0"
+            step="1"
+            value={item.songPreviewStart ?? ""}
+            onChange={(e) =>
+              onChange(
+                item.id,
+                "songPreviewStart",
+                e.target.value === "" ? "" : Number(e.target.value)
+              )
+            }
+            style={inputStyle}
+          />
+        </div>
+
+        <div
+          style={{
+            fontSize: "0.68rem",
+            color: "var(--text-muted)",
+            lineHeight: 1.5,
+            alignSelf: "center",
+          }}
+        >
+          Songs only: where the crate-reveal snippet starts (seconds into the
+          track). Leave empty to auto-pick around the chorus.
+        </div>
+      </div>
+
+      <div
         style={{
           display: "flex",
           justifyContent: "space-between",
@@ -4797,7 +5110,7 @@ function ShopItemCard({
               fontWeight: 800,
               cursor: "pointer",
             }}
-           >
+          >
             {saving === item.id
               ? "Saving..."
               : saved === item.id
@@ -5337,6 +5650,540 @@ function LimitedCardEditor({
             {saving === card.id
               ? "Saving..."
               : saved === card.id
+              ? "Saved"
+              : "Save"}
+          </button>
+
+          <button
+            onClick={onDelete}
+            style={{
+              background: "transparent",
+              border: "1px solid var(--border)",
+              color: "var(--red)",
+              borderRadius: "8px",
+              padding: "0.5rem 0.75rem",
+              cursor: "pointer",
+              fontWeight: 800,
+            }}
+          >
+            ✕
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CrateFields({
+  crate,
+  shopItems,
+  onChange,
+}: {
+  crate: Partial<Crate>;
+  shopItems: ShopItem[];
+  onChange: (patch: Partial<Crate>) => void;
+}) {
+  const [pickItemId, setPickItemId] = useState("");
+  const items = Array.isArray(crate.items) ? crate.items : [];
+  const pickItem = shopItems.find((item) => item.ID === pickItemId) || null;
+  const odds = crateOdds(items);
+  const summary = crateRaritySummary(items);
+
+  const addItem = () => {
+    if (!pickItem) return;
+
+    if (items.some((entry) => String(entry.itemId) === String(pickItem.ID))) {
+      setPickItemId("");
+      return;
+    }
+
+    onChange({
+      items: [
+        ...items,
+        {
+          itemId: String(pickItem.ID),
+          itemName: String(pickItem.itemName || ""),
+          itemType: String(pickItem.itemType || ""),
+          rarity: normalizeCrateRarity(pickItem.rarity || "common"),
+          image: String(pickItem.previewImage || ""),
+        },
+      ],
+    });
+
+    setPickItemId("");
+  };
+
+  const removeItem = (itemId: string) => {
+    onChange({
+      items: items.filter(
+        (entry) => String(entry.itemId) !== String(itemId)
+      ),
+    });
+  };
+
+  const setItemRarity = (itemId: string, rarity: string) => {
+    onChange({
+      items: items.map((entry) =>
+        String(entry.itemId) === String(itemId) ? { ...entry, rarity } : entry
+      ),
+    });
+  };
+
+  const sortedItems = [...items].sort(
+    (a, b) => crateRarityRank(b.rarity) - crateRarityRank(a.rarity)
+  );
+
+  return (
+    <div>
+      <div
+        className="admin-shop-form-grid"
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+          gap: "0.85rem",
+          marginBottom: "0.85rem",
+        }}
+      >
+        <ShopTextInput
+          label="Crate Name"
+          value={crate.name || ""}
+          onChange={(value) => onChange({ name: value })}
+        />
+
+        <ShopTextInput
+          label="Price (coins)"
+          type="number"
+          value={crate.price ?? 0}
+          onChange={(value) => onChange({ price: Number(value) })}
+        />
+      </div>
+
+      <div
+        className="admin-shop-url-grid"
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+          gap: "0.85rem",
+          marginBottom: "0.85rem",
+        }}
+      >
+        <ShopTextInput
+          label="Image URL"
+          value={crate.image || ""}
+          onChange={(value) => onChange({ image: value })}
+        />
+
+        <ShopTextInput
+          label="Description (shown in the shop)"
+          value={crate.description || ""}
+          onChange={(value) => onChange({ description: value })}
+        />
+      </div>
+
+      <div
+        style={{
+          display: "flex",
+          gap: "0.75rem",
+          alignItems: "flex-end",
+          flexWrap: "wrap",
+        }}
+      >
+        <div style={{ flex: 1, minWidth: "240px" }}>
+          <div style={{ fontSize: "0.7rem", marginBottom: "0.3rem" }}>
+            Add shop item
+          </div>
+          <select
+            value={pickItemId}
+            onChange={(event) => setPickItemId(event.target.value)}
+            style={inputStyle}
+          >
+            <option value="">Choose item</option>
+            {shopItems.map((item) => (
+              <option key={item.id} value={item.ID}>
+                {item.itemName} · {item.itemType} ·{" "}
+                {normalizeCrateRarity(item.rarity || "common")}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <button
+          type="button"
+          onClick={addItem}
+          disabled={!pickItem}
+          style={secondaryButtonStyle}
+        >
+          Add Item
+        </button>
+      </div>
+
+      {items.length === 0 ? (
+        <div
+          style={{
+            border: "1px dashed var(--border)",
+            borderRadius: "12px",
+            padding: "1.25rem 1rem",
+            textAlign: "center",
+            color: "var(--text-muted)",
+            fontSize: "0.85rem",
+            marginTop: "0.85rem",
+          }}
+        >
+          No items in this crate yet. Add shop items above — each item's
+          rarity sets its drop chance.
+        </div>
+      ) : (
+        <div style={{ display: "grid", gap: "0.5rem", marginTop: "0.85rem" }}>
+          {sortedItems.map((entry) => {
+            const entryOdds = odds.find(
+              (oddsEntry) =>
+                String(oddsEntry.item.itemId) === String(entry.itemId)
+            );
+            const tier = getCrateRarityTier(entry.rarity);
+
+            return (
+              <div
+                key={entry.itemId}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "44px minmax(120px, 1fr) 170px 70px auto",
+                  gap: "0.65rem",
+                  alignItems: "center",
+                  padding: "0.5rem 0.6rem",
+                  border: "1px solid var(--border)",
+                  borderRadius: "12px",
+                  background: "rgba(255,255,255,0.025)",
+                }}
+              >
+                <div
+                  style={{
+                    width: "44px",
+                    height: "44px",
+                    borderRadius: "10px",
+                    overflow: "hidden",
+                    background: "#161616",
+                    border: `1px solid ${tier.color}55`,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontWeight: 900,
+                    color: "rgba(255,255,255,0.25)",
+                    fontSize: "0.9rem",
+                  }}
+                >
+                  {getCrateImageUrl(entry.image) ? (
+                    <img
+                      src={getCrateImageUrl(entry.image)}
+                      alt=""
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        objectFit: "cover",
+                        display: "block",
+                      }}
+                    />
+                  ) : (
+                    (entry.itemName || "?").slice(0, 1)
+                  )}
+                </div>
+
+                <div style={{ minWidth: 0 }}>
+                  <div
+                    style={{
+                      fontWeight: 800,
+                      fontSize: "0.85rem",
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    {entry.itemName || "Shop item"}
+                  </div>
+
+                  <div
+                    style={{
+                      fontSize: "0.65rem",
+                      color: "var(--text-muted)",
+                      textTransform: "uppercase",
+                      letterSpacing: "0.5px",
+                      fontWeight: 800,
+                    }}
+                  >
+                    {entry.itemType}
+                  </div>
+                </div>
+
+                <div>
+                  <select
+                    value={normalizeCrateRarity(entry.rarity)}
+                    onChange={(event) =>
+                      setItemRarity(entry.itemId, event.target.value)
+                    }
+                    style={{ ...inputStyle, fontSize: "0.75rem" }}
+                  >
+                    {CRATE_RARITIES.map((rarity) => (
+                      <option key={rarity.key} value={rarity.key}>
+                        {rarity.label} · weight {rarity.weight}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div
+                  style={{
+                    textAlign: "right",
+                    fontSize: "0.85rem",
+                    fontWeight: 900,
+                    color: "var(--accent)",
+                  }}
+                >
+                  {entryOdds
+                    ? `${(entryOdds.chance * 100).toFixed(1)}%`
+                    : "0.0%"}
+                  <div
+                    style={{
+                      fontSize: "0.58rem",
+                      color: "var(--text-muted)",
+                      fontWeight: 700,
+                    }}
+                  >
+                    chance
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => removeItem(entry.itemId)}
+                  title={`Remove ${entry.itemName || "item"}`}
+                  style={{
+                    background: "transparent",
+                    border: "1px solid var(--border)",
+                    color: "var(--red)",
+                    width: "30px",
+                    height: "30px",
+                    borderRadius: "8px",
+                    cursor: "pointer",
+                    fontWeight: 900,
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {summary.length > 0 && (
+        <div
+          style={{
+            display: "flex",
+            gap: "0.5rem",
+            flexWrap: "wrap",
+            marginTop: "0.85rem",
+          }}
+        >
+          {summary.map(({ tier, count, chance }) => (
+            <span
+              key={tier.key}
+              style={{
+                background: "rgba(255,255,255,0.045)",
+                border: `1px solid ${tier.color}55`,
+                color: tier.color,
+                fontSize: "0.68rem",
+                fontWeight: 900,
+                padding: "0.28rem 0.55rem",
+                borderRadius: "999px",
+                textTransform: "uppercase",
+                letterSpacing: "0.4px",
+              }}
+            >
+                            {tier.label}: {count} item{count === 1 ? "" : "s"} ·{" "}
+              {(chance * 100).toFixed(1)}%
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CrateEditor({
+  crate,
+  shopItems,
+  saving,
+  saved,
+  onChange,
+  onSave,
+  onDelete,
+}: {
+  crate: Crate;
+  shopItems: ShopItem[];
+  saving: string | null;
+  saved: string | null;
+  onChange: (id: string, patch: Partial<Crate>) => void;
+  onSave: (crate: Crate) => void;
+  onDelete: () => void;
+}) {
+  return (
+    <div
+      className="admin-shop-item-card"
+      style={{
+        background: "var(--surface)",
+        border: "1px solid var(--border)",
+        borderRadius: "14px",
+        padding: "1rem",
+        display: "flex",
+        flexDirection: "column",
+        gap: "0.85rem",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "flex-start",
+          gap: "0.75rem",
+        }}
+      >
+        <div style={{ minWidth: 0 }}>
+          <div
+            style={{
+              fontWeight: 800,
+              fontSize: "1rem",
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+          >
+            {crate.name || "Untitled Crate"}
+          </div>
+
+          <div
+            style={{
+              color: "var(--text-muted)",
+              fontSize: "0.75rem",
+              marginTop: "0.2rem",
+            }}
+          >
+            {(crate.items || []).length} item
+            {(crate.items || []).length === 1 ? "" : "s"} ·{" "}
+            {Number(crate.price || 0).toLocaleString()} coins
+            {crate.isVisible === false ? " · hidden" : ""}
+          </div>
+        </div>
+
+        <div style={{ display: "flex", gap: "0.4rem", flexShrink: 0 }}>
+          {crate.showNewTag && (
+            <span
+              style={{
+                background: "var(--blue)",
+                color: "#fff",
+                fontSize: "0.62rem",
+                fontWeight: 900,
+                padding: "0.22rem 0.45rem",
+                borderRadius: "999px",
+              }}
+            >
+              NEW
+            </span>
+          )}
+
+          {crate.showLeavingTodayTag && (
+            <span
+              style={{
+                background: "#0f0d1b",
+                color: "var(--accent)",
+                border: "1px solid rgba(255,193,7,0.3)",
+                fontSize: "0.62rem",
+                fontWeight: 900,
+                padding: "0.22rem 0.45rem",
+                borderRadius: "999px",
+              }}
+            >
+              LEAVING
+            </span>
+          )}
+        </div>
+      </div>
+
+      <CrateFields
+        crate={crate}
+        shopItems={shopItems}
+        onChange={(patch) => onChange(crate.id, patch)}
+      />
+
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: "0.75rem",
+          flexWrap: "wrap",
+          borderTop: "1px solid var(--border)",
+          paddingTop: "0.85rem",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            gap: "0.85rem",
+            flexWrap: "wrap",
+            alignItems: "center",
+          }}
+        >
+          <label style={toggleLabelStyle}>
+            <input
+              type="checkbox"
+              checked={!!crate.showNewTag}
+              onChange={(e) =>
+                onChange(crate.id, { showNewTag: e.target.checked })
+              }
+            />
+            NEW
+          </label>
+
+          <label style={toggleLabelStyle}>
+            <input
+              type="checkbox"
+              checked={!!crate.showLeavingTodayTag}
+              onChange={(e) =>
+                onChange(crate.id, { showLeavingTodayTag: e.target.checked })
+              }
+            />
+            LEAVING
+          </label>
+
+          <label style={toggleLabelStyle}>
+            <input
+              type="checkbox"
+              checked={crate.isVisible !== false}
+              onChange={(e) =>
+                onChange(crate.id, { isVisible: e.target.checked })
+              }
+            />
+            Visible
+          </label>
+        </div>
+
+        <div style={{ display: "flex", gap: "0.5rem" }}>
+          <button
+            onClick={() => onSave(crate)}
+            disabled={saving === crate.id}
+            style={{
+              background:
+                saved === crate.id ? "var(--green)" : "var(--accent)",
+              color: "#000",
+              border: "none",
+              borderRadius: "8px",
+              padding: "0.5rem 0.9rem",
+              fontWeight: 800,
+              cursor: "pointer",
+            }}
+          >
+            {saving === crate.id
+              ? "Saving..."
+              : saved === crate.id
               ? "Saved"
               : "Save"}
           </button>
