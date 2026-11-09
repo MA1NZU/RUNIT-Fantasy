@@ -344,6 +344,7 @@ function ProfileContent() {
           <span>{isOwnProfile ? "My Team" : "View Team"}</span>
           <span style={{ fontSize: "0.78rem", fontWeight: 600, opacity: 0.85 }}>{isOwnProfile ? "Manage players and track points." : `Scout ${team.manager}'s active players.`}</span>
         </Link>
+        {isOwnProfile && <PushSubscribe />}
         <style jsx>{`
             @keyframes rotate { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
             .audio-visualizer { display: flex; align-items: flex-end; gap: 2px; height: 10px; }
