@@ -369,6 +369,13 @@ export default function AdminPage() {
     "type" | "name" | "price" | "section" | "rarity" | "visible"
   >("type");
 
+  const [notifyTitle, setNotifyTitle] = useState("");
+  const [notifyBody, setNotifyBody] = useState("");
+  const [notifyUrl, setNotifyUrl] = useState("/");
+  const [notifySending, setNotifySending] = useState(false);
+  const [notifyResult, setNotifyResult] = useState("");
+  const [subscriberCount, setSubscriberCount] = useState<number | null>(null);
+
   useEffect(() => {
     if (user && user.email !== ADMIN_EMAIL) router.replace("/");
   }, [user, router]);
