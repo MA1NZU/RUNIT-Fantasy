@@ -380,6 +380,23 @@ export default function AdminPage() {
     if (user && user.email !== ADMIN_EMAIL) router.replace("/");
   }, [user, router]);
 
+  // Push notification subscribers, shown on the NOTIFY tab. The Firestore
+  // rules only let the admin list the whole collection.
+  const loadSubscriberCount = () => {
+    getDocs(collection(db, "pushSubscriptions"))
+      .then((snap) => setSubscriberCount(snap.size))
+      .catch((err) => {
+        console.error("Failed to load push subscribers:", err);
+        setSubscriberCount(null);
+      });
+  };
+
+  useEffect(() => {
+    if (tab !== "notify") return;
+
+    loadSubscriberCount();
+  }, [tab]);
+
   useEffect(() => {
     if (!user || user.email !== ADMIN_EMAIL) return;
 
@@ -1962,6 +1979,58 @@ export default function AdminPage() {
     setSaving(null);
   };
 
+  const handleSendNotification = async () => {
+    const title = notifyTitle.trim();
+    const message = notifyBody.trim();
+
+    if (!title) return alert("Give the notification a title");
+    if (!message) return alert("Give the notification a message");
+
+    setNotifySending(true);
+    setNotifyResult("");
+
+    try {
+      const idToken = await user?.getIdToken();
+
+      if (!idToken) {
+        alert("Sign-in token missing — reload the admin panel and try again.");
+        return;
+      }
+
+      const res = await fetch("/api/push", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title,
+          body: message,
+          url: notifyUrl,
+          idToken,
+        }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        alert(`Send failed: ${data.error || res.status}`);
+        return;
+      }
+
+      setNotifyResult(
+        `Delivered to ${data.sent}/${data.total} manager(s)` +
+          (data.removedExpired
+            ? ` · cleaned up ${data.removedExpired} stale subscription(s)`
+            : "")
+      );
+      setNotifyBody("");
+      markSaved("notify");
+    } catch (err) {
+      console.error("Notification send failed:", err);
+      alert("Notification send failed. Check the console for details.");
+    } finally {
+      setNotifySending(false);
+    }
+  };
+
   const updateChallengePatch = (id: string, patch: Partial<Challenge>) => {
     setChallenges((prev) =>
       prev.map((c) => (c.id === id ? { ...c, ...patch } : c))
@@ -2487,6 +2556,7 @@ export default function AdminPage() {
             "shop",
             "cards",
             "crates",
+            "notify",
             "sections",
             "settings",
             "locks",
@@ -3440,6 +3510,125 @@ export default function AdminPage() {
                 ))}
               </div>
             )}
+          </div>
+        )}
+
+        {tab === "notify" && (
+          <div style={{ maxWidth: "650px" }}>
+            <h2 style={sectionTitleStyle}>Push Notifications</h2>
+
+            <div style={panelStyle}>
+              <div
+                style={{
+                  color: "var(--text-muted)",
+                  fontSize: "0.85rem",
+                  lineHeight: 1.6,
+                }}
+              >
+                Sends a system notification to every manager who enabled
+                notifications on their profile. Android and desktop managers
+                get it even with the site closed; iPhone managers receive it
+                after adding the site to their Home Screen.
+              </div>
+
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: "1rem",
+                  flexWrap: "wrap",
+                  padding: "0.7rem 0.9rem",
+                  background: "rgba(3,71,244,0.08)",
+                  border: "1px solid rgba(107,159,255,0.3)",
+                  borderRadius: "12px",
+                }}
+              >
+                <span style={{ fontWeight: 800, fontSize: "0.85rem" }}>
+                  {subscriberCount === null
+                    ? "Subscribers: unavailable (publish the Firestore rules)"
+                    : `${subscriberCount} manager${subscriberCount === 1 ? "" : "s"} subscribed`}
+                </span>
+
+                <button
+                  type="button"
+                  onClick={loadSubscriberCount}
+                  style={secondaryButtonStyle}
+                >
+                  Refresh
+                </button>
+              </div>
+
+              <div>
+                <div style={labelStyle}>Title</div>
+                <input
+                  value={notifyTitle}
+                  onChange={(e) => setNotifyTitle(e.target.value)}
+                  maxLength={60}
+                  placeholder="Deadline tonight!"
+                  style={inputStyle}
+                />
+              </div>
+
+              <div>
+                <div style={labelStyle}>Message</div>
+                <textarea
+                  value={notifyBody}
+                  onChange={(e) => setNotifyBody(e.target.value)}
+                  maxLength={180}
+                  rows={3}
+                  placeholder="Lock in your squad before 11 PM."
+                  style={{
+                    ...inputStyle,
+                    resize: "vertical",
+                    minHeight: "80px",
+                    fontFamily: "inherit",
+                  }}
+                />
+              </div>
+
+              <div>
+                <div style={labelStyle}>Opens page when tapped</div>
+                <select
+                  value={notifyUrl}
+                  onChange={(e) => setNotifyUrl(e.target.value)}
+                  style={inputStyle}
+                >
+                  <option value="/">Home</option>
+                  <option value="/team">My Team</option>
+                  <option value="/transfers">Transfers</option>
+                  <option value="/shop">Shop</option>
+                  <option value="/leaderboard">Leaderboard</option>
+                  <option value="/fixtures">Fixtures</option>
+                  <option value="/challenges">Challenges</option>
+                  <option value="/inventory">Inventory</option>
+                </select>
+              </div>
+
+              <button
+                onClick={handleSendNotification}
+                disabled={notifySending}
+                style={primaryButtonStyle(saved === "notify")}
+              >
+                {notifySending
+                  ? "Sending..."
+                  : saved === "notify"
+                  ? "✓ Sent"
+                  : "Send Notification"}
+              </button>
+
+              {notifyResult && (
+                <div
+                  style={{
+                    color: "var(--green)",
+                    fontSize: "0.85rem",
+                    fontWeight: 700,
+                  }}
+                >
+                  {notifyResult}
+                </div>
+              )}
+            </div>
           </div>
         )}
 
