@@ -4,7 +4,8 @@ import { useEffect, useState, useRef, Suspense } from "react";
 import { db } from "@/lib/firebase";
 import { collection, getDocs, query, where, doc, updateDoc, orderBy } from "firebase/firestore";
 import { useAuth } from "@/lib/AuthContext";
-import Shell from "@///app/shell";
+import Shell from "@//app/shell";
+import PushSubscribe from "@/components/PushSubscribe";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 
