@@ -205,6 +205,7 @@ type Tab =
   | "shop"
   | "cards"
   | "crates"
+  | "notify"
   | "sections"
   | "settings"
   | "challenges"
