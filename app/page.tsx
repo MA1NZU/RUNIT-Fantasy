@@ -10,7 +10,7 @@ import {
   where,
 } from "firebase/firestore";
 import { useAuth } from "@/lib/AuthContext";
-import Shell from "@/app/shell";
+import Shell from "@//app/shell";
 
 type Team = {
   id: string;
@@ -198,7 +198,7 @@ export default function Home() {
             padding: "2rem",
             marginBottom: "1rem",
             background:
-              "radial-gradient(circle at 20% 10%, rgba(74, 222, 90, 0.35), transparent 16%), radial-gradient(circle at 90% 20%, rgba(255, 193, 7, 0.18), transparent 15%), linear-gradient(135deg, rgba(255,255,255,0.075), rgba(255,255,255,0.02))",
+              "radial-gradient(circle at 20% 10%, rgba(3, 71, 244, 0.35), transparent 16%), radial-gradient(circle at 90% 20%, rgba(255, 193, 7, 0.18), transparent 15%), linear-gradient(135deg, rgba(255,255,255,0.075), rgba(255,255,255,0.02))",
             boxShadow: "0 24px 80px rgba(0,0,0,0.32)",
           }}
         >
@@ -210,7 +210,7 @@ export default function Home() {
               right: "-110px",
               bottom: "-110px",
               borderRadius: "999px",
-              background: "rgba(74, 222, 90, 0.28)",
+              background: "rgba(3, 71, 244, 0.28)",
               filter: "blur(20px)",
               pointerEvents: "none",
             }}
@@ -233,9 +233,9 @@ export default function Home() {
                   display: "inline-flex",
                   alignItems: "center",
                   gap: "8px",
-                  background: "rgba(74, 222, 90, 0.15)",
-                  border: "1px solid rgba(74, 222, 90, 0.45)",
-                  color: "##86efac",
+                  background: "rgba(3, 71, 244, 0.15)",
+                  border: "1px solid rgba(107, 159, 255, 0.45)",
+                  color: "#8bb5ff",
                   fontSize: "0.75rem",
                   padding: "6px 12px",
                   borderRadius: "999px",
@@ -436,7 +436,7 @@ export default function Home() {
               <div
                 style={{
                   background:
-                    "linear-gradient(135deg, rgba(255,193,7,0.16), rgba(74, 222, 90,0.12)), rgba(255,255,255,0.035)",
+                    "linear-gradient(135deg, rgba(255,193,7,0.16), rgba(3,71,244,0.12)), rgba(255,255,255,0.035)",
                   border: "1px solid rgba(255,255,255,0.1)",
                   borderRadius: "18px",
                   padding: "1rem",
@@ -610,7 +610,7 @@ export default function Home() {
                   height: "90px",
                   right: "-45px",
                   top: "-45px",
-                  background: "rgba(74, 222, 90, 0.18)",
+                  background: "rgba(3, 71, 244, 0.18)",
                   borderRadius: "999px",
                 }}
               />
@@ -749,7 +749,7 @@ export default function Home() {
                           : "1px solid var(--border)",
                       background:
                         i === 0
-                          ? "linear-gradient(135deg, rgba(255,193,7,0.12), rgba(74, 222, 90,0.12))"
+                          ? "linear-gradient(135deg, rgba(255,193,7,0.12), rgba(3,71,244,0.12))"
                           : "rgba(255,255,255,0.025)",
                     }}
                   >
