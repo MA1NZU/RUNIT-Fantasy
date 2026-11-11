@@ -1,3 +1,4 @@
+
 * {
   margin: 0;
   padding: 0;
@@ -5,18 +6,18 @@
 }
 
 :root {
-  --bg: #121212;
-  --surface: #232323;
-  --border: #2e2e2e;
+  --bg: #0f1117;
+  --surface: #13161f;
+  --border: #1e2235;
   --text: #ffffff;
-  --text-muted: #9ca3af;
-  --blue: #4ade5a;
-  --blue-dim: rgba(74, 222, 90, 0.15);
-  --blue-border: rgba(74, 222, 90, 0.32);
-  --accent: #4ade5a;
-  --accent-dim: rgba(74, 222, 90, 0.14);
-  --red: #f26b5b;
-  --green: #4ade5a;
+  --text-muted: #6b7280;
+  --blue: #0347f4;
+  --blue-dim: rgba(3, 71, 244, 0.15);
+  --blue-border: rgba(3, 71, 244, 0.3);
+  --accent: #9bf800;
+  --accent-dim: rgba(155, 248, 0, 0.12);
+  --red: #ff4444;
+  --green: #44ff88;
 }
 
 html {
@@ -93,7 +94,7 @@ a:focus-visible,
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible {
-  outline: 3px solid rgba(74, 222, 90, 0.9);
+  outline: 3px solid rgba(155, 248, 0, 0.85);
   outline-offset: 3px;
 }
 
@@ -119,9 +120,9 @@ textarea:focus-visible {
   align-items: center;
   min-height: 1.35rem;
   padding: 0.08rem 0.38rem;
-  border: 1px solid rgba(74, 222, 90, 0.38);
+  border: 1px solid rgba(155, 248, 0, 0.38);
   border-radius: 999px;
-  background: rgba(74, 222, 90, 0.1);
+  background: rgba(155, 248, 0, 0.1);
   color: var(--accent);
   font-size: 0.62rem;
   font-weight: 900;
@@ -250,7 +251,7 @@ textarea:focus-visible {
   }
 
   .mobile-nav-link.is-active {
-    border-color: rgba(74, 222, 90, 0.65);
+    border-color: rgba(107, 159, 255, 0.65);
     background: var(--blue);
     color: #fff;
   }
@@ -1124,12 +1125,12 @@ textarea:focus-visible {
   }
 
   .mobile-bottom-nav-item.is-active {
-    background: rgba(74, 222, 90, 0.2);
+    background: rgba(3, 71, 244, 0.2);
     color: var(--accent);
   }
 
   .mobile-bottom-nav-more.is-active {
-    color: #86efac;
+    color: #8bb5ff;
   }
 
   .app-shell-content {
@@ -1146,7 +1147,7 @@ textarea:focus-visible {
 
   .mobile-bottom-nav-item {
     min-height: 56px;
-    border-radius: 1;
+    border-radius: 13px;
   }
 
   .mobile-bottom-nav-item svg {
@@ -1311,38 +1312,4 @@ textarea:focus-visible {
   .fixtures-standings-player-game {
     font-size: 8px !important;
   }
-}
-
-/* ===== v34 retheme: flat dark cards, pill buttons & tabs ===== */
-
-/* Every button becomes a pill. !important is required so inline styles
-   (borderRadius: "12px" etc.) cannot override the shape. Inputs, selects
-   and textareas keep their softer corners on purpose. */
-button {
-  border-radius: 999px !important;
-}
-
-/* Navigation pieces that behave like buttons get the same pill shape. */
-.mobile-menu-toggle,
-.mobile-nav-link,
-.mobile-nav-account button {
-  border-radius: 999px !important;
-}
-
-/* Roomier touch targets in the mobile navigation. */
-.mobile-nav-link {
-  min-height: 48px;
-}
-
-.mobile-menu-toggle {
-  min-height: 46px;
-}
-
-/* Heavier, rounded headings by default (Poppins carries the geometric feel;
-   pages that set their own weight inline are unaffected). */
-h1,
-h2,
-h3 {
-  font-weight: 800;
-  letter-spacing: -0.01em;
 }
