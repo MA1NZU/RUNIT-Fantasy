@@ -504,7 +504,7 @@ export default function CrateOpeningOverlay({
             duration > 40 ? Math.floor(duration * 0.35) : 15;
           startSeconds = Math.min(
             startSeconds,
-            Math.max(0, duration - 16)
+            Math.max(0, duration - 31)
           );
         }
 
