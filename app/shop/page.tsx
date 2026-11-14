@@ -225,6 +225,7 @@ export default function ShopPage() {
   const previewPlayerRef = useRef<any>(null);
   const previewTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const previewDeadlineRef = useRef<number>(0);
+  const pendingFallbackSeekRef = useRef(false);
   const [previewingId, setPreviewingId] = useState<string | null>(null);
   const [previewSecondsLeft, setPreviewSecondsLeft] = useState(
     SONG_PREVIEW_SECONDS
@@ -564,6 +565,7 @@ export default function ShopPage() {
 
   const stopSongPreview = () => {
     clearPreviewTimer();
+    pendingFallbackSeekRef.current = false;
     setPreviewingId(null);
     setPreviewLoading(false);
     setPreviewSecondsLeft(SONG_PREVIEW_SECONDS);
@@ -573,7 +575,7 @@ export default function ShopPage() {
     } catch {}
   };
 
-  const attachPreviewPlayer = (videoId: string) => {
+  const attachPreviewPlayer = (videoId: string, startSeconds: number) => {
     setPreviewLoading(true);
 
     previewPlayerRef.current = new window.YT.Player(
@@ -582,16 +584,48 @@ export default function ShopPage() {
         height: "0",
         width: "0",
         videoId,
-        playerVars: { controls: 0, modestbranding: 1, rel: 0 },
+        playerVars: {
+          controls: 0,
+          modestbranding: 1,
+          rel: 0,
+          start: startSeconds,
+        },
         events: {
           onReady: (event: any) => {
-            event.target.setVolume(70);
+            event.target.setVolume(80);
             event.target.playVideo();
             setPreviewLoading(false);
           },
           onStateChange: (event: any) => {
             if (event.data === window.YT.PlayerState.ENDED) {
               stopSongPreview();
+            }
+
+            // Songs without a configured "Song Preview Start" jump to the
+            // same fallback point the crate opening overlay uses (35% into
+            // the song, or 15s for short tracks), so both previews play
+            // the same part of the song.
+            if (
+              event.data === window.YT.PlayerState.PLAYING &&
+              pendingFallbackSeekRef.current
+            ) {
+              pendingFallbackSeekRef.current = false;
+
+              const duration = Number(event.target.getDuration?.() || 0);
+
+              if (duration > 0) {
+                let fallbackStart =
+                  duration > 40 ? Math.floor(duration * 0.35) : 15;
+
+                fallbackStart = Math.min(
+                  fallbackStart,
+                  Math.max(0, duration - 31)
+                );
+
+                if (fallbackStart > 0) {
+                  event.target.seekTo(fallbackStart, true);
+                }
+              }
             }
           },
           onError: () => {
@@ -602,14 +636,15 @@ export default function ShopPage() {
     );
   };
 
-  const createPreviewPlayer = (videoId: string) => {
+  const createPreviewPlayer = (videoId: string, startSeconds: number) => {
     if (window.YT && window.YT.Player) {
-      attachPreviewPlayer(videoId);
+      attachPreviewPlayer(videoId, startSeconds);
 
       return;
     }
 
-    window.onYouTubeIframeAPIReady = () => attachPreviewPlayer(videoId);
+    window.onYouTubeIframeAPIReady = () =>
+      attachPreviewPlayer(videoId, startSeconds);
 
     if (
       !document.querySelector(
@@ -654,12 +689,18 @@ export default function ShopPage() {
       }
     }, 250);
 
+    const configured = Number(item.songPreviewStart);
+    const hasConfigured = Number.isFinite(configured) && configured > 0;
+    const startSeconds = hasConfigured ? configured : 0;
+
+    pendingFallbackSeekRef.current = !hasConfigured;
+
     if (previewPlayerRef.current?.loadVideoById) {
-      previewPlayerRef.current.loadVideoById(ytId);
+      previewPlayerRef.current.loadVideoById({ videoId: ytId, startSeconds });
       previewPlayerRef.current.playVideo();
       setPreviewLoading(false);
     } else {
-      createPreviewPlayer(ytId);
+      createPreviewPlayer(ytId, startSeconds);
     }
   };
 
