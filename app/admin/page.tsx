@@ -660,9 +660,9 @@ export default function AdminPage() {
       total += s("deaths") * -2;
       total += Math.floor(s("lastKills") / 3);
       total += s("headKill") * 1;
-      total += Math.floor(s("healing") / 4500);
-      total += Math.floor(s("damage") / 4500);
-      total += Math.floor(s("blocked") / 4500);
+      total += Math.floor(s("healing") / 6000);
+      total += Math.floor(s("damage") / 6000);
+      total += Math.floor(s("blocked") / 6000);
       total += Math.floor(s("soloKills") / 2);
     }
 
