@@ -24,6 +24,7 @@ type Team = {
 type Settings = {
   currentGameweek: number;
   deadline: string;
+  gameweekDeadline?: string;
 };
 
 const TOTAL_MANAGERS = 13;
@@ -174,8 +175,32 @@ export default function Home() {
   const currentGW = settings?.currentGameweek ?? 7;
   const nextGW = currentGW + 1;
   const leader = topTeams[0];
-  const deadlineText = formatDeadline(settings?.deadline);
-  const timeLeft = getTimeLeft(settings?.deadline, now);
+
+  // Deadline display: while the transfer deadline is in the future the card
+  // counts down to it. Once it passes, the card switches to the Gameweek
+  // Deadline until that passes too, then falls back to the transfer
+  // deadline (which you set for the next gameweek).
+  const transferEnd = new Date(settings?.deadline || "").getTime();
+  const gameweekEnd = new Date(settings?.gameweekDeadline || "").getTime();
+  const transferPassed =
+    Boolean(settings?.deadline) &&
+    Number.isFinite(transferEnd) &&
+    transferEnd <= now;
+  const gameweekPassed =
+    Boolean(settings?.gameweekDeadline) &&
+    Number.isFinite(gameweekEnd) &&
+    gameweekEnd <= now;
+  const showGameweekDeadline =
+    transferPassed && Boolean(settings?.gameweekDeadline) && !gameweekPassed;
+
+  const activeDeadline = showGameweekDeadline
+    ? String(settings?.gameweekDeadline)
+    : settings?.deadline;
+  const deadlineLabel = showGameweekDeadline
+    ? "Gameweek Deadline"
+    : "Transfer Deadline";
+  const deadlineText = formatDeadline(activeDeadline);
+  const timeLeft = getTimeLeft(activeDeadline, now);
 
   return (
     <Shell>
@@ -537,7 +562,7 @@ export default function Home() {
                       fontSize: "0.75rem",
                     }}
                   >
-                    Transfer Deadline
+                    {deadlineLabel}
                   </div>
 
                   <div style={{ fontWeight: 800, marginTop: "0.25rem" }}>
