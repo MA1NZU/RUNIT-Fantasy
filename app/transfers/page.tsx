@@ -722,33 +722,64 @@ function EmptySlot({
   );
 }
 
-function CountdownTimer({ deadline }: { deadline: string }) {
+function formatCountdown(diff: number) {
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+  const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+  const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+  const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+
+  return `${days}d ${hours}h ${minutes}m ${seconds}s`;
+}
+
+function CountdownTimer({
+  deadline,
+  gameweekDeadline,
+}: {
+  deadline: string;
+  gameweekDeadline?: string;
+}) {
   const [timeLeft, setTimeLeft] = useState<string>("");
+  const [label, setLabel] = useState<string>("Deadline");
 
   useEffect(() => {
     const update = () => {
       const now = new Date().getTime();
-      const target = new Date(deadline).getTime();
-      const diff = target - now;
+      const transferTarget = new Date(deadline).getTime();
+      const transferDiff = transferTarget - now;
 
-      if (Number.isNaN(target)) {
+      // Once the transfer deadline passes, the countdown switches to the
+      // Gameweek Deadline until that ends, then back to the transfer
+      // deadline ("Deadline passed") until the next one is set.
+      const transferOver =
+        Number.isFinite(transferTarget) && transferDiff <= 0;
+
+      if (transferOver && gameweekDeadline) {
+        const gwTarget = new Date(gameweekDeadline).getTime();
+        const gwDiff = gwTarget - now;
+
+        if (Number.isFinite(gwTarget) && gwDiff > 0) {
+          setLabel("Gameweek Deadline");
+          setTimeLeft(formatCountdown(gwDiff));
+
+          return;
+        }
+      }
+
+      setLabel("Deadline");
+
+      if (Number.isNaN(transferTarget)) {
         setTimeLeft("No deadline");
+
         return;
       }
 
-      if (diff <= 0) {
+      if (transferDiff <= 0) {
         setTimeLeft("Deadline passed");
+
         return;
       }
 
-      const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-      const hours = Math.floor(
-        (diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)
-      );
-      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-      const seconds = Math.floor((diff % (1000 * 60)) / 1000);
-
-      setTimeLeft(`${days}d ${hours}h ${minutes}m ${seconds}s`);
+      setTimeLeft(formatCountdown(transferDiff));
     };
 
     update();
@@ -756,7 +787,7 @@ function CountdownTimer({ deadline }: { deadline: string }) {
     const timer = setInterval(update, 1000);
 
     return () => clearInterval(timer);
-  }, [deadline]);
+  }, [deadline, gameweekDeadline]);
 
   return (
     <div
@@ -780,7 +811,7 @@ function CountdownTimer({ deadline }: { deadline: string }) {
           letterSpacing: "0.7px",
         }}
       >
-        Deadline
+        {label}
       </span>
 
       <span
@@ -829,6 +860,7 @@ export default function TransfersPage() {
   const [statsLoading, setStatsLoading] = useState(false);
   const [nextGW, setNextGW] = useState<number>(8);
   const [deadline, setDeadline] = useState<string>("");
+  const [gameweekDeadline, setGameweekDeadline] = useState<string>("");
   const [isLocked, setIsLocked] = useState(false);
 
   const [search, setSearch] = useState("");
@@ -862,6 +894,7 @@ export default function TransfersPage() {
 
           setNextGW(activeNextGW);
           setDeadline(s.deadline || "");
+          setGameweekDeadline(s.gameweekDeadline || "");
 
           if (s.lockTransfers) {
             setIsLocked(true);
@@ -1661,7 +1694,12 @@ export default function TransfersPage() {
               <br />
             </h1>
 
-            {deadline && <CountdownTimer deadline={deadline} />}
+            {deadline && (
+              <CountdownTimer
+                deadline={deadline}
+                gameweekDeadline={gameweekDeadline}
+              />
+            )}
           </div>
         </section>
 
