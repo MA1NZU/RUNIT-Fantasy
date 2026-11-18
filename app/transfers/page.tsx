@@ -789,12 +789,19 @@ function CountdownTimer({
     return () => clearInterval(timer);
   }, [deadline, gameweekDeadline]);
 
+  // The whole chip turns gold while counting down to the Gameweek Deadline.
+  const isGameweek = label === "Gameweek Deadline";
+
   return (
     <div
       className="transfer-countdown"
       style={{
-        background: "rgba(3,71,244,0.12)",
-        border: "1px solid rgba(107,159,255,0.45)",
+        background: isGameweek
+          ? "rgba(255, 193, 7, 0.12)"
+          : "rgba(74, 222, 90,0.12)",
+        border: isGameweek
+          ? "1px solid rgba(255, 193, 7, 0.45)"
+          : "1px solid rgba(74, 222, 90,0.45)",
         padding: "0.55rem 0.8rem",
         borderRadius: "12px",
         display: "inline-flex",
@@ -806,7 +813,7 @@ function CountdownTimer({
         style={{
           fontSize: "0.68rem",
           fontWeight: 900,
-          color: "#8bb5ff",
+          color: isGameweek ? "#ffc107" : "#86efac",
           textTransform: "uppercase",
           letterSpacing: "0.7px",
         }}
