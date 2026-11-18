@@ -574,7 +574,7 @@ export default function Home() {
                   style={{
                     fontSize: "1.3rem",
                     fontWeight: 900,
-                    color: "var(--accent)",
+                    color: showGameweekDeadline ? "#ffc107" : "var(--accent)",
                     textAlign: "right",
                   }}
                 >
