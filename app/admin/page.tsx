@@ -129,6 +129,7 @@ type Settings = {
   id: string;
   currentGameweek: number;
   deadline: string;
+  gameweekDeadline?: string;
   shopRefreshAt?: any;
   lockTeamLeaderboard?: boolean;
   lockTransfers?: boolean;
@@ -1562,6 +1563,7 @@ export default function AdminPage() {
       await updateDoc(doc(db, "settings", settings.id), {
         currentGameweek: Number(settings.currentGameweek),
         deadline: settings.deadline,
+        gameweekDeadline: settings.gameweekDeadline || "",
         shopRefreshAt: settings.shopRefreshAt || "",
         lockTeamLeaderboard: !!settings.lockTeamLeaderboard,
         lockTransfers: !!settings.lockTransfers,
@@ -2751,6 +2753,31 @@ export default function AdminPage() {
                     }
                     style={inputStyle}
                   />
+                </div>
+
+                <div>
+                  <div style={labelStyle}>Gameweek Deadline</div>
+                  <input
+                    type="datetime-local"
+                    value={datetimeInputValue(settings.gameweekDeadline)}
+                    onChange={(e) =>
+                      setSettings({
+                        ...settings,
+                        gameweekDeadline: e.target.value,
+                      })
+                    }
+                    style={inputStyle}
+                  />
+                  <div
+                    style={{
+                      fontSize: "0.7rem",
+                      color: "var(--text-muted)",
+                      marginTop: "0.3rem",
+                    }}
+                  >
+                    Shown after the transfer deadline passes, until this one
+                    ends.
+                  </div>
                 </div>
 
                 <div>
