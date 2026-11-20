@@ -108,6 +108,20 @@ type Player = {
   linkedManagerEmail?: string;
 };
 
+type AdminPopup = {
+  id: string;
+  active: boolean;
+  type: "news" | "reward" | "coins" | "gold";
+  title: string;
+  message: string;
+  buttonText?: string;
+  priority?: number | string;
+  rewardItemId?: string;
+  rewardItemName?: string;
+  coinsAmount?: number | string;
+  goldAmount?: number | string;
+};
+
 type UserTeam = {
   id: string;
   manager: string;
@@ -207,6 +221,7 @@ type Tab =
   | "cards"
   | "crates"
   | "notify"
+  | "popups"
   | "sections"
   | "settings"
   | "challenges"
@@ -376,6 +391,15 @@ export default function AdminPage() {
   const [notifySending, setNotifySending] = useState(false);
   const [notifyResult, setNotifyResult] = useState("");
   const [subscriberCount, setSubscriberCount] = useState<number | null>(null);
+  const [popups, setPopups] = useState<AdminPopup[]>([]);
+  const [newPopup, setNewPopup] = useState<Partial<AdminPopup>>({
+    active: true,
+    type: "news",
+    title: "",
+    message: "",
+    buttonText: "",
+    priority: 0,
+  });
 
   useEffect(() => {
     if (user && user.email !== ADMIN_EMAIL) router.replace("/");
@@ -396,6 +420,35 @@ export default function AdminPage() {
     if (tab !== "notify") return;
 
     loadSubscriberCount();
+  }, [tab]);
+    // Site popups (news + rewards), managed on the POPUPS tab.
+  const loadPopups = () => {
+    getDocs(collection(db, "sitePopups"))
+      .then((snap) => {
+        setPopups(
+          snap.docs
+            .map((d) => {
+              const data = d.data() as Partial<AdminPopup>;
+
+              // Normalize legacy "gold" popups into "coins" for editing.
+              return {
+                ...data,
+                id: d.id,
+                type: data.type === "gold" ? "coins" : data.type || "news",
+                coinsAmount:
+                  Number(data.coinsAmount ?? data.goldAmount ?? 0) || 0,
+              } as AdminPopup;
+            })
+            .sort((a, b) => Number(b.priority || 0) - Number(a.priority || 0))
+        );
+      })
+      .catch((err) => console.error("Failed to load popups:", err));
+  };
+
+  useEffect(() => {
+    if (tab !== "popups") return;
+
+    loadPopups();
   }, [tab]);
 
   useEffect(() => {
@@ -2033,6 +2086,122 @@ export default function AdminPage() {
     }
   };
 
+    const handleCreatePopup = async () => {
+    const title = String(newPopup.title || "").trim();
+
+    if (!title) return alert("Give the popup a title");
+
+    const type =
+      newPopup.type === "reward" || newPopup.type === "coins"
+        ? newPopup.type
+        : "news";
+
+    if (type === "reward" && !newPopup.rewardItemId) {
+      return alert("Pick a reward item for a reward popup");
+    }
+
+    if (type === "coins" && !(Number(newPopup.coinsAmount) > 0)) {
+      return alert("Set a coins amount greater than 0 for a coins popup");
+    }
+
+    setSaving("newPopup");
+
+    try {
+      await addDoc(collection(db, "sitePopups"), {
+        active: newPopup.active !== false,
+        type,
+        title,
+        message: String(newPopup.message || "").trim(),
+        buttonText: String(newPopup.buttonText || "").trim(),
+        priority: Number(newPopup.priority) || 0,
+        rewardItemId: type === "reward" ? String(newPopup.rewardItemId) : "",
+        rewardItemName:
+          type === "reward" ? String(newPopup.rewardItemName || "") : "",
+        coinsAmount: type === "coins" ? Number(newPopup.coinsAmount) || 0 : 0,
+      });
+
+      setNewPopup({
+        active: true,
+        type: "news",
+        title: "",
+        message: "",
+        buttonText: "",
+        priority: 0,
+      });
+
+      markSaved("newPopup");
+      loadPopups();
+    } catch (err) {
+      console.error("Failed to create popup:", err);
+      alert("Failed to create the popup. Check the console for details.");
+    }
+
+    setSaving(null);
+  };
+
+  const handleSavePopup = async (popup: AdminPopup) => {
+    const title = String(popup.title || "").trim();
+
+    if (!title) return alert("Give the popup a title");
+
+    const type =
+      popup.type === "reward" || popup.type === "coins" ? popup.type : "news";
+
+    if (type === "reward" && !popup.rewardItemId) {
+      return alert("Pick a reward item for a reward popup");
+    }
+
+    if (type === "coins" && !(Number(popup.coinsAmount) > 0)) {
+      return alert("Set a coins amount greater than 0 for a coins popup");
+    }
+
+    setSaving(popup.id);
+
+    try {
+      await updateDoc(doc(db, "sitePopups", popup.id), {
+        active: popup.active !== false,
+        type,
+        title,
+        message: String(popup.message || "").trim(),
+        buttonText: String(popup.buttonText || "").trim(),
+        priority: Number(popup.priority) || 0,
+        rewardItemId: type === "reward" ? String(popup.rewardItemId || "") : "",
+        rewardItemName:
+          type === "reward" ? String(popup.rewardItemName || "") : "",
+        coinsAmount: type === "coins" ? Number(popup.coinsAmount) || 0 : 0,
+      });
+
+      markSaved(popup.id);
+    } catch (err) {
+      console.error("Failed to save popup:", err);
+      alert("Failed to save the popup. Check the console for details.");
+    }
+
+    setSaving(null);
+  };
+
+  const updatePopupField = (id: string, field: keyof AdminPopup, value: any) => {
+    setPopups((prev) =>
+      prev.map((p) => (p.id === id ? { ...p, [field]: value } : p))
+    );
+  };
+
+  const handleDeletePopup = async (popup: AdminPopup) => {
+    if (!confirm(`Delete the popup "${popup.title}"?`)) return;
+
+    setSaving(popup.id);
+
+    try {
+      await deleteDoc(doc(db, "sitePopups", popup.id));
+      setPopups((prev) => prev.filter((p) => p.id !== popup.id));
+    } catch (err) {
+      console.error("Failed to delete popup:", err);
+      alert("Failed to delete the popup. Check the console for details.");
+    }
+
+    setSaving(null);
+  };
+
   const updateChallengePatch = (id: string, patch: Partial<Challenge>) => {
     setChallenges((prev) =>
       prev.map((c) => (c.id === id ? { ...c, ...patch } : c))
@@ -2559,6 +2728,7 @@ export default function AdminPage() {
             "cards",
             "crates",
             "notify",
+            "popups",
             "sections",
             "settings",
             "locks",
@@ -3659,6 +3829,465 @@ export default function AdminPage() {
           </div>
         )}
 
+        {tab === "popups" && (
+          <div style={{ display: "grid", gap: "1rem", maxWidth: "1100px" }}>
+            <section style={panelStyle}>
+              <h2 style={{ ...sectionTitleStyle, marginBottom: 0 }}>
+                Create Popup
+              </h2>
+
+              <div
+                style={{
+                  color: "var(--text-muted)",
+                  fontSize: "0.85rem",
+                  lineHeight: 1.6,
+                }}
+              >
+                Popups appear once per manager when they open the site. Reward
+                popups grant a shop item, coins popups grant coins; each
+                manager can claim only once. Higher priority shows first when
+                several are active.
+              </div>
+
+              <div>
+                <div style={labelStyle}>Type</div>
+                <select
+                  value={newPopup.type}
+                  onChange={(e) =>
+                    setNewPopup((p) => ({
+                      ...p,
+                      type: e.target.value as AdminPopup["type"],
+                    }))
+                  }
+                  style={inputStyle}
+                >
+                  <option value="news">News (information only)</option>
+                  <option value="reward">Reward (grants a shop item)</option>
+                  <option value="coins">Coins (grants coins)</option>
+                </select>
+              </div>
+
+              <div>
+                <div style={labelStyle}>Title</div>
+                <input
+                  value={newPopup.title || ""}
+                  onChange={(e) =>
+                    setNewPopup((p) => ({ ...p, title: e.target.value }))
+                  }
+                  maxLength={60}
+                  placeholder="🎁 Weekend Reward!"
+                  style={inputStyle}
+                />
+              </div>
+
+              <div>
+                <div style={labelStyle}>Message</div>
+                <textarea
+                  value={newPopup.message || ""}
+                  onChange={(e) =>
+                    setNewPopup((p) => ({ ...p, message: e.target.value }))
+                  }
+                  maxLength={300}
+                  rows={3}
+                  placeholder="Thanks for playing — here is a little gift."
+                  style={{
+                    ...inputStyle,
+                    resize: "vertical",
+                    minHeight: "80px",
+                    fontFamily: "inherit",
+                  }}
+                />
+              </div>
+
+              <div
+                className="admin-popup-pair"
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1.4fr 0.6fr",
+                  gap: "0.75rem",
+                }}
+              >
+                <div>
+                  <div style={labelStyle}>Button text (optional)</div>
+                  <input
+                    value={newPopup.buttonText || ""}
+                    onChange={(e) =>
+                      setNewPopup((p) => ({ ...p, buttonText: e.target.value }))
+                    }
+                    maxLength={24}
+                    placeholder="Claim"
+                    style={inputStyle}
+                  />
+                </div>
+
+                <div>
+                  <div style={labelStyle}>Priority</div>
+                  <input
+                    type="number"
+                    value={Number(newPopup.priority) || 0}
+                    onChange={(e) =>
+                      setNewPopup((p) => ({
+                        ...p,
+                        priority: Number(e.target.value),
+                      }))
+                    }
+                    style={inputStyle}
+                  />
+                </div>
+              </div>
+
+              {newPopup.type === "reward" && (
+                <div>
+                  <div style={labelStyle}>Reward item</div>
+                  <select
+                    value={newPopup.rewardItemId || ""}
+                    onChange={(e) => {
+                      const item = shopItems.find(
+                        (i) => i.id === e.target.value
+                      );
+
+                      setNewPopup((p) => ({
+                        ...p,
+                        rewardItemId: e.target.value,
+                        rewardItemName: item ? item.itemName : "",
+                      }));
+                    }}
+                    style={inputStyle}
+                  >
+                    <option value="">— Pick an item —</option>
+                    {shopItems.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.itemName} · {item.itemType}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {newPopup.type === "coins" && (
+                <div>
+                  <div style={labelStyle}>Coins amount</div>
+                  <input
+                    type="number"
+                    value={Number(newPopup.coinsAmount) || 0}
+                    onChange={(e) =>
+                      setNewPopup((p) => ({
+                        ...p,
+                        coinsAmount: Number(e.target.value),
+                      }))
+                    }
+                    style={inputStyle}
+                  />
+                </div>
+              )}
+
+              <label style={toggleLabelStyle}>
+                <input
+                  type="checkbox"
+                  checked={newPopup.active !== false}
+                  onChange={(e) =>
+                    setNewPopup((p) => ({ ...p, active: e.target.checked }))
+                  }
+                />
+                Active
+              </label>
+
+              <button
+                onClick={handleCreatePopup}
+                disabled={saving === "newPopup"}
+                style={primaryButtonStyle(saved === "newPopup")}
+              >
+                {saving === "newPopup"
+                  ? "Creating..."
+                  : saved === "newPopup"
+                  ? "✓ Created"
+                  : "Create Popup"}
+              </button>
+            </section>
+
+            <section style={panelStyle}>
+              <h2 style={{ ...sectionTitleStyle, marginBottom: 0 }}>
+                Existing Popups{" "}
+                <strong style={{ color: "#fff" }}>{popups.length}</strong>
+              </h2>
+
+              {popups.length === 0 ? (
+                <div style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>
+                  No popups yet — create the first one above.
+                </div>
+              ) : (
+                <div style={{ display: "grid", gap: "1rem" }}>
+                  {popups.map((popup) => (
+                    <div
+                      key={popup.id}
+                      style={{
+                        background: "var(--bg)",
+                        border: "1px solid var(--border)",
+                        borderRadius: "12px",
+                        padding: "1rem",
+                        display: "grid",
+                        gap: "0.85rem",
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "flex-start",
+                          gap: "0.75rem",
+                          flexWrap: "wrap",
+                        }}
+                      >
+                        <div style={{ minWidth: 0 }}>
+                          <div
+                            style={{
+                              fontWeight: 800,
+                              fontSize: "1rem",
+                              whiteSpace: "nowrap",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                            }}
+                          >
+                            {popup.title || "Untitled Popup"}
+                          </div>
+
+                          <div
+                            style={{
+                              color: "var(--text-muted)",
+                              fontSize: "0.75rem",
+                              marginTop: "0.2rem",
+                            }}
+                          >
+                            {popup.type} · priority {Number(popup.priority) || 0}
+                            {popup.type === "reward" && popup.rewardItemName
+                              ? ` · ${popup.rewardItemName}`
+                              : ""}
+                            {popup.type === "coins"
+                              ? ` · ${Number(popup.coinsAmount) || 0} coins`
+                              : ""}
+                          </div>
+                        </div>
+
+                        <div
+                          style={{
+                            display: "flex",
+                            gap: "0.5rem",
+                            flexShrink: 0,
+                            alignItems: "center",
+                          }}
+                        >
+                          <label style={toggleLabelStyle}>
+                            <input
+                              type="checkbox"
+                              checked={popup.active !== false}
+                              onChange={(e) =>
+                                updatePopupField(
+                                  popup.id,
+                                  "active",
+                                  e.target.checked
+                                )
+                              }
+                            />
+                            Active
+                          </label>
+
+                          <button
+                            onClick={() => handleSavePopup(popup)}
+                            disabled={saving === popup.id}
+                            style={{
+                              background:
+                                saved === popup.id
+                                  ? "var(--green)"
+                                  : "var(--accent)",
+                              color: "#000",
+                              border: "none",
+                              borderRadius: "999px",
+                              padding: "0.5rem 0.9rem",
+                              fontWeight: 800,
+                              cursor: "pointer",
+                            }}
+                          >
+                            {saving === popup.id
+                              ? "Saving..."
+                              : saved === popup.id
+                              ? "Saved"
+                              : "Save"}
+                          </button>
+
+                          <button
+                            onClick={() => handleDeletePopup(popup)}
+                            style={{
+                              background: "transparent",
+                              border: "1px solid var(--border)",
+                              color: "var(--red)",
+                              borderRadius: "8px",
+                              padding: "0.5rem 0.75rem",
+                              cursor: "pointer",
+                              fontWeight: 800,
+                            }}
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      </div>
+
+                      <div
+                        className="admin-popup-pair"
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "1.4fr 0.6fr",
+                          gap: "0.75rem",
+                        }}
+                      >
+                        <div>
+                          <div style={smallLabelStyle}>Title</div>
+                          <input
+                            value={popup.title || ""}
+                            onChange={(e) =>
+                              updatePopupField(popup.id, "title", e.target.value)
+                            }
+                            maxLength={60}
+                            style={inputStyle}
+                          />
+                        </div>
+
+                        <div>
+                          <div style={smallLabelStyle}>Priority</div>
+                          <input
+                            type="number"
+                            value={Number(popup.priority) || 0}
+                            onChange={(e) =>
+                              updatePopupField(
+                                popup.id,
+                                "priority",
+                                Number(e.target.value)
+                              )
+                            }
+                            style={inputStyle}
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <div style={smallLabelStyle}>Message</div>
+                        <textarea
+                          value={popup.message || ""}
+                          onChange={(e) =>
+                            updatePopupField(
+                              popup.id,
+                              "message",
+                              e.target.value
+                            )
+                          }
+                          maxLength={300}
+                          rows={2}
+                          style={{
+                            ...inputStyle,
+                            resize: "vertical",
+                            fontFamily: "inherit",
+                          }}
+                        />
+                      </div>
+
+                      <div
+                        className="admin-popup-pair"
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "1fr 1fr",
+                          gap: "0.75rem",
+                        }}
+                      >
+                        <div>
+                          <div style={smallLabelStyle}>Button text</div>
+                          <input
+                            value={popup.buttonText || ""}
+                            onChange={(e) =>
+                              updatePopupField(
+                                popup.id,
+                                "buttonText",
+                                e.target.value
+                              )
+                            }
+                            maxLength={24}
+                            placeholder="Claim"
+                            style={inputStyle}
+                          />
+                        </div>
+
+                        <div>
+                          <div style={smallLabelStyle}>Type</div>
+                          <select
+                            value={popup.type}
+                            onChange={(e) =>
+                              updatePopupField(
+                                popup.id,
+                                "type",
+                                e.target.value as AdminPopup["type"]
+                              )
+                            }
+                            style={inputStyle}
+                          >
+                            <option value="news">News</option>
+                            <option value="reward">Reward</option>
+                            <option value="coins">Coins</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      {popup.type === "reward" && (
+                        <div>
+                          <div style={smallLabelStyle}>Reward item</div>
+                          <select
+                            value={popup.rewardItemId || ""}
+                            onChange={(e) => {
+                              const item = shopItems.find(
+                                (i) => i.id === e.target.value
+                              );
+
+                              updatePopupField(popup.id, "rewardItemId", e.target.value);
+                              updatePopupField(
+                                popup.id,
+                                "rewardItemName",
+                                item ? item.itemName : ""
+                              );
+                            }}
+                            style={inputStyle}
+                          >
+                            <option value="">— Pick an item —</option>
+                            {shopItems.map((item) => (
+                              <option key={item.id} value={item.id}>
+                                {item.itemName} · {item.itemType}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+
+                      {popup.type === "coins" && (
+                        <div>
+                          <div style={smallLabelStyle}>Coins amount</div>
+                          <input
+                            type="number"
+                            value={Number(popup.coinsAmount) || 0}
+                            onChange={(e) =>
+                              updatePopupField(
+                                popup.id,
+                                "coinsAmount",
+                                Number(e.target.value)
+                              )
+                            }
+                            style={inputStyle}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          </div>
+        )}
+        
         {tab === "fixtures" && (
           <div style={{ display: "grid", gap: "1rem", maxWidth: "1100px" }}>
             <div
