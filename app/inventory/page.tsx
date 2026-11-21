@@ -19,6 +19,8 @@ type ShopItem = {
   itemName: string;
   itemType: string;
   previewImage: string;
+  titleText?: string;
+  titleColor?: string;
 };
 
 type InventoryItem = ShopItem & {
@@ -435,17 +437,51 @@ export default function InventoryPage() {
                         textAlign: "center",
                       }}
                     >
-                      <img
-                        src={image}
-                        alt={item.itemName}
-                        style={{
-                          width: "80px",
-                          height: "80px",
-                          borderRadius: "12px",
-                          objectFit: "cover",
-                          marginBottom: "1rem",
-                        }}
-                      />
+                      {type === "title" ? (
+                        <div
+                          style={{
+                            display: "flex",
+                            justifyContent: "center",
+                            alignItems: "center",
+                            minHeight: "80px",
+                            marginBottom: "1rem",
+                            padding: "0 0.25rem",
+                          }}
+                        >
+                          <div
+                            style={{
+                              display: "inline-block",
+                              color: item.titleColor || "var(--accent)",
+                              fontWeight: 800,
+                              fontSize: "0.8rem",
+                              textTransform: "uppercase",
+                              letterSpacing: "2px",
+                              background: "rgba(255,255,255,0.03)",
+                              padding: "0.45rem 1.1rem",
+                              borderRadius: "40px",
+                              border: "1px solid var(--border)",
+                              maxWidth: "100%",
+                              whiteSpace: "nowrap",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                            }}
+                          >
+                            {item.titleText || item.itemName}
+                          </div>
+                        </div>
+                      ) : (
+                        <img
+                          src={image}
+                          alt={item.itemName}
+                          style={{
+                            width: "80px",
+                            height: "80px",
+                            borderRadius: "12px",
+                            objectFit: "cover",
+                            marginBottom: "1rem",
+                          }}
+                        />
+                      )}
                       <div
                         style={{
                           fontWeight: 700,
