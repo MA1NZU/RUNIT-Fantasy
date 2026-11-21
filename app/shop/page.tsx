@@ -35,6 +35,8 @@ type ShopItem = {
   itemType: "avatar" | "banner" | "song" | "title";
   price: number;
   previewImage: string;
+  titleText?: string;
+  titleColor?: string;
   songUrl?: string;
   songPreviewStart?: number | string | null;
   rarity: string;
@@ -186,6 +188,39 @@ const getRarityColor = (rarity?: string) => {
       return "var(--text-muted)";
   }
 };
+
+function TitlePill({
+  text,
+  color,
+  small,
+}: {
+  text: string;
+  color?: string;
+  small?: boolean;
+}) {
+  return (
+    <div
+      style={{
+        display: "inline-block",
+        color: color || "var(--accent)",
+        fontWeight: 800,
+        fontSize: small ? "0.55rem" : "0.95rem",
+        letterSpacing: small ? "1px" : "3px",
+        textTransform: "uppercase",
+        background: "rgba(255,255,255,0.03)",
+        padding: small ? "0.22rem 0.5rem" : "0.5rem 1.5rem",
+        borderRadius: small ? "999px" : "40px",
+        border: "1px solid var(--border)",
+        maxWidth: "100%",
+        whiteSpace: "nowrap",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+      }}
+    >
+      {text}
+    </div>
+  );
+}
 
 function normalizeEmail(value?: string | null) {
   return String(value || "").trim().toLowerCase();
@@ -1106,6 +1141,8 @@ export default function ShopPage() {
           itemType: String(shopItem?.itemType || drawn.itemType || ""),
           previewImage: String(shopItem?.previewImage || drawn.image || ""),
           rarity: String(drawn.rarity || ""),
+          titleText: shopItem?.titleText || "",
+          titleColor: shopItem?.titleColor || "",
           songUrl: shopItem?.songUrl || "",
           songPreviewStart: shopItem?.songPreviewStart ?? null,
         },
@@ -1632,7 +1669,23 @@ export default function ShopPage() {
                           borderBottom: "1px solid var(--border)",
                         }}
                       >
-                        {item.previewImage ? (
+                        {item.itemType === "title" ? (
+                          <div
+                            style={{
+                              width: "100%",
+                              height: "100%",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              padding: "1.25rem",
+                            }}
+                          >
+                            <TitlePill
+                              text={item.titleText || item.itemName}
+                              color={item.titleColor}
+                            />
+                          </div>
+                        ) : item.previewImage ? (
                           <img
                             src={getImageUrl(item.previewImage)}
                             style={{
@@ -1808,6 +1861,7 @@ export default function ShopPage() {
         {crateModalCrate && (
           <CrateContentsModal
             crate={crateModalCrate}
+            shopItems={allShopItems}
             accountReady={accountReady}
             userCoins={userCoins}
             isBusy={openingCrateBusy}
@@ -2381,6 +2435,7 @@ function CrateTile({
 
 function CrateContentsModal({
   crate,
+  shopItems,
   accountReady,
   userCoins,
   isBusy,
@@ -2388,6 +2443,7 @@ function CrateContentsModal({
   onClose,
 }: {
   crate: Crate;
+  shopItems: ShopItem[];
   accountReady: boolean;
   userCoins: number | null;
   isBusy: boolean;
@@ -2555,7 +2611,15 @@ function CrateContentsModal({
         </div>
 
         <div style={{ display: "grid", gap: "0.5rem" }}>
-          {sorted.map(({ item, tier, chance }) => (
+          {sorted.map(({ item, tier, chance }) => {
+            const titleShopItem =
+              String(item.itemType || "").toLowerCase() === "title"
+                ? shopItems.find(
+                    (s) => String(s.ID) === String(item.itemId)
+                  ) || null
+                : null;
+
+            return (
             <div
               key={item.itemId}
               style={{
@@ -2585,7 +2649,13 @@ function CrateContentsModal({
                   fontSize: "0.9rem",
                 }}
               >
-                {getCrateImageUrl(item.image) ? (
+                {titleShopItem ? (
+                  <TitlePill
+                    small
+                    text={titleShopItem.titleText || item.itemName}
+                    color={titleShopItem.titleColor}
+                  />
+                ) : getCrateImageUrl(item.image) ? (
                   <img
                     src={getCrateImageUrl(item.image)}
                     alt=""
@@ -2637,7 +2707,8 @@ function CrateContentsModal({
                 {(chance * 100).toFixed(1)}%
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
 
         <div
