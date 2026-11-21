@@ -21,6 +21,8 @@ export type CrateRevealItem = {
   itemType: string;
   previewImage: string;
   rarity?: string;
+  titleText?: string;
+  titleColor?: string;
   songUrl?: string;
   songPreviewStart?: number | string | null;
 };
@@ -693,7 +695,15 @@ export default function CrateOpeningOverlay({
               )}
 
               <div className="crate-item-card">
-                {itemImage ? (
+                {String(result.item.itemType || "").toLowerCase() ===
+                "title" ? (
+                  <div
+                    className="crate-title-pill"
+                    style={{ color: result.item.titleColor || "var(--accent)" }}
+                  >
+                    {result.item.titleText || result.item.itemName}
+                  </div>
+                ) : itemImage ? (
                   <img src={itemImage} alt={result.item.itemName} />
                 ) : (
                   <span className="crate-item-fallback">
@@ -1068,10 +1078,20 @@ export default function CrateOpeningOverlay({
           display: block;
         }
 
-        .crate-item-fallback {
-          font-size: 4rem;
-          font-weight: 900;
-          color: rgba(255, 255, 255, 0.25);
+        .crate-title-pill {
+          margin: 0 1.25rem;
+          padding: 0.55rem 1.4rem;
+          border-radius: 40px;
+          border: 1px solid var(--border);
+          background: rgba(255, 255, 255, 0.03);
+          font-size: 1rem;
+          font-weight: 800;
+          text-transform: uppercase;
+          letter-spacing: 3px;
+          max-width: calc(100% - 2.5rem);
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
         }
 
         .crate-reveal-name {
